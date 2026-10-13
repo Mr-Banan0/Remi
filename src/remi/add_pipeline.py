@@ -9,7 +9,7 @@ from .models import ContentItem, WrittenItem
 from .providers import OutputInvalid, ProviderUnavailable
 
 
-PIPELINE = "G06-route-content-split"
+PIPELINE = "G07-memory-boundaries"
 TIME_ERRORS = {"time_unresolved_choose_supported_expression_or_null",
                "end_time_unresolved_choose_supported_expression_or_null", "validity_interval_inverted"}
 

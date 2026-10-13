@@ -1,6 +1,6 @@
 # Remi
 
-Remi 是独立的 G06 冷热统一图实验项目，与 TraceWeave 并列开发。
+Remi 是独立的 G07 冷热统一图实验项目，与 TraceWeave 并列开发。
 
 主项目目录为 `/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
 
