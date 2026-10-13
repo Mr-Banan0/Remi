@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "embergraph"
+version = "0.1.0"
+description = "Source-grounded lifelong memory with one graph and bounded hot views"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "openai>=1.75,<3", "httpx>=0.28,<1", "sqlite-vec>=0.1.6,<0.2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+embergraph = "embergraph.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/embergraph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
