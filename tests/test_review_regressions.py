@@ -7,14 +7,14 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from embergraph.api import create_app
-from embergraph.clock import absolute_content, message_time, resolve_time
+from remi.api import create_app
+from remi.clock import absolute_content, message_time, resolve_time
 from .helpers import TestEngine as MemoryEngine
-from embergraph.heat import hot_view
-from embergraph.models import Decision, RecallStep, SplitPlan, WrittenPlan
-from embergraph.providers import JevReranker, OutputInvalid, RankResult, strict_schema
-from embergraph.settings import Settings
-from embergraph.storage import MemoryStore, SQLiteStore
+from remi.heat import hot_view
+from remi.models import Decision, RecallStep, SplitPlan, WrittenPlan
+from remi.providers import JevReranker, OutputInvalid, RankResult, strict_schema
+from remi.settings import Settings
+from remi.storage import MemoryStore, SQLiteStore
 from tests.helpers import ScriptedModel, command, query, request
 
 
@@ -286,7 +286,7 @@ def test_one_invalid_repair_replacement_preserves_another_valid_replacement():
     assert [memory.current.content for memory in engine.store.memories("u1")] == ["Project B planned"]
 
 
-@pytest.mark.skipif(__import__("os").getenv("EMBERGRAPH_TEST_SCHEMA_APPROVED") != "1", reason="Six-table approval required")
+@pytest.mark.skipif(__import__("os").getenv("REMI_TEST_SCHEMA_APPROVED") != "1", reason="Six-table approval required")
 def test_sqlite_restart_retains_date_and_original_hit_windows(tmp_path):
     path = tmp_path / "regression.sqlite3"
     SQLiteStore.initialize(path, allow_create_schema=True)

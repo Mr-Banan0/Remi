@@ -7,10 +7,10 @@ from time import monotonic
 import httpx
 import pytest
 
-from embergraph.clock import resolve_time
-from embergraph.models import Command
-from embergraph.providers import JevReranker
-from embergraph.storage import MemoryStore, SQLiteStore, TABLES
+from remi.clock import resolve_time
+from remi.models import Command
+from remi.providers import JevReranker
+from remi.storage import MemoryStore, SQLiteStore, TABLES
 
 
 def test_jev_native_contract_and_invalid_score_rejection():
@@ -81,7 +81,7 @@ def test_memory_transaction_rolls_back_only_on_storage_failure():
 
 def test_gpt_model_contract_and_bounded_transport_retry():
     from openai import OpenAI
-    from embergraph.providers import GPTModel
+    from remi.providers import GPTModel
     calls = []
     def handler(request):
         calls.append(json.loads(request.content))
@@ -102,7 +102,7 @@ def test_gpt_model_contract_and_bounded_transport_retry():
 
 def test_gpt_configuration_error_has_one_attempt():
     from openai import OpenAI
-    from embergraph.providers import GPTModel, ProviderUnavailable
+    from remi.providers import GPTModel, ProviderUnavailable
     sdk = OpenAI(api_key="dummy-test", base_url="https://test.invalid/v1", max_retries=0,
         http_client=httpx.Client(transport=httpx.MockTransport(lambda request:
             httpx.Response(400, json={"error": {"message": "bad schema", "type": "invalid_request_error"}}))))
@@ -113,7 +113,7 @@ def test_gpt_configuration_error_has_one_attempt():
     model.close()
 
 
-@pytest.mark.skipif(os.getenv("EMBERGRAPH_TEST_SCHEMA_APPROVED") != "1", reason="Six-table approval required before physical database tests")
+@pytest.mark.skipif(os.getenv("REMI_TEST_SCHEMA_APPROVED") != "1", reason="Six-table approval required before physical database tests")
 def test_sqlite_round_trip_checkpoint_vectors_and_exact_table_count(tmp_path):
     from .helpers import TestEngine as MemoryEngine
     from .helpers import HashEmbedder, ScriptedModel, query, request

@@ -284,11 +284,11 @@ def providers_from_environment():
     if missing:
         raise RuntimeError("missing_credentials: " + ", ".join(missing))
     model = GPTModel(text_key, os.getenv("LLM_BASE_URL", "https://api.quickrouter.us/v1"),
-                     os.getenv("LLM_MODEL", "gpt-4o-mini"), float(os.getenv("EMBERGRAPH_LLM_TIMEOUT", "45")))
+                     os.getenv("LLM_MODEL", "gpt-4o-mini"), float(os.getenv("REMI_LLM_TIMEOUT", "45")))
     embedder = DashScopeEmbedder(embedding_key, os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-                                int(os.getenv("EMBERGRAPH_EMBEDDING_DIMENSIONS", "1024")))
+                                int(os.getenv("REMI_EMBEDDING_DIMENSIONS", "1024")))
     ranker = JevReranker(reranker_key, os.getenv("TYPESAFE_BASE_URL", "https://api.quickrouter.ai/v1"),
-                         os.getenv("TYPESAFE_MODEL", "jev-1.13.0"), float(os.getenv("EMBERGRAPH_RERANK_TIMEOUT", "8")))
+                         os.getenv("TYPESAFE_MODEL", "jev-1.13.0"), float(os.getenv("REMI_RERANK_TIMEOUT", "8")))
     judger = JevChoices(reranker_key, os.getenv("TYPESAFE_BASE_URL", "https://api.quickrouter.ai/v1"),
-                        os.getenv("TYPESAFE_MODEL", "jev-1.13.0"), float(os.getenv("EMBERGRAPH_RERANK_TIMEOUT", "8")))
+                        os.getenv("TYPESAFE_MODEL", "jev-1.13.0"), float(os.getenv("REMI_RERANK_TIMEOUT", "8")))
     return model, embedder, ranker, judger

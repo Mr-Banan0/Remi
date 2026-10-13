@@ -1,6 +1,8 @@
-# G06 当前架构：Jev 分流与内容级拆分
+# Remi · G06 当前架构：Jev 分流与内容级拆分
 
 状态：Add 先由 Jev 判断独立目标数量；单目标使用原文，多目标才由 GPT 拆 content。共用已批准的 6 张物理表；Search 保持 G03 实现。主力文本模型 GPT-4o-mini；Jev 判断分流、类别与目标／操作，Jev 重排证据。局部 diff 见 architecture-changes/g06-route-content-split.md。本版完成离线验证，真实模型效果仍待实验。
+
+项目名称现为 Remi，Python 包与命令均使用 remi，当前环境变量使用 REMI_。记忆链路和数据库 Schema 保持 G06；改名记录见 rename-to-remi.md。
 
 拆分使用独立合成例子，输出只有 items[].content。来源编号、原文和消息时钟由程序绑定。当前生产链路已移除 G05 prepare、Draft 和准备修正 Schema；历史合成命令保留为测试侧执行合同样例。
 

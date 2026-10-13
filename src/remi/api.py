@@ -19,10 +19,10 @@ from .storage import MemoryStore, SQLiteStore
 
 def environment_engine():
     load_environment()
-    backend = os.getenv("EMBERGRAPH_BACKEND", "sqlite")
+    backend = os.getenv("REMI_BACKEND", "sqlite")
     if backend not in {"sqlite", "memory"}:
         raise RuntimeError("backend_must_be_sqlite_or_memory")
-    store = SQLiteStore(os.getenv("EMBERGRAPH_DB_PATH", ".local-data/embergraph.sqlite3")) if backend == "sqlite" else MemoryStore()
+    store = SQLiteStore(os.getenv("REMI_DB_PATH", ".local-data/remi.sqlite3")) if backend == "sqlite" else MemoryStore()
     try:
         model, embedder, reranker, judger = providers_from_environment()
         return MemoryEngine(store, model, embedder, reranker, Settings.from_environment(), judger)
@@ -39,7 +39,7 @@ def create_app(engine=None, api_key=None):
         if app.state.engine:
             app.state.engine.close()
 
-    app = FastAPI(title="EmberGraph", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Remi", version="0.1.0", lifespan=lifespan)
     app.state.engine = engine
     key = api_key if api_key is not None else os.getenv("MEMORY_API_KEY")
     mutex = Lock()
@@ -66,7 +66,7 @@ def create_app(engine=None, api_key=None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "embergraph", "initialized": app.state.engine is not None}
+        return {"status": "ok", "service": "remi", "initialized": app.state.engine is not None}
 
     @app.get("/ready")
     def ready(http_request: Request):

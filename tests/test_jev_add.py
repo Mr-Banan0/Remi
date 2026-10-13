@@ -7,10 +7,10 @@ from time import monotonic
 import httpx
 import pytest
 
-from embergraph.engine import MemoryEngine
-from embergraph.jev_choices import JevChoices, choice_answer
-from embergraph.models import ContentItem, SplitPlan
-from embergraph.providers import OutputInvalid, ProviderUnavailable, strict_schema
+from remi.engine import MemoryEngine
+from remi.jev_choices import JevChoices, choice_answer
+from remi.models import ContentItem, SplitPlan
+from remi.providers import OutputInvalid, ProviderUnavailable, strict_schema
 from .helpers import HashEmbedder, answer, query, request
 
 
@@ -335,14 +335,14 @@ def test_assistant_context_is_bound_by_program_for_explicit_user_confirmation():
 
 
 def test_legacy_unplanned_stage_cache_requires_its_frozen_runtime():
-    from embergraph.add_pipeline import AddPipeline
+    from remi.add_pipeline import AddPipeline
     with pytest.raises(ProviderUnavailable, match="add_checkpoint_version_mismatch"):
         AddPipeline(MemoryEngine(model=Text(), judger=Judge())).run({}, monotonic()+5,
             {"audit": {"pipeline": "G05-jev-choice"}})
 
 
 def test_repaired_writer_result_survives_interruption_before_unit_plan_commit():
-    from embergraph.add_pipeline import AddPipeline
+    from remi.add_pipeline import AddPipeline
     text = Text(write=lambda state: {"items": [written("i0", "Access is paused.")]} if state.get("repair_errors") else {})
     engine = MemoryEngine(model=text, judger=Judge())
     state = {"owner": "u1", "new_user_source": {"id": "s1", "content": "Access is paused.", "role": "user",
@@ -362,7 +362,7 @@ def test_repaired_writer_result_survives_interruption_before_unit_plan_commit():
 
 
 def test_repaired_split_result_survives_interruption_without_second_repair():
-    from embergraph.add_pipeline import AddPipeline
+    from remi.add_pipeline import AddPipeline
     text = Text(split=lambda state: {"items": [{"content": "Access is paused."}, {"content": "Inspection is planned."}]}
                 if state.get("repair_errors") else {})
     engine = MemoryEngine(model=text, judger=Judge(route="multiple"))
@@ -481,7 +481,7 @@ def test_oversized_state_is_traced_and_remains_local_raw_fallback():
 
 
 def test_splitting_schema_and_synthetic_examples_contain_content_only():
-    from embergraph.add_judgments import SPLIT_EXAMPLES
+    from remi.add_judgments import SPLIT_EXAMPLES
     schema = strict_schema(SplitPlan)
     assert set(schema["$defs"]["ContentItem"]["properties"]) == {"content"}
     assert len(json.dumps(schema)) < 2000

@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 
-from embergraph.models import AddMessage, AddRequest, SearchRequest
-from embergraph.retrieval import tokenize
-from embergraph.engine import MemoryEngine as CoreEngine
+from remi.models import AddMessage, AddRequest, SearchRequest
+from remi.retrieval import tokenize
+from remi.engine import MemoryEngine as CoreEngine
 
 
 def request(text, *, owner="u1", request_id="r1", when="2024-06-02T10:00:00+00:00", assistant=None):
@@ -55,7 +55,7 @@ class ScriptedModel:
                       {f"i{index}": value for index, value in enumerate(result.get("commands", []))}
                       if isinstance(result, dict) else {})
         elif isinstance(self.oracle_plan, Exception):
-            from embergraph.providers import OutputInvalid
+            from remi.providers import OutputInvalid
             if isinstance(self.oracle_plan, OutputInvalid):
                 raise self.oracle_plan
             result = self.extractor({**self.oracle_state, "candidates": self.oracle_candidates}, None)
@@ -94,7 +94,7 @@ class ScriptedJudger:
         self.calls = []
 
     def route(self, state, *, deadline):
-        from embergraph.providers import OutputInvalid, ProviderUnavailable
+        from remi.providers import OutputInvalid, ProviderUnavailable
         self.model.oracle_state = state
         try:
             self.model.oracle_plan = self.model.fixture(state)

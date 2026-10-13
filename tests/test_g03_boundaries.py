@@ -3,11 +3,11 @@ from time import monotonic
 
 import pytest
 
-from embergraph.engine import source_quote
+from remi.engine import source_quote
 from .helpers import TestEngine as MemoryEngine
-from embergraph.models import Document, RecallStep
-from embergraph.providers import RankResult
-from embergraph.settings import Settings
+from remi.models import Document, RecallStep
+from remi.providers import RankResult
+from remi.settings import Settings
 from tests.helpers import ScriptedModel, command, query, request
 
 

@@ -1,13 +1,13 @@
-"""Shared visible-original scoring across EmberGraph and frozen TraceWeave outputs."""
+"""Shared visible-original scoring across Remi and frozen TraceWeave outputs."""
 from __future__ import annotations
 
 import re
 from collections import defaultdict
 
-from embergraph.engine import stable_id
+from remi.engine import stable_id
 
 
-EMBER_BLOCK = re.compile(
+REMI_BLOCK = re.compile(
     r"\[(src_[a-f0-9]{24})\] (user|assistant|system) at [^\n]*\n(.*?)"
     r"(?=\n\n\[src_[a-f0-9]{24}\]|\nMemory:|\nMemory revisions:|\nRetrieval coverage:|\Z)", re.S)
 TRACE_BLOCK = re.compile(
@@ -28,18 +28,21 @@ def input_catalog(payload, turns):
     return mapping, catalog
 
 
-def visible_blocks(candidates, mapping, catalog, framework="embergraph"):
+def visible_blocks(candidates, mapping, catalog, framework="remi"):
+    if framework not in {"remi", "embergraph", "traceweave"}:
+        raise ValueError("supported_evidence_format_required")
+    own_format = framework in {"remi", "embergraph"}
     for rank, candidate in enumerate(candidates, 1):
         content = candidate.get("content", "")
-        if framework == "embergraph":
+        if own_format:
             if "Original evidence:\n" not in content:
                 continue
             content = content.split("Original evidence:\n", 1)[1]
-            blocks = EMBER_BLOCK.findall(content)
+            blocks = REMI_BLOCK.findall(content)
         else:
             blocks = TRACE_BLOCK.findall(content)
         for key, role, text in blocks:
-            key = key if framework == "embergraph" else "source:" + key
+            key = key if own_format else "source:" + key
             ref, original = mapping.get(key), catalog.get(key)
             pieces = [piece.strip() for piece in text.split("\n[…]\n") if piece.strip()]
             if (ref is not None and original and original["role"] == role and pieces
@@ -47,7 +50,7 @@ def visible_blocks(candidates, mapping, catalog, framework="embergraph"):
                 yield rank, ref, role, text
 
 
-def score_case(case, candidates, mapping, catalog, framework="embergraph"):
+def score_case(case, candidates, mapping, catalog, framework="remi"):
     question = case["question"]
     blocks = list(visible_blocks(candidates, mapping, catalog, framework))
     ranks, refs = {}, [[] for _ in candidates]

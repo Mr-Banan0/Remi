@@ -5,21 +5,21 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from embergraph.api import create_app
+from remi.api import create_app
 from .helpers import TestEngine as MemoryEngine
-from embergraph.heat import hot_view
-from embergraph.providers import ProviderUnavailable
-from embergraph.storage import SQLiteStore, TABLES
+from remi.heat import hot_view
+from remi.providers import ProviderUnavailable
+from remi.storage import SQLiteStore, TABLES
 from .helpers import HashEmbedder, ScriptedModel, command, query, request
 
 
-pytestmark = pytest.mark.skipif(os.getenv("EMBERGRAPH_TEST_SCHEMA_APPROVED") != "1",
+pytestmark = pytest.mark.skipif(os.getenv("REMI_TEST_SCHEMA_APPROVED") != "1",
                                reason="Enable the approved six-table database test scope")
 
 
 @pytest.fixture
 def database(tmp_path):
-    path = tmp_path / "embergraph.sqlite3"
+    path = tmp_path / "remi.sqlite3"
     SQLiteStore.initialize(path, allow_create_schema=True)
     return path
 

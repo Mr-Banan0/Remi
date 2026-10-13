@@ -9,7 +9,7 @@ from time import monotonic
 
 import httpx
 
-from embergraph.settings import load_environment, private_key
+from remi.settings import load_environment, private_key
 
 
 def run(env_file, output):

@@ -16,9 +16,10 @@ from uuid import uuid4
 import httpx
 import uvicorn
 
-from embergraph.api import create_app, environment_engine
-from embergraph.settings import load_environment
-from embergraph.storage import SQLiteStore, TABLES
+from remi.api import create_app, environment_engine
+from remi.settings import load_environment
+from remi.storage import SQLiteStore, TABLES
+from remi.add_pipeline import PIPELINE
 from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
 
 
@@ -60,6 +61,23 @@ def summaries(report):
             for call in calls if call.get("error_type") or (call.get("http_status") or 0) >= 400))}
 
 
+def completed_lifecycle(records, step):
+    return any(record["step"] == step and record.get("success") and record.get("processing_complete")
+               for record in records)
+
+
+def progress_counts(report):
+    rhelm = {record["request_id"] for record in report["add_calls"]
+             if record.get("success") and record.get("processing_complete")}
+    lifecycle = {record["step"] for record in report["lifecycle_add_calls"]
+                 if record.get("success") and record.get("processing_complete")}
+    return {"add_completed": len(rhelm) + len(lifecycle),
+            "add_attempts": len(report["add_calls"]) + len(report["lifecycle_add_calls"]),
+            "rhelm_add_completed": len(rhelm), "lifecycle_add_completed": len(lifecycle),
+            "questions_completed": len(report["questions"]),
+            "lifecycle_queries_completed": len(report["lifecycle_searches"])}
+
+
 class CallJournal(deque):
     """Persist safe physical-call diagnostics independently of report aggregation."""
     def __init__(self, path):
@@ -79,7 +97,7 @@ def compare(report, baseline, dataset):
         missing, old_missing = [ref for ref, rank in item["evidence_ranks"].items() if rank is None], [
             ref for ref, rank in old["evidence_ranks"].items() if rank is None]
         results.append({"question_id": item["question_id"], "question": item["question"],
-            "traceweave_recall": old["evidence_recall"], "embergraph_recall": item["evidence_recall"],
+            "traceweave_recall": old["evidence_recall"], "remi_recall": item["evidence_recall"],
             "old_missing": old_missing, "missing": missing,
             "persistent_missing": sorted(set(missing) & set(old_missing)),
             "resolved_missing": sorted(set(old_missing) - set(missing)),
@@ -92,7 +110,7 @@ def compare(report, baseline, dataset):
         "traceweave": {"result": report["baseline_result"], "code": baseline["runtime_code_fingerprint"],
             "metrics": metrics(baseline["questions"]), "add_latency": baseline["summary"]["add_latency"],
             "search_latency": baseline["summary"]["search_latency"]},
-        "embergraph": {"code": report["runtime_code_fingerprint"], "metrics": metrics(report["questions"]),
+        "remi": {"code": report["runtime_code_fingerprint"], "metrics": metrics(report["questions"]),
             "add_latency": report["summary"]["add_latency"], "search_latency": report["summary"]["search_latency"]},
         "cases": results, "all_bad_cases": [item for item in results if item["missing"]]}
 
@@ -136,7 +154,7 @@ def execute(args):
     previous_report = json.loads((args.output / "result.json").read_text()) if args.resume else None
     if not args.resume:
         SQLiteStore.initialize(database, allow_create_schema=True)
-    os.environ["EMBERGRAPH_DB_PATH"] = str(database)
+    os.environ["REMI_DB_PATH"] = str(database)
     engine = environment_engine()
     token = uuid4().hex
     owners = [row[0] for row in engine.store.connection.execute("SELECT DISTINCT owner FROM requests")] if args.resume else []
@@ -158,7 +176,7 @@ def execute(args):
     if not server.started:
         raise RuntimeError("local_service_start_failed")
     plan = list(actions(dataset))
-    report = {"architecture": "G05-jev-choice-add", "complete": False, "dataset": str(args.dataset),
+    report = {"architecture": PIPELINE, "complete": False, "dataset": str(args.dataset),
         "dataset_sha256": dataset_hash, "baseline_result": str(args.baseline), "runtime_directory": str(root),
         "runtime_code_fingerprint": fingerprint(root), "started_at": time.time(), "planned_add_calls": sum(
             kind == "add" for kind, action in plan) + len(dataset["lifecycle"]), "planned_questions": len(dataset["cases"]),
@@ -184,8 +202,7 @@ def execute(args):
         (args.output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
         (args.output / "run.json").write_text(json.dumps({"status": status, "pid": os.getpid(),
             "runtime_directory": str(root), "started_at": report["started_at"], "updated_at": time.time(),
-            "add_completed": len(report["add_calls"]) + len(report["lifecycle_add_calls"]),
-            "questions_completed": len(report["questions"]), "planned_add_calls": report["planned_add_calls"],
+            **progress_counts(report), "planned_add_calls": report["planned_add_calls"],
             "planned_questions": report["planned_questions"], "result": str(args.output / "result.json")}, indent=2))
     def post(client, path, payload, clock=None):
         started = time.monotonic()
@@ -251,7 +268,7 @@ def execute(args):
                 response, _ = post(client, "/add", conflict)
                 report["protocol_checks"].append({"name": "request_id_conflict", "passed": response.status_code == 409})
             for index, case in enumerate(dataset["lifecycle"]):
-                if any(record["step"] == index + 1 for record in report["lifecycle_add_calls"]):
+                if completed_lifecycle(report["lifecycle_add_calls"], index + 1):
                     continue
                 payload = {"user_id": life_owner, "request_id": f"lifecycle-{index}", "session_id": "lifecycle", "messages": [
                     {"role": "user", "content": case["text"], "timestamp": int(datetime.fromisoformat(case["day"]).replace(

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from embergraph.clock import parse_time
+from remi.clock import parse_time
 from .helpers import TestEngine as MemoryEngine
-from embergraph.heat import hot_view
-from embergraph.models import RecallStep
-from embergraph.providers import ProviderUnavailable, RankResult
-from embergraph.settings import Settings
+from remi.heat import hot_view
+from remi.models import RecallStep
+from remi.providers import ProviderUnavailable, RankResult
+from remi.settings import Settings
 from .helpers import HashEmbedder, ScriptedModel, command, query, request
 
 

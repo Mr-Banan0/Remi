@@ -6,9 +6,9 @@ from collections import Counter
 import pytest
 
 from .helpers import TestEngine as MemoryEngine
-from embergraph.models import Command
+from remi.models import Command
 from .command_contract_examples import ADD_EXAMPLES
-from embergraph.add_judgments import SPLIT_PROMPT, WRITE_PROMPT
+from remi.add_judgments import SPLIT_PROMPT, WRITE_PROMPT
 
 
 @pytest.mark.parametrize("example", ADD_EXAMPLES, ids=lambda item: item["example"])

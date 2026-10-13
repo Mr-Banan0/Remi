@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from embergraph.engine import DuplicateRequestConflict
+from remi.engine import DuplicateRequestConflict
 from .helpers import TestEngine as MemoryEngine
-from embergraph.providers import OutputInvalid, ProviderUnavailable
+from remi.providers import OutputInvalid, ProviderUnavailable
 from .helpers import HashEmbedder, ScriptedModel, command, query, request
 
 
@@ -19,7 +19,7 @@ def test_raw_assistant_and_memory_are_indexed_before_success():
 
 
 def test_assistant_only_stays_raw():
-    from embergraph.models import AddMessage
+    from remi.models import AddMessage
     message = request("temporary")
     message.messages = [AddMessage(role="assistant", content="You should try running.")]
     engine = MemoryEngine(model=ScriptedModel())

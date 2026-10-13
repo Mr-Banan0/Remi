@@ -7,7 +7,7 @@ from pathlib import Path
 
 def load_environment(path=None):
     """Read explicit private configuration without shell expansion or logging values."""
-    filename = path or os.getenv("EMBERGRAPH_ENV_FILE")
+    filename = path or os.getenv("REMI_ENV_FILE")
     if not filename:
         return
     for raw in Path(filename).read_text(encoding="utf-8").splitlines():
@@ -57,9 +57,9 @@ class Settings:
     def from_environment(cls):
         mapping = {"hot_limit": "HOT_LIMIT", "candidate_limit": "CANDIDATE_LIMIT", "graph_limit": "GRAPH_LIMIT",
                    "decision_bytes": "DECISION_BYTES", "evidence_bytes": "EVIDENCE_BYTES", "context_bytes": "CONTEXT_BYTES"}
-        values = {field: int(os.getenv("EMBERGRAPH_" + env, getattr(cls(), field))) for field, env in mapping.items()}
-        values.update(add_timeout=float(os.getenv("EMBERGRAPH_ADD_TIMEOUT", "180")),
-                      search_timeout=float(os.getenv("EMBERGRAPH_SEARCH_TIMEOUT", "45")),
-                      graph_enabled=os.getenv("EMBERGRAPH_GRAPH_ENABLED", "1") == "1",
-                      hot_enabled=os.getenv("EMBERGRAPH_HOT_ENABLED", "1") == "1")
+        values = {field: int(os.getenv("REMI_" + env, getattr(cls(), field))) for field, env in mapping.items()}
+        values.update(add_timeout=float(os.getenv("REMI_ADD_TIMEOUT", "180")),
+                      search_timeout=float(os.getenv("REMI_SEARCH_TIMEOUT", "45")),
+                      graph_enabled=os.getenv("REMI_GRAPH_ENABLED", "1") == "1",
+                      hot_enabled=os.getenv("REMI_HOT_ENABLED", "1") == "1")
         return cls(**values)

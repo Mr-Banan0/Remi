@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from embergraph.clock import parse_time
+from remi.clock import parse_time
 from .helpers import TestEngine as MemoryEngine
-from embergraph.heat import hot_view, visible_memory
-from embergraph.models import Revision
+from remi.heat import hot_view, visible_memory
+from remi.models import Revision
 from tests.helpers import ScriptedModel, command, request
 
 
@@ -69,7 +69,7 @@ def test_user_confirmation_can_select_previous_request_assistant_context():
 
 
 def test_mixed_language_tokens_preserve_chinese_and_device_name():
-    from embergraph.retrieval import tokenize
+    from remi.retrieval import tokenize
     tokens = tokenize("我用Dell电脑，GPU training и обучение")
     assert "dell" in tokens and "我用" in tokens and "电脑" in tokens
     assert "training" in tokens and "обучение" in tokens

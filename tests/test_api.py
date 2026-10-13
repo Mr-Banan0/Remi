@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from embergraph.api import create_app
+from remi.api import create_app
 from .helpers import TestEngine as MemoryEngine
 from .helpers import ScriptedModel, request
 
@@ -9,6 +9,7 @@ def test_contract_health_auth_add_search():
     app = create_app(MemoryEngine(model=ScriptedModel()), api_key="test-secret")
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+        assert app.title == "Remi" and client.get("/health").json()["service"] == "remi"
         assert client.post("/add", json=request("Dell event").model_dump()).status_code == 401
         headers = {"authorization": "Bearer test-secret"}
         result = client.post("/add", json=request("Dell event").model_dump(), headers=headers)

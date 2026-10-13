@@ -9,11 +9,11 @@ from .storage import SQLiteStore, TABLES
 
 
 def main():
-    parser = argparse.ArgumentParser(description="EmberGraph local development commands")
+    parser = argparse.ArgumentParser(description="Remi local development commands")
     parser.add_argument("--env-file")
     sub = parser.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init-db", help="Create the six approved tables in a new database")
-    init.add_argument("--path", default=".local-data/embergraph.sqlite3")
+    init.add_argument("--path", default=".local-data/remi.sqlite3")
     init.add_argument("--allow-create-schema", action="store_true", help="Use after explicit approval of the six table scope")
     sub.add_parser("check-config", help="Report only model names and credential presence")
     serve = sub.add_parser("serve")
@@ -32,7 +32,7 @@ def main():
             "reranker_key_present": bool(private_key("TYPESAFE_API_KEY", "TYPESAFE_API_KEY_FILE"))}))
     elif args.command == "serve":
         import uvicorn
-        uvicorn.run("embergraph.api:app", host=args.host, port=args.port, workers=1)
+        uvicorn.run("remi.api:app", host=args.host, port=args.port, workers=1)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-# EmberGraph
+# Remi
 
-EmberGraph 是独立的 G06 冷热统一图实验项目，与 TraceWeave 并列开发。
+Remi 是独立的 G06 冷热统一图实验项目，与 TraceWeave 并列开发。
+
+主项目目录为 `/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
 
 完整原文作为证据底座；偏好、事实／条件、事件、经验共用一种有来源和修订的记忆结构。人物、项目、客户、文档等对象提供组织入口。热区是同一张图的有预算视图，冷区继续参与全局检索。
 
@@ -28,8 +30,8 @@ uv run pytest -q
 项目拥有独立依赖环境、数据库与测试输出。运行只依赖本项目代码。原有环境中的供应商凭据可以通过显式路径只读加载，后续也可以使用本项目的私密 `.env`。
 
 ```bash
-export EMBERGRAPH_ENV_FILE=/absolute/path/private.env
-uv run embergraph check-config
+export REMI_ENV_FILE=/absolute/path/private.env
+uv run remi check-config
 ```
 
 `check-config` 仅显示模型名称和凭据是否存在。实际调用前设置 `LLM_API_KEY`、`DASHSCOPE_API_KEY`、`TYPESAFE_API_KEY` 或相应的 `*_API_KEY_FILE`。`.env.example` 提供端点和预算模板。GPT 采用固定、小型 JSON Schema，原文与旧记忆 ID 在输入数据中提供。
@@ -39,20 +41,20 @@ uv run embergraph check-config
 首次初始化先确认 [6 张表的范围](docs/database-scope.md)。取得允许后执行：
 
 ```bash
-uv run embergraph init-db --path .local-data/embergraph.sqlite3 --allow-create-schema
+uv run remi init-db --path .local-data/remi.sqlite3 --allow-create-schema
 ```
 
 应用启动读取已有数据库。初始化遇到已有文件会保留它并返回错误。测试创建临时数据库同样需要明确允许：
 
 ```bash
-EMBERGRAPH_TEST_SCHEMA_APPROVED=1 uv run pytest -q
+REMI_TEST_SCHEMA_APPROVED=1 uv run pytest -q
 ```
 
 ## 启动 API
 
 ```bash
-export EMBERGRAPH_DB_PATH=.local-data/embergraph.sqlite3
-uv run embergraph serve --host 127.0.0.1 --port 8011
+export REMI_DB_PATH=.local-data/remi.sqlite3
+uv run remi serve --host 127.0.0.1 --port 8011
 ```
 
 `/health` 检查进程；`/ready` 检查本地配置和已有数据库。供应商可用性需要单独授权的真实调用验证。设置 `MEMORY_API_KEY` 后 `/ready`、`/add`、`/search` 支持 Bearer、Token 或 `x-api-key`。
@@ -120,7 +122,7 @@ uv run python -m scripts.run_david --data-dir /absolute/path/rhelm --golden-data
 
 1. 结构与故障回归：来源角色、用户隔离、命令局部处置、修订、时间依据、重试检查点、冷热稳定 ID、原文可达、预算与服务错误。
 2. Add 质量回归：独立新增、同一记录更新、不同事件、撤回、经验来源、错误确认及缺失记忆；单独记录初始生成、修正和物理调用。
-3. 冻结同一批记忆，分别测试普通混合召回、图读取、图加冷热视图三个版本。使用 `EMBERGRAPH_GRAPH_ENABLED` 和 `EMBERGRAPH_HOT_ENABLED` 控制消融。
+3. 冻结同一批记忆，分别测试普通混合召回、图读取、图加冷热视图三个版本。使用 `REMI_GRAPH_ENABLED` 和 `REMI_HOT_ENABLED` 控制消融。
 4. Golden 用于已见故障回归；另取工作项目、同名人物、多语言、冷区细节、旧有效条件与新修订样例验证泛化。
 5. 比较严格原文证据召回、完整命中、排名、上下文大小、Add/Search 延迟与成本；最终回答质量另行 judge。
 

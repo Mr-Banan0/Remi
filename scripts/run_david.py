@@ -2,7 +2,7 @@
 
 Original dialogue enters Add and the question enters Search. Answers and evidence
 labels stay in this local evaluator. Existing completed steps are restored before
-creating providers, and the database uses the six approved EmberGraph tables.
+creating providers, and the database uses the six approved Remi tables.
 """
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ from uuid import uuid4
 import httpx
 import uvicorn
 
-from embergraph.api import create_app, environment_engine
-from embergraph.settings import Settings, load_environment
-from embergraph.storage import SQLiteStore, TABLES
+from remi.api import create_app, environment_engine
+from remi.settings import Settings, load_environment
+from remi.storage import SQLiteStore, TABLES
 from scripts.analyze_golden import analyze
 from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
 from scripts.run_golden import latency, summaries
@@ -257,12 +257,12 @@ def public_url(value):
 def public_configuration():
     return {"model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
         "llm_base_url": public_url(os.getenv("LLM_BASE_URL", "https://api.quickrouter.us/v1")),
-        "llm_timeout": float(os.getenv("EMBERGRAPH_LLM_TIMEOUT", "45")),
-        "embedding": "text-embedding-v4", "embedding_dimensions": int(os.getenv("EMBERGRAPH_EMBEDDING_DIMENSIONS", "1024")),
+        "llm_timeout": float(os.getenv("REMI_LLM_TIMEOUT", "45")),
+        "embedding": "text-embedding-v4", "embedding_dimensions": int(os.getenv("REMI_EMBEDDING_DIMENSIONS", "1024")),
         "embedding_base_url": public_url(os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")),
         "reranker": os.getenv("TYPESAFE_MODEL", "jev-1.13.0"),
         "reranker_base_url": public_url(os.getenv("TYPESAFE_BASE_URL", "https://api.quickrouter.ai/v1")),
-        "reranker_timeout": float(os.getenv("EMBERGRAPH_RERANK_TIMEOUT", "8")),
+        "reranker_timeout": float(os.getenv("REMI_RERANK_TIMEOUT", "8")),
         "settings": vars(Settings.from_environment())}
 
 
@@ -403,7 +403,7 @@ def compare_baseline(report, dataset, baseline_path):
             "new_missing": sorted(missing - old_missing), "missing": sorted(missing)})
     return {"scope": "same-person development; historical baseline, no final-answer judge or paired causal attribution",
         "baseline": str(baseline_path), "scoring": "visible_raw_source_v2", "baseline_scoring_parity": True,
-        "traceweave": metrics(scored), "embergraph": metrics(report["questions"]), "cases": cases,
+        "traceweave": metrics(scored), "remi": metrics(report["questions"]), "cases": cases,
         "all_bad_cases": [case for case in cases if case["missing"]]}
 
 
@@ -452,16 +452,16 @@ def execute(args):
         previous_run_path = args.output / "run.json"
         previous_run = json.loads(previous_run_path.read_text()) if previous_run_path.exists() else {}
         unclean_resume = args.resume and previous_run.get("status") in {"starting", "running", "reporting"}
-        import embergraph
-        if Path(embergraph.__file__).resolve().parent.parent != (root / "src").resolve():
+        import remi
+        if Path(remi.__file__).resolve().parent.parent != (root / "src").resolve():
             raise ValueError("runtime_import_requires_frozen_src_on_pythonpath")
         database = args.output / "memory.sqlite3"
         if not database.exists():
             if steps:
                 raise ValueError("saved_steps_require_existing_database")
             SQLiteStore.initialize(database, allow_create_schema=True)
-        os.environ["EMBERGRAPH_BACKEND"] = "sqlite"
-        os.environ["EMBERGRAPH_DB_PATH"] = str(database)
+        os.environ["REMI_BACKEND"] = "sqlite"
+        os.environ["REMI_DB_PATH"] = str(database)
         engine = environment_engine()
         actual_tables = {row[0] for row in engine.store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if actual_tables != TABLES or engine.store.connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -473,7 +473,7 @@ def execute(args):
         for resource in (engine.model, engine.embedder, engine.reranker, engine.judger):
             if resource is not None:
                 resource.calls = ProviderCalls(provider_journal)
-        report = {"architecture": "EmberGraph-David", "complete": False, "character": args.character,
+        report = {"architecture": "Remi-David", "complete": False, "character": args.character,
             "dataset": str(args.data_dir), "dataset_sha256": metadata["dataset_sha256"],
             "source_manifest_sha256": metadata["source_manifest_sha256"], "source_files": metadata["source_files"],
             "rhelm_source_sha256": dataset.get("rhelm_source_sha256"),

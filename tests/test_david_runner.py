@@ -254,13 +254,13 @@ def test_historical_david_baseline_strict_raw_scoring_has_parity():
     assert comparison["baseline_scoring_parity"] is True and comparison["traceweave"]["question_count"] == 86
 
 
-@pytest.mark.skipif(os.getenv("EMBERGRAPH_TEST_SCHEMA_APPROVED") != "1", reason="explicit six-table offline approval flag required")
+@pytest.mark.skipif(os.getenv("REMI_TEST_SCHEMA_APPROVED") != "1", reason="explicit six-table offline approval flag required")
 def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tmp_path, monkeypatch):
     """Exercise real local HTTP with deterministic offline providers and six tables."""
-    from embergraph.engine import MemoryEngine
-    from embergraph.providers import ProviderUnavailable, RankResult
-    from embergraph.settings import Settings
-    from embergraph.storage import SQLiteStore
+    from remi.engine import MemoryEngine
+    from remi.providers import ProviderUnavailable, RankResult
+    from remi.settings import Settings
+    from remi.storage import SQLiteStore
     units = [{"ref": f"2024-06-02:{index + 1}", "day": "2024-06-02", "timestamp_ms": 1717286400000,
               "user": f"I used Dell laptop number {index}.", "assistant": "Understood."} for index in range(215)]
     dataset = {"character": "David_R._Ellis", "input_turns": units, "cases": [sample_case(f"q{i}") for i in range(86)]}
@@ -307,12 +307,12 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
     def offline_engine():
         counters["engine_created"] += 1
         model = Model()
-        return MemoryEngine(SQLiteStore(os.environ["EMBERGRAPH_DB_PATH"]), model, Embedder(), Reranker(),
+        return MemoryEngine(SQLiteStore(os.environ["REMI_DB_PATH"]), model, Embedder(), Reranker(),
                             Settings(graph_enabled=False, hot_enabled=False), judger=model)
     monkeypatch.setattr(runner, "__file__", str(Path(runner.__file__).parent.parent / "main" / "scripts" / "run_david.py"))
     runtime = Path(runner.__file__).parents[1]
-    import embergraph
-    monkeypatch.setattr(embergraph, "__file__", str(runtime / "src" / "embergraph" / "__init__.py"))
+    import remi
+    monkeypatch.setattr(remi, "__file__", str(runtime / "src" / "remi" / "__init__.py"))
     monkeypatch.setattr(runner, "load_dataset", lambda *args: (dataset, metadata))
     monkeypatch.setattr(runner, "actions", lambda dataset: iter(plan))
     monkeypatch.setattr(runner, "load_environment", lambda *args: None)

@@ -15,9 +15,9 @@ from uuid import uuid4
 import httpx
 import uvicorn
 
-from embergraph.api import create_app, environment_engine
-from embergraph.settings import load_environment
-from embergraph.storage import TABLES
+from remi.api import create_app, environment_engine
+from remi.settings import load_environment
+from remi.storage import TABLES
 from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
 from scripts.run_golden import compare, diagnostics, fingerprint, latency, verify_baseline
 
@@ -35,7 +35,7 @@ def execute(args):
     with sqlite3.connect(f"file:{original['database']}?mode=ro", uri=True) as source, sqlite3.connect(database) as target:
         source.backup(target)
     load_environment(args.env_file)
-    os.environ["EMBERGRAPH_DB_PATH"] = str(database)
+    os.environ["REMI_DB_PATH"] = str(database)
     engine = environment_engine()
     if {row[0] for row in engine.store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")} != TABLES:
         raise ValueError("exactly_six_tables_required")
