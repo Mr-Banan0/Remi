@@ -1,11 +1,48 @@
+# Private runtime configuration and credentials
 .env
 .env.*
 !.env.example
+secrets/
+credentials/
+*.key
+*.pem
+
+# Local datasets, experiment results, checkpoints and databases
 .local-data/
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+
+# Python environments, caches and build output
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
 *.egg-info/
 dist/
 build/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Temporary handoff documents
+HANDOFF.md
+handoff.md
+handoff-*.md
+
+# Operating-system and editor temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
