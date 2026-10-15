@@ -35,9 +35,9 @@ class AddResponse(StrictModel):
 
 
 class SearchRequest(StrictModel):
-    query: str = Field(min_length=1, max_length=20000)
+    query: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=256)
-    top_k: int = Field(ge=1, le=50)
+    top_k: int = Field(ge=1, le=100)
     options: list[str] | None = None
 
 
