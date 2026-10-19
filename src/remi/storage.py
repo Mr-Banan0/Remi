@@ -91,13 +91,6 @@ class MemoryStore:
         return [Edge.model_validate(value) for value in self.list("edges", owner)
                 if (origins is None or value["origin"] in origins) and (targets is None or value["target"] in targets)][:limit]
 
-    def save_memory(self, memory, objects, edges):
-        with self.transaction():
-            for obj in objects:
-                self.put("objects", obj.owner, obj.id, obj.model_dump())
-            self.put("memories", memory.owner, memory.id, memory.model_dump())
-            for edge in edges:
-                self.put("edges", edge.owner, edge.id, edge.model_dump())
 
 
 class SQLiteStore(MemoryStore):
@@ -114,6 +107,11 @@ class SQLiteStore(MemoryStore):
         if not TABLES <= actual:
             self.connection.close()
             raise RuntimeError("database_schema_missing_use_explicit_approved_init")
+        legacy_memory = self.connection.execute("SELECT 1 FROM memories WHERE json_extract(record_json,'$.kind') IS NOT NULL LIMIT 1").fetchone()
+        legacy_entity = self.connection.execute("SELECT 1 FROM objects WHERE json_extract(record_json,'$.observed_at') IS NULL LIMIT 1").fetchone()
+        if legacy_memory or legacy_entity:
+            self.connection.close()
+            raise RuntimeError("database_records_require_g08_source_replay")
         import sqlite_vec
         self.connection.enable_load_extension(True)
         try:

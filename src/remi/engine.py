@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from .clock import absolute_content, in_view, message_time, parse_time, resolve_time, utcnow
 from .heat import hot_view, visible_memory
-from .models import (AddResponse, Command, Decision, Document, Edge, GraphObject, Memory, Revision, RecallStep,
+from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
 from .retrieval import clip_bytes, hybrid, tokenize, validate_vector
@@ -25,9 +25,7 @@ class DuplicateRequestConflict(ValueError):
     pass
 
 
-def stable_id(prefix, *parts):
-    return prefix + hashlib.sha256(json.dumps(parts, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]
-
+from .identity import stable_id
 
 def source_visible(source, as_of):
     return parse_time(source.message_at or source.created_at) <= parse_time(as_of)
@@ -65,10 +63,9 @@ def source_excerpt(text, query, budget, windows=()):
 
 
 class MemoryEngine:
-    def __init__(self, store=None, model=None, embedder=None, reranker=None, settings=None, judger=None):
+    def __init__(self, store=None, model=None, embedder=None, reranker=None, settings=None):
         self.store = store or MemoryStore()
         self.model, self.embedder, self.reranker = model, embedder, reranker
-        self.judger = judger if judger is not None else getattr(model, "judger", None)
         self.settings = settings or Settings()
         self._locks, self._lock_guard = {}, Lock()
         self.last_search = {}
@@ -85,69 +82,7 @@ class MemoryEngine:
             lock.release()
 
     def add(self, request):
-        deadline = monotonic() + self.settings.add_timeout
-        with self._scope(request.user_id, deadline):
-            payload = request.model_dump()
-            fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-            progress = self.store.get("requests", request.user_id, request.request_id)
-            if progress and progress["fingerprint"] != fingerprint:
-                raise DuplicateRequestConflict("request_id_payload_conflict")
-            if progress and progress["status"] == "complete":
-                return AddResponse(request_id=request.request_id, user_id=request.user_id, session_id=request.session_id)
-            if not progress:
-                created = utcnow()
-                sources = [Source(id=stable_id("src_", request.user_id, request.request_id, index), owner=request.user_id,
-                    session_id=request.session_id, request_id=request.request_id, ordinal=index,
-                    role=message.role, content=message.content, message_at=message_time(message.timestamp), created_at=created)
-                    for index, message in enumerate(request.messages)]
-                progress = {"fingerprint": fingerprint, "status": "pending", "source_ids": [source.id for source in sources],
-                            "units": {}, "created_at": created}
-                with self.store.transaction():
-                    for source in sources:
-                        self.store.put("sources", source.owner, source.id, source.model_dump())
-                    self.store.put("requests", request.user_id, request.request_id, progress)
-            sources = self.store.sources(request.user_id, progress["source_ids"])
-            units = self._units(sources)
-            for number, unit in enumerate(units):
-                if monotonic() >= deadline:
-                    raise ProviderUnavailable("add_deadline")
-                key = str(number)
-                saved = progress["units"].get(key)
-                if not saved:
-                    source = next((item for item in unit if item.role == "user"), None)
-                    if source and self.model:
-                        state = self._add_state(source, unit, sources, deadline)
-                        cache = progress.setdefault("add_stages", {}).setdefault(key, {})
-                        commands, rejected, validation = self._commands(state, deadline, cache,
-                            lambda: self.store.put("requests", request.user_id, request.request_id, progress))
-                    else:
-                        commands, rejected, validation = [], [], []
-                    saved = {"phase": "planned", "commands": [command.model_dump() for command in commands],
-                             "rejected": rejected, "memory_ids": [],
-                             "validation": validation}
-                    progress["units"][key] = saved
-                    self.store.put("requests", request.user_id, request.request_id, progress)
-                if saved["phase"] == "planned":
-                    source_map = {source.id: source for source in sources}
-                    for command in saved["commands"]:
-                        try:
-                            memory_id = self._apply(request.user_id, Command.model_validate(command), source_map)
-                        except ValueError as error:
-                            saved["rejected"].append({"position": -1, "error": str(error)[:200]})
-                            continue
-                        if memory_id not in saved["memory_ids"]:
-                            saved["memory_ids"].append(memory_id)
-                    saved["phase"] = "applied"
-                    self.store.put("requests", request.user_id, request.request_id, progress)
-                if saved["phase"] == "applied":
-                    documents = self._documents(unit, self.store.memories(request.user_id, saved["memory_ids"]))
-                    self._index(documents, deadline)
-                    saved["phase"] = "indexed"
-                    self.store.put("requests", request.user_id, request.request_id, progress)
-            progress["status"] = "complete"
-            progress["completed_at"] = utcnow()
-            self.store.put("requests", request.user_id, request.request_id, progress)
-        return AddResponse(request_id=request.request_id, user_id=request.user_id, session_id=request.session_id)
+        return AddPipeline(self).add(request)
 
     @staticmethod
     def _units(sources):
@@ -169,132 +104,7 @@ class MemoryEngine:
                     "created_at": source.created_at},
                 "context_sources": [{"id": item.id, "role": item.role,
                     "content": clip_bytes(item.content, 4000), "message_at": item.message_at} for item in context],
-                "candidates": []}
-
-    def _typed_candidates(self, state, item, kind, deadline):
-        owner = state["owner"]
-        as_of = state["new_user_source"]["message_at"] or state["new_user_source"]["created_at"]
-        memories = {memory.id: memory for original in self.store.memories(owner)
-                    if original.kind == kind and (memory := visible_memory(original, as_of)) is not None}
-        documents = [document for document in self._visible_documents(owner, as_of)
-                     if document.memory_id in memories]
-        if not documents:
-            return []
-        vector = self._embed([item.content], deadline)[0] if self.embedder else None
-        hits = self._hybrid(owner, item.content, documents, vector, limit=len(documents))
-        identifiers = list(dict.fromkeys(document.memory_id for document, _ in hits))[:4]
-        candidates = []
-        for key in identifiers:
-            memory = memories[key]
-            evidence = []
-            for source in self.store.sources(owner, memory.current.source_ids):
-                position = source.content.find(memory.current.quote)
-                windows = [(position, position + len(memory.current.quote))] if position >= 0 else []
-                evidence.append({"id": source.id, "role": source.role,
-                    "content": source_excerpt(source.content, item.content, 1800, windows), "message_at": source.message_at})
-            candidates.append({"handle": f"c{len(candidates)+1}", "id": memory.id, "kind": memory.kind,
-                "content": memory.current.content, "quote": clip_bytes(memory.current.quote, 1800),
-                "source_ids": memory.current.source_ids, "sources": evidence,
-                "event_at": memory.current.event_at, "status": memory.current.status,
-                "valid_from": memory.current.valid_from, "valid_to": memory.current.valid_to})
-        return candidates
-
-    def _validate_command(self, raw, state):
-        command = Command.model_validate(raw)
-        primary = state["new_user_source"]
-        if command.source_id != primary["id"]:
-            raise ValueError("new_user_source_id_required")
-        quote = source_quote(primary["content"], command.quote)
-        if quote is None:
-            raise ValueError("new_user_source_quote_required")
-        command = Command.model_validate({**command.model_dump(), "quote": quote})
-        available_context = {item["id"] for item in state["context_sources"]}
-        if set(command.context_source_ids) - available_context:
-            raise ValueError("context_source_unknown")
-        target = next((item for item in state["candidates"] if item["id"] == command.target_id), None)
-        if command.operation != "create" and (target is None or target["kind"] != command.kind):
-            raise ValueError("same_kind_recalled_target_required")
-        for obj in command.objects:
-            if obj.kind == "user":
-                if obj.name != "self":
-                    raise ValueError("user_object_name_is_self")
-            elif obj.name not in primary["content"] and not any(obj.name in item["content"] for item in state["context_sources"]):
-                raise ValueError("object_name_source_required")
-        # Per-item text assigns temporal meaning; the original separately establishes the date evidence.
-        time_text = state.get("item_content", command.quote)
-        if command.time_expression and (resolve_time(command.time_expression, time_text, primary["message_at"]) is None
-                or resolve_time(command.time_expression, primary["content"], primary["message_at"]) is None):
-            raise ValueError("time_unresolved_choose_supported_expression_or_null")
-        if command.end_expression and (resolve_time(command.end_expression, time_text, primary["message_at"]) is None
-                or resolve_time(command.end_expression, primary["content"], primary["message_at"]) is None):
-            raise ValueError("end_time_unresolved_choose_supported_expression_or_null")
-        begin = resolve_time(command.time_expression, command.quote, primary["message_at"])
-        end = resolve_time(command.end_expression, command.quote, primary["message_at"])
-        if command.kind in {"fact", "preference"}:
-            begin = begin or (target.get("valid_from") if target else primary["message_at"])
-            end = end or (target.get("valid_to") if target else None)
-        if begin and end and parse_time(begin) >= parse_time(end):
-            raise ValueError("validity_interval_inverted")
-        return command
-
-    def _commands(self, state, deadline, cache=None, save_checkpoint=None):
-        return AddPipeline(self).run(state, deadline, cache, save_checkpoint)
-
-    def _apply(self, owner, command, source_map):
-        source = source_map[command.source_id]
-        resolved = resolve_time(command.time_expression, command.quote, source.message_at)
-        end = resolve_time(command.end_expression, command.quote, source.message_at)
-        identity = stable_id("mem_", owner, source.id, command.kind, command.content, command.quote, resolved,
-                             [obj.model_dump() for obj in command.objects])
-        memory_id = command.target_id or identity
-        original = self.store.get("memories", owner, memory_id)
-        memory = Memory.model_validate(original) if original else None
-        revision_id = stable_id("rev_", owner, memory_id, command.model_dump())
-        if memory and any(revision.id == revision_id for revision in memory.revisions):
-            return memory_id
-        if command.operation != "create" and memory is None:
-            raise ValueError("target_disappeared")
-        content = absolute_content(command.content, command.quote, source.message_at)
-        objects = [GraphObject(id=stable_id("obj_", owner, obj.kind, obj.name), owner=owner, kind=obj.kind, name=obj.name)
-                   for obj in command.objects]
-        source_ids = list(dict.fromkeys([source.id, *command.context_source_ids]))
-        prior_view = visible_memory(memory, source.message_at or source.created_at) if memory else None
-        previous = prior_view.current if prior_view else None
-        event_at = resolved if command.kind == "event" else None
-        if previous and command.kind == "event" and not command.time_expression and command.status == previous.status:
-            event_at = previous.event_at
-        valid_from = (resolved or source.message_at) if command.kind in {"preference", "fact"} else None
-        if previous and command.kind in {"preference", "fact"} and not command.time_expression:
-            valid_from = previous.valid_from
-        valid_to = previous.valid_to if previous and not command.end_expression else end
-        if valid_from and valid_to and parse_time(valid_from) >= parse_time(valid_to):
-            raise ValueError("resolved_validity_interval_inverted")
-        revision = Revision(id=revision_id, content=content, source_ids=source_ids, quote=command.quote,
-            event_at=event_at, valid_from=valid_from,
-            valid_to=valid_to, observed_at=source.message_at or source.created_at, created_at=utcnow(),
-            status="retracted" if command.operation == "retract" else command.status,
-            time_resolution="rule" if event_at or valid_from else "unknown",
-            time_precision=("instant" if "T" in command.time_expression and command.time_expression in command.quote else "day")
-                if resolved and command.time_expression else previous.time_precision
-                if previous and (event_at or valid_from) else "instant" if valid_from else "unknown", operation=command.operation)
-        edges = [Edge(id=stable_id("edge_", revision_id, key, "supported_by"), owner=owner, origin=revision_id,
-                      target=key, relation="supported_by", source_id=source.id) for key in source_ids]
-        if memory:
-            if command.operation == "create":
-                return memory.id
-            previous = previous or memory.current
-            edges.append(Edge(id=stable_id("edge_", revision_id, previous.id, "revises"), owner=owner,
-                              origin=revision_id, target=previous.id, relation="revises", source_id=source.id))
-            memory.revisions.append(revision)
-            memory.object_ids = list(dict.fromkeys([*memory.object_ids, *(obj.id for obj in objects)]))
-            memory.impact = command.impact
-        else:
-            memory = Memory(id=memory_id, owner=owner, kind=command.kind, object_ids=[obj.id for obj in objects],
-                            revisions=[revision], impact=command.impact)
-        edges.extend(Edge(id=stable_id("edge_", revision_id, obj.id, "about"), owner=owner, origin=memory_id,
-                          target=obj.id, relation="about", source_id=source.id) for obj in objects)
-        self.store.save_memory(memory, objects, edges)
-        return memory_id
+                }
 
     def _documents(self, unit, memories):
         documents = []
@@ -318,14 +128,15 @@ class MemoryEngine:
                 sources = self.store.sources(memory.owner, revision.source_ids[:1])
                 position = sources[0].content.find(revision.quote) if sources else -1
                 documents.append(Document(id=stable_id("doc_", revision.id), owner=memory.owner,
-                    text=revision.content + "\nSource quote: " + revision.quote, source_ids=revision.source_ids,
+                    text=revision.content + "\nRelations: " + "; ".join(a.predicate for a in revision.assertions) + "\nSource quote: " + revision.quote, source_ids=revision.source_ids,
                     memory_id=memory.id, revision_id=revision.id, message_at=revision.observed_at,
                     event_at=revision.event_at, created_at=revision.created_at,
                     source_windows=[SourceWindow(source_id=revision.source_ids[0], start=position,
                         stop=position + len(revision.quote))] if position >= 0 else [],
                     memory_evidence=[MemoryEvidence(memory_id=memory.id, revision_id=revision.id,
                         content=revision.content, quote=revision.quote, source_ids=revision.source_ids,
-                        event_at=revision.event_at, status=revision.status, time_precision=revision.time_precision)]))
+                        event_at=revision.event_at, status=revision.status, time_precision=revision.time_precision,
+                        valid_from=revision.valid_from, valid_to=revision.valid_to, observed_at=revision.observed_at, temporal_scope=revision.temporal_scope)]))
         return documents
 
     def _embed(self, texts, deadline):
@@ -341,49 +152,55 @@ class MemoryEngine:
             dimensions = len(vector)
         return vectors
 
-    def _index(self, documents, deadline):
-        pending = []
-        for document in documents:
-            previous = self.store.get("search_documents", document.owner, document.id)
-            if previous and previous["text"] == document.text and (previous.get("vector") is not None or not self.embedder):
-                continue
-            self.store.put("search_documents", document.owner, document.id, document.model_dump())
-            pending.append(document)
-        if pending and self.embedder:
-            vectors = self._embed([document.text for document in pending], deadline)
-            for document, vector in zip(pending, vectors):
-                document.vector = vector
-                self.store.put("search_documents", document.owner, document.id, document.model_dump())
-
     def _visible_documents(self, owner, as_of):
+        revisions = {}
+        for original in self.store.memories(owner):
+            memory = visible_memory(original, as_of)
+            if memory:
+                revisions.update({r.id: r for r in memory.revisions})
         documents = []
         for document in self.store.documents(owner):
             if parse_time(document.message_at or document.created_at) <= parse_time(as_of):
                 sources = self.store.sources(owner, document.source_ids)
-                if all(source_visible(source, as_of) for source in sources):
-                    documents.append(document)
+                if len(sources) != len(set(document.source_ids)) or not all(source_visible(s, as_of) for s in sources):
+                    continue
+                for evidence in document.memory_evidence:
+                    revision = revisions.get(evidence.revision_id)
+                    if revision:
+                        evidence.valid_to = revision.valid_to
+                documents.append(document)
         return documents
 
     def _hybrid(self, owner, query, documents, vector=None, limit=40):
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
         return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic)
 
-    def _graph_candidates(self, owner, query, seed_documents, documents, vector):
-        ids = {document.memory_id for document in seed_documents if document.memory_id}
-        # Raw hits link back to memories through provenance, even when the memory document missed the base top N.
-        sources = {key for document in seed_documents for key in document.source_ids}
-        visible_sources = {key for document in documents for key in document.source_ids}
-        support = [edge for edge in self.store.edges_for(owner, targets=sources, limit=200) if edge.source_id in visible_sources]
-        revisions = {edge.origin for edge in support if edge.relation == "supported_by"}
-        ids.update(document.memory_id for document in documents if document.revision_id in revisions and document.memory_id)
-        object_ids = {edge.target for edge in self.store.edges_for(owner, origins=ids, limit=200)
-                      if edge.relation == "about" and edge.source_id in visible_sources}
-        # Broad shared-self edges provide no useful bounded expansion. Project/person/document edges remain eligible.
-        self_objects = {stable_id("obj_", owner, "user", "self")}
-        object_ids -= self_objects
-        neighbors = {edge.origin for edge in self.store.edges_for(owner, targets=object_ids, limit=200)
-                     if edge.relation == "about" and edge.source_id in visible_sources}
-        pool = [document for document in documents if document.memory_id in neighbors or document.revision_id in revisions]
+    def _graph_candidates(self, owner, query, seed_documents, documents, vector, as_of):
+        from .graph import active_edges
+        edges = active_edges(self.store, owner, as_of)
+        ids = {d.memory_id for d in seed_documents if d.memory_id}
+        source_ids = {key for d in seed_documents for key in d.source_ids}
+        for memory in self.store.memories(owner):
+            view = visible_memory(memory, as_of)
+            if view and source_ids.intersection(view.current.source_ids):
+                ids.add(view.id)
+        objects = {edge.target for edge in edges if edge.relation == 'involves' and edge.origin in ids}
+        self_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_self')}
+        objects -= self_ids
+        # One bounded expansion through meaningful role/entity links, plus explicit memory links.
+        neighbor_objects = set(objects)
+        for edge in edges:
+            if edge.relation == 'assertion' and ({edge.origin, edge.target} & objects):
+                neighbor_objects.update({edge.origin, edge.target} - self_ids)
+        neighbors = {edge.origin for edge in edges if edge.relation == 'involves' and edge.target in neighbor_objects}
+        related_revisions = set()
+        seed_revisions = {d.revision_id for d in seed_documents if d.revision_id}
+        for edge in edges:
+            if edge.relation == 'related' and edge.origin in ids:
+                related_revisions.add(edge.target_revision_id)
+            if edge.relation == 'related' and edge.target_revision_id in seed_revisions:
+                neighbors.add(edge.origin)
+        pool = [d for d in documents if d.memory_id in neighbors or d.revision_id in related_revisions]
         return self._hybrid(owner, query, pool, vector, limit=self.settings.graph_limit)
 
     def _card(self, owner, document, query, budget):
@@ -405,14 +222,15 @@ class MemoryEngine:
                 "original": raw, "summary": clip_bytes(document.text, 400),
                 "memories": [{"id": memory.memory_id, "revision_id": memory.revision_id,
                     "content": clip_bytes(memory.content, 300), "event_at": memory.event_at, "status": memory.status,
-                    "time_precision": memory.time_precision}
+                    "time_precision": memory.time_precision, "valid_from": memory.valid_from, "valid_to": memory.valid_to,
+                    "observed_at": memory.observed_at, "temporal_scope": memory.temporal_scope}
                     for memory in document.memory_evidence]}
 
     def _decision_state(self, owner, query, hits, current, as_of):
         state = {"query": clip_bytes(query, min(12000, self.settings.decision_bytes // 3)),
                  "reference_time": as_of, "evidence": [], "current_conditions": []}
         for memory in current:
-            entry = {"id": memory.id, "kind": memory.kind, "content": clip_bytes(memory.current.content, 800),
+            entry = {"id": memory.id, "tags": memory.tags, "content": clip_bytes(memory.current.content, 800),
                      "valid_from": memory.current.valid_from, "valid_to": memory.current.valid_to,
                      "observed_at": memory.current.observed_at, "source_ids": memory.current.source_ids}
             entry["status"] = memory.current.status
@@ -556,7 +374,7 @@ class MemoryEngine:
                 except ProviderUnavailable:
                     degradation.append("query_embedding_unavailable")
             base = self._hybrid(request.user_id, request.query, documents, vector, self.settings.candidate_limit)
-            graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in base[:8]], documents, vector) \
+            graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in base[:8]], documents, vector, as_of) \
                 if self.settings.graph_enabled else []
             merged = self._merge([*base, *graph], documents)
             baseline_order = {doc.source_ids[0] if doc.source_ids else doc.id: index
@@ -598,7 +416,7 @@ class MemoryEngine:
                     result["new_source_turns"] = len({doc.source_ids[0] for doc, _ in hits if doc.source_ids}
                                                     - {doc.source_ids[0] for doc, _ in merged if doc.source_ids})
                     channels.append({"channel": f"tool_{index}", "source_ids": sorted({key for doc, _ in hits for key in doc.source_ids})})
-                    extra_graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in hits[:4]], documents, vector) \
+                    extra_graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in hits[:4]], documents, vector, as_of) \
                         if self.settings.graph_enabled else []
                     merged = self._merge([*merged, *hits, *extra_graph], documents)
                     channels.append({"channel": f"tool_graph_{index}", "source_ids": sorted({key for doc, _ in extra_graph for key in doc.source_ids})})
@@ -660,7 +478,7 @@ class MemoryEngine:
             forced = {key: index for index, key in enumerate(order)}
             ranked.sort(key=lambda item: (0, forced[item[0].id]) if item[0].id in forced else (1, 0))
             prefix_lines = [f"[{memory.id}] {memory.current.content} (valid_from={memory.current.valid_from or 'unknown'}, "
-                            f"valid_to={memory.current.valid_to or 'open'}, observed_at={memory.current.observed_at}, "
+                            f"valid_to={memory.current.valid_to or 'unknown'}, status={memory.current.status}, scope={memory.current.temporal_scope}, observed_at={memory.current.observed_at}, "
                             f"sources={','.join(memory.current.source_ids)})" for memory in selected]
             prefix = clip_bytes("Current relevant conditions:\n" + "\n".join(prefix_lines), self.settings.context_bytes) if prefix_lines else ""
             items = []
@@ -704,6 +522,6 @@ class MemoryEngine:
             return SearchResponse(data=items)
 
     def close(self):
-        for resource in (self.model, self.embedder, self.reranker, self.judger, self.store):
+        for resource in (self.model, self.embedder, self.reranker, self.store):
             if resource is not None and hasattr(resource, "close"):
                 resource.close()

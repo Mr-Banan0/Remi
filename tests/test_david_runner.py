@@ -12,9 +12,10 @@ from scripts import run_david as runner
 from scripts.golden_adapter import actions, add_payload
 
 
-LOCAL_DATA = Path("/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/traceweave/.local-data/rhelm")
-LOCAL_GOLDEN = Path("/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/traceweave/.local-data/whole-message-runtime-20261009-v1/golden/dataset-v1.json")
-TRACE_BASELINE = Path("/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/traceweave/.local-data/tool-search-history-20261009/david-full-add-stability-20261008/result.json")
+TRACE_DATA = Path(__file__).resolve().parents[2] / 'traceweave' / '.local-data'
+LOCAL_DATA = Path(os.getenv('REMI_TEST_RHELM_DIR', str(TRACE_DATA / 'rhelm')))
+LOCAL_GOLDEN = Path(os.getenv('REMI_TEST_GOLDEN_DATASET', str(TRACE_DATA / 'whole-message-runtime-20261009-v1/golden/dataset-v1.json')))
+TRACE_BASELINE = Path(os.getenv('REMI_TEST_TRACE_BASELINE', str(TRACE_DATA / 'tool-search-history-20261009/david-full-add-stability-20261008/result.json')))
 
 
 def sample_case(identifier="q1", day="2024-06-03"):
@@ -273,10 +274,10 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
     class Model:
         def __init__(self):
             self.calls = deque()
-        def route(self, state, *, deadline):
+        def propose(self, state, *, deadline):
             counters["extract"] += 1
             self.calls.append({"kind": "add", "model": "offline", "seconds": 0})
-            return {"route": {"choice": "raw_only"}}
+            return {"items": [], "reason": "no memory"}
         def decide(self, state, *, deadline):
             counters["decide"] += 1
             self.calls.append({"kind": "search_decision", "model": "offline", "seconds": 0})
@@ -308,7 +309,7 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
         counters["engine_created"] += 1
         model = Model()
         return MemoryEngine(SQLiteStore(os.environ["REMI_DB_PATH"]), model, Embedder(), Reranker(),
-                            Settings(graph_enabled=False, hot_enabled=False), judger=model)
+                            Settings(graph_enabled=False, hot_enabled=False))
     monkeypatch.setattr(runner, "__file__", str(Path(runner.__file__).parent.parent / "main" / "scripts" / "run_david.py"))
     runtime = Path(runner.__file__).parents[1]
     import remi

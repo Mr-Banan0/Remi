@@ -5,9 +5,9 @@
 | 表 | 内容 |
 | --- | --- |
 | sources | 完整原文、角色、消息时间、接收时间、所属请求与会话 |
-| memories | 四类独立记忆，共用 JSON 结构；历史修订保存在同一记录的 revisions 中 |
-| objects | 按所属用户隔离的对象 ID、名称与类别 |
-| edges | about、supported_by、revises 三类有来源关系 |
+| memories | 可重叠标签记忆，共用 JSON 结构；历史修订保存在同一记录的 revisions 中 |
+| objects | 按所属用户隔离的实体 ID、名称、类别及有来源的别名 |
+| edges | involves、assertion、related、supported_by、revises，绑定支持修订的关系投影 |
 | requests | 请求内容指纹、每个处理单元的命令与处置、索引检查点 |
 | search_documents | 原文检索窗口与记忆修订文档、来源 ID、向量 BLOB |
 

@@ -1,24 +1,24 @@
 # Remi
 
-Remi 是独立的 G07 冷热统一图实验项目，与 TraceWeave 并列开发。
+Remi 是独立的 G08 候选与联合维护图实验项目，与 TraceWeave 并列开发。
 
-主项目目录为 `/Users/bananabig/Dev/agent-memory-leaderboard-eval/solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
+项目目录为 `solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
 
 完整原文作为证据底座；偏好、事实／条件、事件、经验共用一种有来源和修订的记忆结构。人物、项目、客户、文档等对象提供组织入口。热区是同一张图的有预算视图，冷区继续参与全局检索。
 
 ## 当前实现
 
-- 文本模型：`gpt-4o-mini`，按需拆分 content、沉淀固定 create/update 的内容与时间，负责一次 Search 补搜决策。
-- Add 判断：`jev-1.13.0` Choice 负责单／多目标分流、固定类别与逐项目标／操作，Noul 核对拆分内容支持、覆盖及必要上下文。
+- 文本模型：`gpt-4o-mini`，先提出候选，再结合历史联合定稿；同时负责一次 Search 补搜决策。
+- Add 维护：实体身份、记忆目标、操作、内容、角色和关系在第二阶段共同决定，程序校验并原子提交。
 - 向量模型：`text-embedding-v4`，默认 1024 维，沿用 DashScope。
 - 重排序：`jev-1.13.0`，对检索证据支持度和时间候选活动匹配进行排序判定。
-- Jev 沿用已验证网关协议：`https://api.quickrouter.ai/v1/systemone`，请求使用 `state/questions`，响应读取 `answers` 中的 Choice 概率与 Noul。
+- Jev 沿用已验证网关协议：`https://api.quickrouter.ai/v1/systemone`，请求使用 `state/questions`，响应读取 `answers` 中的 Noul。
 - HTTP `/add`、`/search` 与现有本地评测请求结构一致。
 - 物理数据库：6 张显式 SQLite 表；向量采用 sqlite-vec 序列化和余弦距离函数，BM25 在程序中计算。
-- Add 同用户串行：单目标直接使用原文，通常两轮逻辑 Jev＋一次最终写入 GPT；多目标按需一次 content 拆分，再分类、召回、选操作和最终写入。keep/retract 跳过写入 GPT，生成步骤共享最多一次修正。Jev 每批最多 4 项，物理调用按批计数。GPT 暂态传输重试与业务修正分别记录。
+- Add 同用户串行：普通有界单元两次 GPT，空候选一次；共享一次输出修正。按主体召回并补充少量跨实体与原文入口，覆盖全部标签。图、索引和应用检查点一起提交。
 - Search 始终跨冷热混合召回，最多一次 GPT 决策、两步补搜；关系读取采用程序内有界操作。
 
-[当前架构与调用预算](docs/current-architecture.md) · [G06 Add 局部 diff](docs/architecture-changes/g06-route-content-split.md) · [G05 历史 Golden 结果](docs/golden-g05-results.md) · [数据库范围](docs/database-scope.md) · [验收记录](docs/verification.md)
+[当前架构与调用预算](docs/current-architecture.md) · [G08 改造与预算](docs/architecture-changes/g08-propose-maintain-graph.md) · [G08 Golden 实验与实际图](docs/golden-g08-results.md) · [G05 历史 Golden 结果](docs/golden-g05-results.md) · [数据库范围](docs/database-scope.md) · [验收记录](docs/verification.md)
 
 ## 本地安装
 
@@ -74,7 +74,7 @@ uv run remi serve --host 127.0.0.1 --port 8011
 
 原文完整保存，用户消息支持结构化内容；助手消息提供解释上下文并参与原文检索。`timestamp` 为 Unix 毫秒；来源时钟缺失时保留未知。相同请求 ID 与相同内容幂等，冲突内容返回 409。
 
-Add 保存逐阶段检查点，完成操作处置与索引后返回 200。内部无效项独立处置；Jev 分流／分类／选择不确定或失败时保留原文并记录原因。初始拆分／最终文本写入或向量供应商不可用时返回 503 并保留检查点，重发相同请求复用完成阶段。G05 已完成记录继续可读；未完成的 G05 判断检查点使用对应冻结代码恢复，G06 核对版本后执行当前链路。
+Add 保存 propose、维护上下文、maintain 及应用检查点，图和索引提交后返回 200。供应商及未解决输出故障返回 503，重发相同请求复用已完成语义阶段。历史实验使用各自冻结代码与数据库，新链路从原文重放生成当前记录。
 
 ### Search
 
@@ -84,7 +84,7 @@ Add 保存逐阶段检查点，完成操作处置与索引后返回 200。内部
 
 返回 `data[]`，每项保留 `id/content/score/created_at`。内容包含本次选择的有预算工作背景、原始证据与必要记忆信息。Search 交付证据，后续 Agent 生成最终回答。
 
-`top_k` 接受 1–100，返回最多请求条数。`query` 接收完整非空字符串，检索使用完整题面；模型决策继续使用现有字节预算。本次接口校验调整沿用当前 Add/Search 调用链和供应商调用预算。
+`top_k` 接受 1–100，返回最多请求条数。`query` 接收完整非空字符串，检索使用完整题面；模型决策继续使用现有字节预算。接口校验继续采用当前协议与预算。
 
 `x-memory-reference-time` 设置 ISO 查询时钟；为已有评测调用方保留 `x-traceweave-reference-time` 别名。以后评测迁移到新名称并确认旧调用方退出后，可以删除该别名。
 
@@ -92,7 +92,7 @@ Add 保存逐阶段检查点，完成操作处置与索引后返回 200。内部
 
 当前实现保留：来源、独立记录、追加修订、明确对象关系、跨冷热检索、程序时间计算、有限补搜和 Jev 排序。
 
-自动主题组、自动 combine、全量 Profile 独立筛选、自动经验归纳、额外语义校验模型调用暂时退出 G01。每条经验首先来自明确用户陈述。
+记忆及关系以明确来源和上下文为依据。实体关系、历史修订和作用域共同支持检索；边际收益广度搜索保留为后续讨论项。
 
 当前图检索提供一层对象关系读取及来源回查。Search 对活动核对通过且有时间的有界候选执行 first/latest，并保留到最终选择。活动核对缺失时标明覆盖不确定，基础召回继续返回。计数题和复杂多跳题的完整覆盖属于真实数据验收内容。
 

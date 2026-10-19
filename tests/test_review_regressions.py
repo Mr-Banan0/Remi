@@ -11,7 +11,7 @@ from remi.api import create_app
 from remi.clock import absolute_content, message_time, resolve_time
 from .helpers import TestEngine as MemoryEngine
 from remi.heat import hot_view
-from remi.models import Decision, RecallStep, SplitPlan, WrittenPlan
+from remi.models import Decision, RecallStep, ProposalPlan, MaintenancePlan
 from remi.providers import JevReranker, OutputInvalid, RankResult, strict_schema
 from remi.settings import Settings
 from remi.storage import MemoryStore, SQLiteStore
@@ -26,7 +26,7 @@ def test_hot_budget_is_allocated_to_eligible_conditions():
     engine.add(request("The budget limit is 10000."))
     engine.add(request("A meeting is planned.", request_id="r2"))
     engine.search(query("Prepare an expenditure proposal"))
-    assert [item["kind"] for item in model.decisions[-1]["current_conditions"]] == ["fact"]
+    assert [item["tags"] for item in model.decisions[-1]["current_conditions"]] == [["fact"]]
 
 
 @pytest.mark.parametrize("answer", ["Dell XPS 13", "备用戴尔电脑"])
@@ -122,26 +122,23 @@ def test_future_graph_update_preserves_past_expansion():
     clock = "2024-06-04T00:00:00Z"
     documents = engine._visible_documents("u1", clock)
     seed = next(document for document in documents if document.memory_id is None and document.source_ids[0] == target.current.source_ids[0])
-    before = engine._graph_candidates("u1", "Northstar", [seed], documents, None)
+    before = engine._graph_candidates("u1", "Northstar", [seed], documents, None, clock)
     model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=target.id,
         objects=[{"kind": "project", "name": "Northstar"}])]}
     engine.add(request("Northstar kickoff completed", request_id="r3", when="2025-01-01T10:00:00Z"))
-    after = engine._graph_candidates("u1", "Northstar", [seed], engine._visible_documents("u1", clock), None)
+    after = engine._graph_candidates("u1", "Northstar", [seed], engine._visible_documents("u1", clock), None, clock)
     assert {item.id for item, _ in before} == {item.id for item, _ in after}
 
 
-def test_same_source_distinct_time_updates_have_distinct_revisions():
-    model = ScriptedModel(lambda state, errors: {"commands": [command(state, "Northstar meeting", status="planned")]})
-    engine = MemoryEngine(model=model)
-    engine.add(request("Northstar meeting is planned."))
-    target = engine.store.memories("u1")[0].id
-    model.extractor = lambda state, errors: {"commands": [command(state, "Northstar meeting", operation="update", target=target,
-        quote=phrase, time=phrase, status="planned") for phrase in ("6月9日", "6月15日")]}
-    payload = request("Northstar meeting 6月9日，再改到6月15日。", request_id="r2", when="2024-06-03T10:00:00Z")
-    engine.add(payload)
-    engine.add(payload)
-    memory = engine.store.memories("u1", [target])[0]
-    assert len(memory.revisions) == 3 and memory.current.event_at.startswith("2024-06-15")
+def test_same_source_conflicting_target_edits_require_joint_resolution():
+    from remi.providers import ProviderUnavailable
+    model=ScriptedModel(lambda state,errors:{'commands':[command(state,'Northstar meeting',status='planned')]})
+    engine=MemoryEngine(model=model)
+    engine.add(request('Northstar meeting is planned.'))
+    target=engine.store.memories('u1')[0].id
+    model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',operation='update',target=target,quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
+    with pytest.raises(ProviderUnavailable): engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
+    assert len(engine.store.memories('u1')[0].revisions)==1
 
 
 def test_update_retains_unspecified_event_date():
@@ -180,18 +177,15 @@ def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
     assert engine.store.memories("u1")[0].current.event_at is None
 
 
-def test_repair_scope_is_enforced_and_valid_initial_command_survives():
+def test_plan_repair_can_resolve_operations_jointly():
     def extract(state, errors):
-        a = command(state, "Project A completed", quote="Project A completed")
-        b = command(state, "Project B planned", quote="Project B planned", status="planned")
-        if errors:
-            return {"replacements": [{"position": 0, "command": {**a, "content": "Project A failed"}},
-                                     {"position": 1, "command": b}]}
-        return {"commands": [a, {**b, "source_id": "missing"}]}
-    engine = MemoryEngine(model=ScriptedModel(extract))
-    engine.add(request("Project A completed; Project B planned."))
-    assert {item.current.content for item in engine.store.memories("u1")} == {"Project A completed", "Project B planned"}
-    assert len(engine.model.extractions) == 2
+        a=command(state,'Project A completed',quote='Project A completed')
+        b=command(state,'Project B planned',quote='Project B planned',status='planned')
+        return {'commands':[a,b if errors else {**b,'source_id':'missing'}]}
+    engine=MemoryEngine(model=ScriptedModel(extract))
+    engine.add(request('Project A completed; Project B planned.'))
+    assert {m.current.content for m in engine.store.memories('u1')}=={'Project A completed','Project B planned'}
+    assert len(engine.model.extractions)==2
 
 
 def test_malformed_repair_keeps_original_time_failure_for_local_degradation():
@@ -245,13 +239,13 @@ def test_planned_fact_is_disposed_and_cannot_become_a_current_condition():
     engine = MemoryEngine(model=model)
     engine.add(request("I plan to live in Shanghai tomorrow."))
     engine.search(query("Where do I currently live?"), "2024-06-04T00:00:00Z")
-    assert not engine.store.memories("u1")
+    assert engine.store.memories("u1")[0].current.status == "planned"
     assert not model.decisions[-1]["current_conditions"]
     assert engine.store.list("sources", "u1")
 
 
 def test_all_model_schema_properties_are_required_without_dynamic_enums():
-    for model in (Decision, SplitPlan, WrittenPlan):
+    for model in (Decision, ProposalPlan, MaintenancePlan):
         schema = strict_schema(model)
         assert len(json.dumps(schema)) < 10000
         for item in [schema, *schema.get("$defs", {}).values()]:
@@ -273,17 +267,11 @@ def test_jev_activity_match_shares_the_existing_batch_call():
     ranker.close()
 
 
-def test_one_invalid_repair_replacement_preserves_another_valid_replacement():
-    def extract(state, errors):
-        a = command(state, "Project A completed", quote="Project A completed")
-        b = command(state, "Project B planned", quote="Project B planned", status="planned")
-        if errors:
-            return {"replacements": [{"position": 0, "command": {**a, "extra": "invalid"}},
-                                     {"position": 1, "command": b}]}
-        return {"commands": [{**a, "source_id": "missing"}, {**b, "source_id": "missing"}]}
-    engine = MemoryEngine(model=ScriptedModel(extract))
-    engine.add(request("Project A completed; Project B planned."))
-    assert [memory.current.content for memory in engine.store.memories("u1")] == ["Project B planned"]
+def test_unresolved_plan_repair_preserves_the_whole_previous_graph():
+    from remi.providers import ProviderUnavailable
+    engine=MemoryEngine(model=ScriptedModel(lambda state,errors:{'commands':[{**command(state),'source_id':'missing'}]}))
+    with pytest.raises(ProviderUnavailable):engine.add(request('Project A completed; Project B planned.'))
+    assert not engine.store.memories('u1') and not engine.store.list('edges','u1')
 
 
 @pytest.mark.skipif(__import__("os").getenv("REMI_TEST_SCHEMA_APPROVED") != "1", reason="Six-table approval required")
@@ -342,7 +330,7 @@ def test_encoded_null_arguments_commit_without_a_repair_call():
     engine = MemoryEngine(model=model)
     engine.add(request("I have a peanut allergy."))
     assert len(model.extractions) == 1
-    assert engine.store.memories("u1")[0].kind == "fact"
+    assert engine.store.memories("u1")[0].tags[0] == "fact"
     assert engine.store.memories("u1")[0].current.valid_to is None
 
 

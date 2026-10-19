@@ -38,8 +38,8 @@ def test_checkpoint_resumes_after_process_resources_are_reopened(database):
         first.add(payload)
     checkpoint = first.store.get("requests", "u1", "r1")
     assert checkpoint["status"] == "pending"
-    assert checkpoint["units"]["0"]["phase"] == "applied"
-    memory_id = first.store.memories("u1")[0].id
+    assert checkpoint["units"]["0"]["phase"] == "pending"
+    assert first.store.memories("u1") == []
     first.close()
 
     resumed_model = ScriptedModel()
@@ -48,7 +48,7 @@ def test_checkpoint_resumes_after_process_resources_are_reopened(database):
         assert second.add(payload).success
         assert resumed_model.extractions == []
         memories = second.store.memories("u1")
-        assert len(memories) == 1 and memories[0].id == memory_id
+        assert len(memories) == 1
         assert len(memories[0].revisions) == 1
         assert second.store.get("requests", "u1", "r1")["status"] == "complete"
         assert all(document.vector is not None for document in second.store.documents("u1"))
@@ -90,7 +90,7 @@ def test_prior_user_and_assistant_context_survives_reopening(database):
         memory = second.store.memories("u1")[0]
         assert len(memory.current.source_ids) == 3
         assert memory.current.status == "planned"
-        assert second.store.edges_for("u1", origins={memory.id})[0].relation == "about"
+        assert second.store.edges_for("u1", origins={memory.id})[0].relation == "involves"
     finally:
         second.close()
 

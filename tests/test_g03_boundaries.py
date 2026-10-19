@@ -30,33 +30,24 @@ def test_ambiguous_or_changed_quotes_keep_the_source_boundary():
     assert source_quote("access restricted", "accessrestricted") is None
 
 
-def test_program_bound_whole_source_retains_its_supported_length():
-    text = "Access" + " " * 21000 + "remains restricted."
-    def extract(state, errors):
-        value = command(state, content="Access remains restricted.", kind="fact", quote="Access remains restricted.")
-        return {"commands": [value]}
-    model = ScriptedModel(extract)
-    engine = MemoryEngine(model=model)
-    engine.add(request(text))
-    assert len(model.extractions) == 1
-    assert engine.store.memories("u1")[0].current.quote == text
+def test_long_input_windows_cover_every_character():
+    from remi.add_pipeline import AddPipeline
+    text='Access'+(' '*21000)+'remains restricted.'
+    chunks=list(AddPipeline.chunks(text))
+    assert ''.join(c[2] for c in chunks)==text
+    assert chunks[0][0]==0 and chunks[-1][1]==len(text)
+    assert all(right[0]==left[1] for left,right in zip(chunks,chunks[1:]))
 
 
-def test_invalid_source_id_and_repair_reason_are_checkpointed_separately():
-    def extract(state, errors):
-        value = command(state, kind="fact")
-        if errors is None:
-            value["source_id"] = "another_source"
-            return {"commands": [value]}
-        assert errors[0]["error"] == "written_content_schema_invalid"
-        return {"replacements": [{"position": 0, "command": value}]}
-    model = ScriptedModel(extract)
-    engine = MemoryEngine(model=model)
-    engine.add(request("Access remains restricted."))
-    saved = engine.store.get("requests", "u1", "r1")["units"]["0"]
-    assert len(model.extractions) == 2
-    assert saved["validation"][0]["validation"][0]["error"] == "written_content_schema_invalid"
-    assert all("content" not in item and "quote" not in item for item in saved["validation"])
+def test_invalid_source_is_diagnosed_and_the_unit_stays_retryable():
+    from remi.providers import ProviderUnavailable
+    model=ScriptedModel(lambda state,errors:{'commands':[{**command(state,kind='fact'),'source_id':'foreign'}]})
+    engine=MemoryEngine(model=model)
+    with pytest.raises(ProviderUnavailable): engine.add(request('Access remains restricted.'))
+    saved=engine.store.get('requests','u1','r1')['units']['0']
+    assert saved['phase']=='pending'
+    assert saved['validation'][0]['error']=='evidence_requires_supplied_source'
+    assert not engine.store.memories('u1')
 
 
 def test_each_memory_keeps_its_own_date_and_exact_supporting_clause():
@@ -68,9 +59,9 @@ def test_each_memory_keeps_its_own_date_and_exact_supporting_clause():
         ]}
     engine = MemoryEngine(model=ScriptedModel(extract))
     engine.add(request("Yesterday I reviewed Orion. Tomorrow I launch Vega. Access remains restricted."))
-    events = [memory for memory in engine.store.memories("u1") if memory.kind == "event"]
+    events = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "event"]
     assert {memory.current.event_at[:10] for memory in events} == {"2024-06-01", "2024-06-03"}
-    facts = [memory for memory in engine.store.memories("u1") if memory.kind == "fact"]
+    facts = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "fact"]
     assert len(facts) == 1 and facts[0].current.valid_from.startswith("2024-06-02")
 
 

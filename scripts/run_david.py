@@ -470,7 +470,7 @@ def execute(args):
         owner = state["owner"]
         provider_journal = DurableJournal(args.output / "diagnostics.jsonl")
         http_journal = DurableJournal(args.output / "http-attempts.jsonl")
-        for resource in (engine.model, engine.embedder, engine.reranker, engine.judger):
+        for resource in (engine.model, engine.embedder, engine.reranker):
             if resource is not None:
                 resource.calls = ProviderCalls(provider_journal)
         report = {"architecture": "Remi-David", "complete": False, "character": args.character,

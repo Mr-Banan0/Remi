@@ -43,7 +43,7 @@ def latency(records):
 
 
 def diagnostics(engine):
-    return [dict(call) for resource in (engine.model, engine.embedder, engine.reranker, engine.judger)
+    return [dict(call) for resource in (engine.model, engine.embedder, engine.reranker)
             if resource is not None for call in resource.calls]
 
 
@@ -160,7 +160,7 @@ def execute(args):
     owners = [row[0] for row in engine.store.connection.execute("SELECT DISTINCT owner FROM requests")] if args.resume else []
     owner = next((value for value in owners if value.startswith("golden:")), "golden:" + token)
     life_owner = "lifecycle:" + owner.split(":", 1)[1]
-    for resource in (engine.model, engine.embedder, engine.reranker, engine.judger):
+    for resource in (engine.model, engine.embedder, engine.reranker):
         resource.calls = CallJournal(args.output / "diagnostics.jsonl")
     app = create_app(engine, api_key=token)
     server = uvicorn.Server(uvicorn.Config(app, log_level="error", access_log=False))

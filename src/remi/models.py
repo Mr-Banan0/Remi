@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import PrivateAttr, BaseModel, ConfigDict, Field, model_validator, field_validator
 
 
 def nullable(value):
@@ -67,23 +67,90 @@ class Source(StrictModel):
     created_at: str
 
 
-class ObjectRef(StrictModel):
-    kind: Literal["user", "person", "project", "client", "document", "topic"]
-    name: str = Field(min_length=1, max_length=200)
-
-
-class Command(StrictModel):
-    operation: Literal["create", "update", "retract"]
-    target_id: str | None
-    kind: MemoryKind
-    content: str = Field(min_length=1, max_length=4000)
+class EvidenceRef(StrictModel):
     source_id: str
-    context_source_ids: list[str] = Field(max_length=3)
     quote: str = Field(min_length=1, max_length=200000)
-    objects: list[ObjectRef] = Field(max_length=8)
+
+
+class Mention(StrictModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=60)
+
+
+class Candidate(StrictModel):
+    id: str
+    content: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
+    entities: list[Mention] = Field(max_length=12)
+    tags: list[MemoryKind] = Field(min_length=1, max_length=4)
+
+
+class ProposalPlan(StrictModel):
+    items: list[Candidate] = Field(max_length=24)
+    reason: str
+
+
+class EntityDecision(StrictModel):
+    ref: str
+    target_id: str | None
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=60)
+    is_self: bool
+    aliases: list[str] = Field(max_length=12)
+    evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
+
+
+    @field_validator("target_id", mode="before")
+    @classmethod
+    def optional_target(cls, value):
+        return nullable(value)
+
+
+class EntityRole(StrictModel):
+    entity_ref: str
+    role: str = Field(min_length=1, max_length=120)
+
+
+class Assertion(StrictModel):
+    subject_ref: str
+    predicate: str = Field(min_length=1, max_length=160)
+    object_ref: str
+    negated: bool = False
+
+
+class LiteralAttribute(StrictModel):
+    subject_ref: str
+    predicate: str
+    value: str
+    negated: bool = False
+
+
+class MemoryLink(StrictModel):
+    target_ref: str
+    label: str = Field(min_length=1, max_length=160)
+
+
+class BoundMemoryLink(MemoryLink):
+    target_revision_id: str
+
+
+class MemoryEdit(StrictModel):
+    ref: str
+    candidate_ids: list[str] = Field(min_length=1, max_length=24)
+    operation: Literal["write", "keep", "retract"]
+    target_id: str | None = Field(description="Select the same independently maintained claim or particular occurrence. Shared entity alone is insufficient. Use null for an independent claim, including a new ongoing state distinct from its establishing event.")
+    content: str = Field(min_length=1, max_length=4000)
+    change: Literal["confirm", "supplement", "replace"]
+    tags: list[MemoryKind] = Field(min_length=1, max_length=4)
+    evidence: list[EvidenceRef] = Field(min_length=1, max_length=12)
+    roles: list[EntityRole] = Field(max_length=16)
+    assertions: list[Assertion] = Field(max_length=16)
+    links: list[MemoryLink] = Field(max_length=12)
     time_expression: str | None
     end_expression: str | None
-    status: Literal["stated", "planned", "occurred", "cancelled"]
+    status: Literal["stated", "planned", "occurred", "cancelled", "desired", "unknown"]
+    temporal_scope: Literal["ongoing", "episodic", "unknown"]
+    corrects_occurrence: bool = Field(default=False, description="True only when the new source explicitly corrects the date/details of the same previously completed occurrence. A later independent occurrence uses false.")
     impact: Literal["high", "low", "unknown"]
 
     @field_validator("target_id", "time_expression", "end_expression", mode="before")
@@ -93,53 +160,49 @@ class Command(StrictModel):
 
     @model_validator(mode="after")
     def target_contract(self):
-        if self.operation == "create" and self.target_id is not None:
-            raise ValueError("create_target_must_be_null")
-        if self.operation != "create" and not self.target_id:
-            raise ValueError("update_or_retract_requires_target")
-        if self.kind != "event" and self.status in {"planned", "cancelled"}:
-            raise ValueError("plans_and_cancellations_use_event_kind")
+        if self.operation in {"keep", "retract"} and self.target_id is None:
+            raise ValueError("keep_or_retract_selects_existing_history")
         return self
 
 
-class ContentItem(StrictModel):
-    """Temporary processing text; provenance and source clocks belong to the program."""
-    content: str = Field(min_length=1, max_length=200000)
-
-    @field_validator("content")
-    @classmethod
-    def meaningful_content(cls, value):
-        if not value.strip():
-            raise ValueError("content_requires_text")
-        return value
+class DiscardedCandidate(StrictModel):
+    candidate_id: str
+    reason: str = Field(min_length=1)
 
 
-class SplitPlan(StrictModel):
-    items: list[ContentItem] = Field(min_length=2, max_length=24)
+class MaintenancePlan(StrictModel):
+    _graph_dispositions: list[dict] = PrivateAttr(default_factory=list)
+    _write_compositions: list[dict] = PrivateAttr(default_factory=list)
+    entities: list[EntityDecision] = Field(max_length=40)
+    edits: list[MemoryEdit] = Field(max_length=24)
+    discarded: list[DiscardedCandidate] = Field(max_length=24)
 
 
-class WrittenItem(StrictModel):
-    item_id: str
-    content: str = Field(min_length=1, max_length=4000)
-    objects: list[ObjectRef] = Field(max_length=8)
-    time_expression: str | None
-    end_expression: str | None
-    status: Literal["stated", "planned", "occurred", "cancelled"]
-    impact: Literal["high", "low", "unknown"]
-
-    @field_validator("time_expression", "end_expression", mode="before")
-    @classmethod
-    def optional_arguments(cls, value):
-        return nullable(value)
-
-    @field_validator("content")
-    @classmethod
-    def meaningful_content(cls, value):
-        return ContentItem.meaningful_content(value)
+class SourceCitation(StrictModel):
+    source_id: str
 
 
-class WrittenPlan(StrictModel):
-    items: list[WrittenItem] = Field(max_length=24)
+class CandidateDraft(Candidate):
+    evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
+
+
+class ProposalDraft(StrictModel):
+    items: list[CandidateDraft] = Field(max_length=24)
+    reason: str
+
+
+class EntityDraft(EntityDecision):
+    evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
+
+
+class MemoryEditDraft(MemoryEdit):
+    evidence: list[SourceCitation] = Field(max_length=12)
+
+
+class MaintenanceDraft(StrictModel):
+    entities: list[EntityDraft] = Field(max_length=40)
+    edits: list[MemoryEditDraft] = Field(max_length=24)
+    discarded: list[DiscardedCandidate] = Field(max_length=24)
 
 
 class Revision(StrictModel):
@@ -156,13 +219,20 @@ class Revision(StrictModel):
     time_resolution: Literal["rule", "unknown"]
     time_precision: Literal["day", "instant", "unknown"] = "unknown"
     operation: str
+    tags: list[MemoryKind] = Field(default_factory=list)
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    roles: list[EntityRole] = Field(default_factory=list)
+    assertions: list[Assertion] = Field(default_factory=list)
+    attributes: list[LiteralAttribute] = Field(default_factory=list)
+    links: list[BoundMemoryLink] = Field(default_factory=list)
+    temporal_scope: Literal["ongoing", "episodic", "unknown"] = "unknown"
+    replaces_revision_id: str | None = None
+    change: str = "new"
 
 
 class Memory(StrictModel):
     id: str
     owner: str
-    kind: MemoryKind
-    object_ids: list[str]
     revisions: list[Revision]
     impact: Literal["high", "low", "unknown"]
     pinned: bool = False
@@ -173,12 +243,29 @@ class Memory(StrictModel):
         from .clock import parse_time
         return max(self.revisions, key=lambda revision: (parse_time(revision.observed_at), parse_time(revision.created_at), revision.id))
 
+    @property
+    def tags(self) -> list[MemoryKind]:
+        return self.current.tags
+
+    @property
+    def object_ids(self) -> list[str]:
+        return list(dict.fromkeys(role.entity_ref for role in self.current.roles))
+
+
+class AliasEvidence(StrictModel):
+    name: str
+    source_id: str
+    observed_at: str
+
 
 class GraphObject(StrictModel):
     id: str
     owner: str
     kind: str
     name: str
+    is_self: bool = False
+    aliases: list[AliasEvidence] = Field(default_factory=list)
+    observed_at: str
 
 
 class Edge(StrictModel):
@@ -186,8 +273,12 @@ class Edge(StrictModel):
     owner: str
     origin: str
     target: str
-    relation: Literal["about", "supported_by", "revises"]
+    relation: Literal["involves", "assertion", "related", "supported_by", "revises"]
+    label: str = ""
+    revision_id: str
+    memory_id: str
     source_id: str
+    target_revision_id: str | None = None
 
 
 class SourceWindow(StrictModel):
@@ -205,6 +296,10 @@ class MemoryEvidence(StrictModel):
     event_at: str | None
     status: str
     time_precision: Literal["day", "instant", "unknown"] = "unknown"
+    valid_from: str | None = None
+    valid_to: str | None = None
+    observed_at: str | None = None
+    temporal_scope: str = "unknown"
 
 
 class Document(StrictModel):

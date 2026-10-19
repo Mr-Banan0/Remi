@@ -33,8 +33,8 @@ def analyze(report):
             "hot_conditions": result["trace"]["hot_conditions"], "selected_conditions": result["trace"]["selected_conditions"]})
     derivation = report.get("derivation", {})
     units = [unit for group in derivation.values() for request in group["requests"] for unit in request["units"].values()]
-    commands = [command for unit in units for command in unit["commands"]]
-    disposition = Counter(item["error"] for unit in units for item in unit["rejected"])
+    commands = [command for unit in units for command in unit.get("maintain", {}).get("edits", unit.get("commands", []))]
+    disposition = Counter(item["error"] for unit in units for item in unit.get("rejected", []))
     validations = [entry for unit in units for item in unit.get("validation", [])
                    for entry in (item.get("validation", []) if item.get("pipeline") else [item])]
     source_calls = report["diagnostic_calls"]
@@ -43,9 +43,9 @@ def analyze(report):
     return {"complete": report["complete"], "scope": "retrieval evidence diagnosis; no final-answer judge",
         "bad_cases": details, "lifecycle_failures": [item["query"] for item in report["lifecycle_searches"]
                                                       if not item["top1_expected_evidence"]],
-        "memory_kinds": dict(Counter(memory["kind"] for memory in memories)),
+        "memory_kinds": dict(Counter(tag for memory in memories for tag in memory["revisions"][-1].get("tags", [memory.get("kind", "unknown")]))),
         "commands": dict(Counter(command["operation"] for command in commands)),
-        "commands_by_kind": dict(Counter(command["kind"] for command in commands)),
+        "commands_by_kind": dict(Counter(tag for command in commands for tag in command.get("tags", [command.get("kind", "unknown")]))),
         "dispositions": dict(disposition),
         "validation_failures_by_stage": dict(Counter(item["stage"] + "|" + item["error"]
             for item in validations if item.get("error"))),
@@ -53,7 +53,7 @@ def analyze(report):
             for item in validations if item.get("error"))),
         "unavailable_condition_selection_count": sum(result["trace"].get("unavailable_condition_selection_count", 0)
             for result in report["questions"]),
-        "unknown_event_times": sum(memory["kind"] == "event" and memory["revisions"][-1]["event_at"] is None for memory in memories),
+        "unknown_event_times": sum("event" in memory["revisions"][-1].get("tags", [memory.get("kind")]) and memory["revisions"][-1]["event_at"] is None for memory in memories),
         "physical_call_seconds": {kind: {"count": sum(call["kind"] == kind for call in source_calls),
             "total_seconds": sum(call["seconds"] for call in source_calls if call["kind"] == kind)} for kind in kinds},
         "tool_coverages": dict(Counter(tool["coverage"] for result in report["questions"]

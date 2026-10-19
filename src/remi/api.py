@@ -24,8 +24,8 @@ def environment_engine():
         raise RuntimeError("backend_must_be_sqlite_or_memory")
     store = SQLiteStore(os.getenv("REMI_DB_PATH", ".local-data/remi.sqlite3")) if backend == "sqlite" else MemoryStore()
     try:
-        model, embedder, reranker, judger = providers_from_environment()
-        return MemoryEngine(store, model, embedder, reranker, Settings.from_environment(), judger)
+        model, embedder, reranker = providers_from_environment()
+        return MemoryEngine(store, model, embedder, reranker, Settings.from_environment())
     except Exception:
         store.close()
         raise
