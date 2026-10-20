@@ -40,22 +40,25 @@ def resolve_mentions(store, owner, mentions, sources, observed_at):
     for mention in mentions:
         name = mention.name.strip()
         norm = normalized_name(name)
-        is_self = norm == 'self'
+        is_user = norm == 'user'
         support = next((s for s in source_texts if source_name_present(norm, s[1])), None)
-        if is_self:
-            support = source_texts[0]
+        if is_user:
+            support = next((text for text, source in zip(source_texts, sources) if source.get('role') == 'user'), None)
         if support is None:
-            dispositions.append({'name': name, 'status': 'pending', 'reason': 'mention_requires_source_name'})
+            dispositions.append({'name': name, 'status': 'pending', 'reason':
+                                 'user_requires_user_source' if is_user else 'mention_requires_source_name'})
             continue
-        matches = [e for e in catalog if (e.is_self if is_self else not e.is_self and norm in
+        matches = [e for e in catalog if (e.is_user if is_user else not e.is_user and norm in
                    {normalized_name(e.name), *[normalized_name(a.name) for a in e.aliases]})]
         if len(matches) > 1:
             dispositions.append({'name': name, 'status': 'pending', 'reason': 'ambiguous_exact_identity'})
             continue
-        key = matches[0].id if matches else stable_id('obj_', owner, 'self' if is_self else norm)
+        key = matches[0].id if matches else stable_id('obj_', owner, 'user' if is_user else norm)
         raw = store.get('objects', owner, key)
-        obj = GraphObject.model_validate(raw) if raw else GraphObject(id=key, owner=owner, name='self' if is_self else name,
-              kind='person' if is_self else 'entity', is_self=is_self, observed_at=observed_at)
+        obj = GraphObject.model_validate(raw) if raw else GraphObject(id=key, owner=owner, name='user' if is_user else name,
+              kind='person' if is_user else 'entity', is_user=is_user, observed_at=observed_at)
+        if is_user and parse_time(obj.observed_at) > parse_time(observed_at):
+            obj = obj.model_copy(update={'observed_at': observed_at, 'aliases': []})
         if parse_time(obj.observed_at) > parse_time(observed_at):
             dispositions.append({'name': name, 'status': 'pending', 'reason': 'identity_not_yet_visible'})
             continue

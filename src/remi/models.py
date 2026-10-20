@@ -71,6 +71,8 @@ class EvidenceRef(StrictModel):
 
 RecordType = Literal['relation', 'event']
 ExpressionMode = Literal['asserted', 'desired', 'requested', 'hypothetical', 'document']
+UserInvolvement = Literal['involved', 'not_involved', 'uncertain']
+ConfirmedUserInvolvement = Literal['involved', 'not_involved']
 
 
 class Mention(StrictModel):
@@ -80,7 +82,8 @@ class Mention(StrictModel):
 class Candidate(StrictModel):
     id: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=4000)
-    mentions: list[Mention] = Field(max_length=12)
+    user_involvement: UserInvolvement
+    mentions: list[Mention] = Field(max_length=13)
     evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
 
 
@@ -95,6 +98,7 @@ class SourceCitation(StrictModel):
 
 class CandidateDraft(StrictModel):
     content: str = Field(min_length=1, max_length=4000)
+    user_involvement: UserInvolvement = Field(description='Current user participates in this proposition; Source separately tracks authorship.')
     mentions: list[Mention] = Field(max_length=12)
     evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
 
@@ -115,6 +119,7 @@ class CardDecision(StrictModel):
     record_type: RecordType | None = None
     content: str | None = Field(default=None, max_length=4000)
     mode: ExpressionMode | None = None
+    user_involvement: ConfirmedUserInvolvement | None = None
     context: str | None = Field(default=None, max_length=300)
     status: EventStatus | None = None
     event_change: Literal['reschedule', 'complete', 'cancel'] | None = None
@@ -130,6 +135,7 @@ class CreateDraft(StrictModel):
     record_type: RecordType
     content: str = Field(min_length=1, max_length=4000)
     mode: ExpressionMode
+    user_involvement: ConfirmedUserInvolvement = Field(description='Reviewed participation in the final proposition, distinct from source authorship.')
     context: str | None = Field(max_length=300)
     status: EventStatus | None
     time_expression: str | None = Field(max_length=300)
@@ -169,6 +175,7 @@ class Revision(StrictModel):
     quote: str
     evidence: list[EvidenceRef]
     entity_ids: list[str]
+    user_involvement: ConfirmedUserInvolvement
     mode: ExpressionMode
     context: str
     status: Literal['stated', 'planned', 'occurred', 'cancelled', 'desired', 'unknown']
@@ -183,7 +190,7 @@ class Revision(StrictModel):
 
 
 class Memory(StrictModel):
-    schema_version: Literal[10] = 10
+    schema_version: Literal[11] = 11
     id: str
     owner: str
     record_type: RecordType
@@ -194,6 +201,10 @@ class Memory(StrictModel):
 
     @model_validator(mode='after')
     def record_contract(self):
+        from .identity import stable_id
+        user_id = stable_id('obj_', self.owner, 'user')
+        if any((r.user_involvement == 'involved') != (user_id in r.entity_ids) for r in self.revisions):
+            raise ValueError('revision_user_binding_matches_involvement')
         if self.record_type == 'relation' and (len(self.revisions) != 1 or self.current.status != 'stated'):
             raise ValueError('relation_cards_are_append_only')
         if self.record_type == 'event' and any(r.status == 'stated' for r in self.revisions):
@@ -221,14 +232,22 @@ class AliasEvidence(StrictModel):
 
 
 class GraphObject(StrictModel):
-    schema_version: Literal[10] = 10
+    schema_version: Literal[11] = 11
     id: str
     owner: str
     name: str
     kind: str = 'entity'
-    is_self: bool = False
+    is_user: bool = False
     aliases: list[AliasEvidence] = Field(default_factory=list)
     observed_at: str
+
+    @model_validator(mode='after')
+    def user_contract(self):
+        from .identity import stable_id
+        canonical = self.id == stable_id('obj_', self.owner, 'user')
+        if canonical != self.is_user or (self.is_user and (self.name != 'user' or self.kind != 'person')):
+            raise ValueError('user_entity_uses_canonical_owner_identity')
+        return self
 
 
 class Edge(StrictModel):

@@ -19,7 +19,7 @@ def _example(name, text, kind=None, operation="create", content=None, old=None, 
         "operation": operation, "target_id": target_id if operation != "create" else None,
         "kind": kind, "content": content, "source_id": source_id,
         "context_source_ids": [] if context is None else [f"synthetic_context_{name}"],
-        "quote": text, "objects": [{"kind": "user", "name": "self"}],
+        "quote": text, "objects": [{"kind": "user", "name": "user"}],
         "time_expression": time_expression, "end_expression": None,
         "status": "occurred" if kind == "event" else "stated", "impact": "unknown",
     }]

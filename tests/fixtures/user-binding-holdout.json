@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {"id":"holdout-commute","steps":[{"text":"我的通勤自行车叫 Nebula。","claims":[{"contains":"Nebula","user":true}]}]},
+    {"id":"holdout-mixed-ownership","steps":[{"text":"I am a member of Pine Studio. Ezra owns the Atlas camera.","claims":[{"contains":"Pine Studio","user":true,"subject":"Pine Studio"},{"contains":"Atlas","user":false,"subject":"Ezra"}]}]},
+    {"id":"holdout-assistant-draft","steps":[{"text":"An assistant draft says: \"I moved to Bergen.\" This is sample prose.","claims":[{"contains":"Bergen","user":false,"pending_allowed":true}]}]},
+    {"id":"holdout-pet","steps":[{"text":"Sable, my cat, fears thunderstorms.","claims":[{"contains":"thunder","user":false,"subject":"Sable"}]}]},
+    {"id":"holdout-own-quotation","steps":[{"text":"Last week I wrote in my journal: \"I prefer hiking.\"","claims":[{"contains":"hiking","user":true}]}]},
+    {"id":"holdout-hypothetical","steps":[{"text":"If I relocate to Merrow, I will look for a garden.","claims":[{"contains":"Merrow","user":true}]}]},
+    {"id":"holdout-shared-work","steps":[{"text":"Kiran and I share maintenance of the Helix server.","claims":[{"contains":"Helix","user":true,"subject":"Kiran"}]}]},
+    {"id":"holdout-reported-approval","steps":[{"text":"Milo reported that Oriel approved the Ridge budget.","claims":[{"contains":"Ridge","user":false,"subject":"Oriel"}]}]},
+    {"id":"holdout-transcript","steps":[{"text":"The archived transcript labels the speaker as Petra: \"I collect miniature trains.\"","claims":[{"contains":"train","user":false,"subject":"Petra"}]}]}
+  ]
+}

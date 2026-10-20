@@ -15,9 +15,9 @@ from remi.storage import MemoryStore
 from tests.helpers import HashEmbedder, query, request
 
 
-def card(cid, *, kind='event', content='One occurrence', status='planned', mode='asserted', time=None, context='personal'):
+def card(cid, *, kind='event', content='One occurrence', status='planned', mode='asserted', time=None, context='personal', user='involved'):
     return {'candidate_id':cid,'operation':'create','target_id':None,'record_type':kind,'content':content,
-            'mode':mode,'context':context,'status':status if kind=='event' else None,
+            'mode':mode,'user_involvement':user,'context':context,'status':status if kind=='event' else None,
             'event_change':None,'time_expression':time,'reason':'source-supported independent card'}
 
 
@@ -35,6 +35,7 @@ class DirectModel:
         if callable(self.claims):
             return self.claims(state)
         return {'items':[{'content':content,'mentions':[{'name':n} for n in names],
+                         'user_involvement':'involved' if 'user' in names else 'not_involved',
                          'evidence':[{'source_id':state['new_user_source']['id']}]} for i,(content,names) in enumerate(self.claims)],'reason':'independent source fixture'}
     def maintain(self, state, *, deadline):
         self.maintenance.append(deepcopy(state))
@@ -44,7 +45,7 @@ class DirectModel:
         return {'steps':[],'relevant_memory_ids':[]}
 
 
-def model(claim, decision, names=('self',)):
+def model(claim, decision, names=('user',)):
     return DirectModel([(claim,list(names))],[decision])
 
 
@@ -55,7 +56,7 @@ def disposition(engine, rid):
 @pytest.mark.parametrize('terminal,expected,day',[('complete','occurred','2024-06-12'),('cancel','cancelled',None)])
 def test_plan_reschedule_terminal_and_new_occurrence_are_independent(terminal, expected, day):
     m=DirectModel([('Mira arranges the rehearsal',['Mira']),('Mira prefers quiet rooms',['Mira'])],
-        [card('0',content='Mira rehearsal',time='June 8'),card('1',kind='relation',content='Mira prefers quiet rooms')])
+        [card('0',content='Mira rehearsal',user='not_involved',time='June 8'),card('1',kind='relation',content='Mira prefers quiet rooms',user='not_involved')])
     engine=MemoryEngine(model=m,embedder=HashEmbedder())
     engine.add(request('Mira scheduled the rehearsal for June 8. Mira prefers quiet rooms.'))
     event=next(x for x in engine.store.memories('u1') if x.record_type=='event')
@@ -73,7 +74,7 @@ def test_plan_reschedule_terminal_and_new_occurrence_are_independent(terminal, e
     assert len(updated.current.evidence)==3 and all(e.quote in [s.content for s in engine.store.sources('u1',[e.source_id])] for e in updated.current.evidence)
     assert engine.store.memories('u1',[relation.id])[0]==relation
     assert visible_memory(updated,'2024-06-03T00:00:00Z').current.planned_at.startswith('2024-06-08')
-    engine.model=model('Mira arranges another rehearsal',card('0',content='A second Mira rehearsal',time='June 20'),['Mira'])
+    engine.model=model('Mira arranges another rehearsal',card('0',content='A second Mira rehearsal',user='not_involved',time='June 20'),['Mira'])
     engine.add(request('Mira scheduled a separate rehearsal for June 20.',request_id='r4',when='2024-06-13T10:00:00Z'))
     assert len([x for x in engine.store.memories('u1') if x.record_type=='event'])==2
     assert len(engine.store.list('objects','u1'))==1
@@ -81,7 +82,7 @@ def test_plan_reschedule_terminal_and_new_occurrence_are_independent(terminal, e
 
 
 def test_independent_bad_candidate_is_repaired_alone_and_pending_is_only_a_hint():
-    m=DirectModel([('I prefer warm light',['self']),('A booking has uncertain time',[])],lambda state:
+    m=DirectModel([('I prefer warm light',['user']),('A booking has uncertain time',[])],lambda state:
         {'decisions':[card(c['id'],kind='relation',content=c['content']) if c['id']=='0' else
                       card(c['id'],time='next solstice') for c in state['proposal']['items']]})
     engine=MemoryEngine(model=m,embedder=HashEmbedder())
@@ -120,7 +121,7 @@ def test_conflicting_event_group_does_not_block_independent_state():
     engine=MemoryEngine(model=model('I arrange a visit',card('0',content='Visit')))
     engine.add(request('I arrange a visit.'))
     target=engine.store.memories('u1')[0]
-    engine.model=DirectModel([('Visit June 10',[]),('Visit June 11',[]),('I prefer daylight',['self'])],
+    engine.model=DirectModel([('Visit June 10',[]),('Visit June 11',[]),('I prefer daylight',['user'])],
         [action('0','patch_event',target.id,'reschedule','June 10'),action('1','patch_event',target.id,'reschedule','June 11'),
          card('2',kind='relation',content='I prefer daylight')])
     engine.add(request('Visit June 10, or June 11; I prefer daylight.',request_id='r2'))
@@ -133,7 +134,7 @@ def test_duplicate_identical_patch_is_one_revision_with_shared_evidence():
     engine=MemoryEngine(model=model('I arrange a visit',card('0',content='Visit')))
     engine.add(request('I arrange a visit.'))
     target=engine.store.memories('u1')[0]
-    engine.model=DirectModel([('Visit cancelled',[]),('I cancel the visit',['self'])],
+    engine.model=DirectModel([('Visit cancelled',[]),('I cancel the visit',['user'])],
         [action(str(i),'patch_event',target.id,'cancel') for i in range(2)])
     engine.add(request('I cancelled the visit.',request_id='r2'))
     after=engine.store.memories('u1')[0]
@@ -144,7 +145,7 @@ def test_shared_repair_budget_and_invalid_json_stay_bounded():
     def propose(state):
         if not state.get('repair_errors'):
             raise OutputInvalid('invalid JSON')
-        return {'items':[{'content':'I made a plan','mentions':[],'evidence':[{'source_id':state['new_user_source']['id']}]}],'reason':'repaired'}
+        return {'items':[{'content':'I made a plan','user_involvement':'involved','mentions':[],'evidence':[{'source_id':state['new_user_source']['id']}]}],'reason':'repaired'}
     m=DirectModel(propose,lambda state: (_ for _ in ()).throw(OutputInvalid('invalid maintenance JSON')))
     engine=MemoryEngine(model=m)
     engine.add(request('I made a plan.'))
@@ -159,7 +160,7 @@ def test_retry_reuses_good_sibling_and_only_retries_failed_provider_stage():
             raise ProviderUnavailable('offline outage')
         return {'decisions':[card(c['id'],kind='relation',content=c['content']) if ready or c['id']=='0' else {'candidate_id':'1'}
                              for c in state['proposal']['items']]}
-    m=DirectModel([('I like shade',['self']),('I like calm',['self'])],maintain)
+    m=DirectModel([('I like shade',['user']),('I like calm',['user'])],maintain)
     engine=MemoryEngine(model=m)
     with pytest.raises(ProviderUnavailable): engine.add(request('I like shade and calm.'))
     assert not engine.store.memories('u1')
@@ -237,8 +238,8 @@ def test_context_only_candidates_are_audited_without_spending_repair_budget():
     engine.add(request('I prefer a quiet room.'))
     old=engine.store.list('sources','u1')[0]['id']
     def proposed(state):
-        return {'items':[{'content':'I prefer a quiet room','mentions':[], 'evidence':[{'source_id':old}]},
-            {'content':'I made a booking','mentions':[], 'evidence':[{'source_id':state['new_user_source']['id']}]}],'reason':'fixture'}
+        return {'items':[{'content':'I prefer a quiet room','user_involvement':'involved','mentions':[], 'evidence':[{'source_id':old}]},
+            {'content':'I made a booking','user_involvement':'involved','mentions':[], 'evidence':[{'source_id':state['new_user_source']['id']}]}],'reason':'fixture'}
     engine.model=DirectModel(proposed,[card('1',content='Booking')])
     engine.add(request('I made a booking.',request_id='r2'))
     assert len(engine.store.memories('u1'))==1 and len(engine.model.proposals)==1 and len(engine.model.maintenance)==1
@@ -258,7 +259,7 @@ def test_maintenance_wire_exposes_only_operation_fields(cid):
 
 
 def test_program_assigns_candidate_ids_and_keeps_operation_namespaces_separate():
-    m=DirectModel([('I prefer blue',['self']),('I prefer quiet',['self'])],lambda state:
+    m=DirectModel([('I prefer blue',['user']),('I prefer quiet',['user'])],lambda state:
         {'decisions':[card(c['id'],kind='relation',content=c['content']) for c in state['proposal']['items']]})
     engine=MemoryEngine(model=m)
     engine.add(request('I prefer blue and quiet.'))
@@ -267,7 +268,7 @@ def test_program_assigns_candidate_ids_and_keeps_operation_namespaces_separate()
 
 
 def test_stale_model_history_is_recalled_again_before_any_patch_is_applied():
-    engine=MemoryEngine(model=model('Mira arranges a visit',card('0',content='Mira visit'),['Mira']))
+    engine=MemoryEngine(model=model('Mira arranges a visit',card('0',content='Mira visit',user='not_involved'),['Mira']))
     engine.add(request('Mira arranges a visit.'))
     target=engine.store.memories('u1')[0]
     called=0
@@ -310,14 +311,14 @@ def test_index_time_concurrent_future_revision_survives_transaction_conflict():
 
 
 def test_concurrent_entity_attestations_survive_new_card_commit():
-    engine=MemoryEngine(model=model('Mira likes shade',card('0',kind='relation',content='Mira likes shade'),['Mira']))
+    engine=MemoryEngine(model=model('Mira likes shade',card('0',kind='relation',content='Mira likes shade',user='not_involved'),['Mira']))
     engine.add(request('Mira likes shade.'))
     obj=engine.store.list('objects','u1')[0]
     def maintain(state):
         latest=engine.store.get('objects','u1',obj['id'])
         latest['aliases'].append({'name':'MIRA','source_id':latest['aliases'][0]['source_id'],'observed_at':latest['observed_at']})
         engine.store.put('objects','u1',obj['id'],latest)
-        return {'decisions':[card('0',kind='relation',content='Mira likes calm')]}
+        return {'decisions':[card('0',kind='relation',content='Mira likes calm',user='not_involved')]}
     engine.model=DirectModel([('Mira likes calm',['Mira'])],maintain)
     engine.add(request('Mira likes calm.',request_id='r2'))
     assert any(a['name']=='MIRA' for a in engine.store.get('objects','u1',obj['id'])['aliases'])
@@ -334,7 +335,7 @@ def test_cancellation_uses_status_only_and_repair_preserves_planned_date():
     engine=MemoryEngine(model=model('I arrange a visit',card('0',content='Visit',time='June 8')))
     engine.add(request('I arrange a visit on June 8.'))
     target=engine.store.memories('u1')[0]
-    m=DirectModel([('I cancel that visit',['self'])],lambda state:{'decisions':[
+    m=DirectModel([('I cancel that visit',['user'])],lambda state:{'decisions':[
         action('0','patch_event',target.id,'cancel',None if state.get('repair_errors') else 'June 8')]})
     engine.model=m
     engine.add(request('I cancelled that visit.',request_id='r2'))

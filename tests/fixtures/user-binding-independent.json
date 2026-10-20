@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {"id":"personal-english","steps":[{"text":"I keep a paper journal.","claims":[{"contains":"journal","user":true}]}]},
+    {"id":"personal-chinese","steps":[{"text":"我习惯睡前拉伸。","claims":[{"contains_any":["拉伸","stretch"],"user":true}]}]},
+    {"id":"personal-spanish","steps":[{"text":"Uso el cuaderno Lumen todos los días.","claims":[{"contains":"Lumen","user":true}]}]},
+    {"id":"named-third-person","steps":[{"text":"Rhea prefers ceramic cups.","claims":[{"contains":"ceramic","user":false,"subject":"Rhea"}]}]},
+    {"id":"quoted-speaker","steps":[{"text":"Orin said, \"I prefer the Juniper notebook.\"","claims":[{"contains":"Juniper","user":false,"subject":"Orin"}]}]},
+    {"id":"archived-document","steps":[{"text":"This archived journal excerpt was written by Tessa: \"I use the Cedar notebook every evening.\"","claims":[{"contains":"Cedar","user":false,"subject":"Tessa"}]}]},
+    {"id":"anonymous-quote","steps":[{"text":"An unsigned note reads: \"I use the Kestrel notebook.\"","claims":[{"contains":"Kestrel","user":false,"pending_allowed":true}]}]},
+    {"id":"mixed-speakers","steps":[{"text":"I use the Willow notebook. Daria wrote, \"I use the Aspen notebook.\"","claims":[{"contains":"Willow","user":true},{"contains":"Aspen","user":false,"subject":"Daria"}]}]},
+    {"id":"collective-membership","steps":[{"text":"I volunteer with Harbor Circle.","claims":[{"contains":"Harbor Circle","user":true,"subject":"Harbor Circle"}]}]},
+    {"id":"indirect-endpoint","steps":[{"text":"Juno lends the Quartz tablet to me on weekends.","claims":[{"contains":"Quartz","user":true,"subject":"Juno"}]}]},
+    {"id":"story-attribution","steps":[{"text":"I am drafting a fictional story. In the story, Niko says: \"I prefer the Amber notebook.\"","claims":[{"contains":"Amber","user":false,"subject":"Niko"}]}]},
+    {"id":"contextual-we","steps":[{"text":"Vera is my study partner.","claims":[{"contains":"Vera","user":true,"subject":"Vera"}]},{"text":"We both prefer the Drift notebook.","claims":[{"contains":"Drift","user":true}]}]},
+    {"id":"empty-acknowledgement","steps":[{"text":"No new information, thank you.","empty":true}]},
+    {"id":"source-owner-boundary","steps":[{"text":"The manual defines 'user' as a person who operates a device.","claims":[{"contains":"device","user":false}]}]}
+  ]
+}

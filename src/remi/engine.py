@@ -178,12 +178,12 @@ class MemoryEngine:
             memory = visible_memory(original, as_of)
             if memory and source_ids.intersection(memory.current.source_ids):
                 ids.add(memory.id)
-        self_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_self')}
-        entities = {e.target for e in edges if e.origin in ids} - self_ids
+        user_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_user')}
+        entities = {e.target for e in edges if e.origin in ids} - user_ids
         normalized_query = normalized_name(query)
         for raw in self.store.list('objects', owner):
             entity = visible_entity(GraphObject.model_validate(raw), as_of)
-            if entity is None or entity.id in self_ids:
+            if entity is None or entity.id in user_ids:
                 continue
             if any(len(normalized_name(n)) > 2 and normalized_name(n) in normalized_query for n in [entity.name, *[a.name for a in entity.aliases]]):
                 entities.add(entity.id)

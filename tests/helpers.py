@@ -21,7 +21,7 @@ def command(state, content=None, *, kind="event", operation="create", target=Non
     source = state["new_user_source"]
     return {"operation": operation, "target_id": target, "kind": kind, "content": content or source["content"],
             "source_id": source["id"], "context_source_ids": [], "quote": quote or source["content"],
-            "objects": objects if objects is not None else ([{"kind": "user", "name": "self"}] if re.search(r"\b(I|me|my)\b|我", source["content"], re.I) else []),
+            "objects": objects if objects is not None else ([{"kind": "user", "name": "user"}] if re.search(r"\b(I|me|my)\b|我", source["content"], re.I) else []),
             "time_expression": time, "end_expression": None, "status": status or ("occurred" if kind == "event" else "stated"),
             "impact": "unknown"}
 
@@ -42,6 +42,7 @@ class ScriptedModel:
         self.raw_commands = result.get('commands', [])
         return {'items': [{'content': raw['content'],
             'mentions': [{'name': obj['name']} for obj in raw.get('objects', [])],
+            'user_involvement': 'involved' if any(o['name']=='user' for o in raw.get('objects',[])) else 'not_involved',
             'evidence': [{'source_id': sid} for sid in [raw['source_id'], *raw.get('context_source_ids', [])]]}
             for i, raw in enumerate(self.raw_commands)], 'reason': 'offline intent fixture'}
 
@@ -66,6 +67,7 @@ class ScriptedModel:
                 'record_type': kind if operation == 'create' else None,
                 'content': raw['content'] if operation == 'create' else None,
                 'mode': raw.get('mode', 'asserted') if operation == 'create' else None,
+                'user_involvement': candidate['user_involvement'] if operation == 'create' else None,
                 'context': raw.get('context', 'personal') if operation == 'create' else None,
                 'status': raw['status'] if kind == 'event' and operation == 'create' else None,
                 'event_change': change,
