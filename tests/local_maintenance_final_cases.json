@@ -1,0 +1,137 @@
+{
+  "purpose": "Two development rechecks and two fresh mixed-language cases; expectations never enter production calls",
+  "cases": [
+    {
+      "id": "independent-garden-v1",
+      "steps": [
+        {
+          "text": "Tariq has a plot inspection booked for March 8. Tariq prefers a shaded meeting spot.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "The plot inspection for Tariq has been moved to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "That plot inspection for Tariq was completed today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "A separate plot inspection for Tariq is booked for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Tariq also has another, separate plot inspection scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming plot inspection bookings for Tariq may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-service-v2",
+      "steps": [
+        {
+          "text": "March 8 is the scheduled date of the filter servicing involving Leena. Leena prefers a paper invoice.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "Please record this confirmed change: Leena will have that same filter servicing on March 12 instead.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Leena cancelled that filter servicing.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "Leena made a fresh booking for filter servicing, this time on March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Leena also has another, separate filter servicing scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming filter servicing bookings for Leena may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "fresh-museum",
+      "steps": [
+        {
+          "text": "Iona scheduled an archive access review for March 8. Iona prefers written instructions.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "That archive access review involving Iona is rescheduled to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Iona finished that archive access review today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "Iona scheduled a new, separate archive access review for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "A further independent archive access review for Iona is booked on March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "Either of the two future archive access review bookings for Iona might move to March 28; the affected booking is still unidentified.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "fresh-community",
+      "steps": [
+        {
+          "text": "星湾社区安排了一次器材安全检查，日期定在3月8日。星湾社区习惯提前发放纸质清单。",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "星湾社区之前安排的那次器材安全检查改为3月12日。",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "星湾社区已取消原先那一次器材安全检查。",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "星湾社区全新安排了另一次器材安全检查，定在3月20日。",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "星湾社区还有另外独立的一次器材安全检查，定于3月25日。",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "星湾社区未来两次器材安全检查中，有一场可能改到3月28日，具体是哪场仍然不清楚。",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    }
+  ]
+}

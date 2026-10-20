@@ -1,0 +1,269 @@
+{
+  "purpose": "Independent lifecycle validation; expected fields are evaluated outside MemoryEngine",
+  "cases": [
+    {
+      "id": "independent-garden-v1",
+      "steps": [
+        {
+          "text": "Tariq has a plot inspection booked for March 8. Tariq prefers a shaded meeting spot.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "The plot inspection for Tariq has been moved to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "That plot inspection for Tariq was completed today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "A separate plot inspection for Tariq is booked for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Tariq also has another, separate plot inspection scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming plot inspection bookings for Tariq may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-garden-v2",
+      "steps": [
+        {
+          "text": "March 8 is the scheduled date of the plot inspection involving Tariq. Tariq prefers a shaded meeting spot.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "Please record this confirmed change: Tariq will have that same plot inspection on March 12 instead.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Tariq cancelled that plot inspection.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "Tariq made a fresh booking for plot inspection, this time on March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Tariq also has another, separate plot inspection scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming plot inspection bookings for Tariq may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-service-v1",
+      "steps": [
+        {
+          "text": "Leena has a filter servicing booked for March 8. Leena prefers a paper invoice.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "The filter servicing for Leena has been moved to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "That filter servicing for Leena was completed today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "A separate filter servicing for Leena is booked for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Leena also has another, separate filter servicing scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming filter servicing bookings for Leena may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-service-v2",
+      "steps": [
+        {
+          "text": "March 8 is the scheduled date of the filter servicing involving Leena. Leena prefers a paper invoice.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "Please record this confirmed change: Leena will have that same filter servicing on March 12 instead.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Leena cancelled that filter servicing.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "Leena made a fresh booking for filter servicing, this time on March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Leena also has another, separate filter servicing scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming filter servicing bookings for Leena may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-animal-v1",
+      "steps": [
+        {
+          "text": "Juniper has a rabbit health check booked for March 8. Juniper settles more easily in a quiet waiting room.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "The rabbit health check for Juniper has been moved to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "That rabbit health check for Juniper was completed today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "A separate rabbit health check for Juniper is booked for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Juniper also has another, separate rabbit health check scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming rabbit health check bookings for Juniper may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-animal-v2",
+      "steps": [
+        {
+          "text": "March 8 is the scheduled date of the rabbit health check involving Juniper. Juniper settles more easily in a quiet waiting room.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "Please record this confirmed change: Juniper will have that same rabbit health check on March 12 instead.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Juniper cancelled that rabbit health check.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "Juniper made a fresh booking for rabbit health check, this time on March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Juniper also has another, separate rabbit health check scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming rabbit health check bookings for Juniper may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-team-v1",
+      "steps": [
+        {
+          "text": "Harbor Cooperative has a safety drill booked for March 8. Harbor Cooperative prefers afternoon sessions.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "The safety drill for Harbor Cooperative has been moved to March 12.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "That safety drill for Harbor Cooperative was completed today.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "occurred",
+          "actual": "2027-03-12"
+        },
+        {
+          "text": "A separate safety drill for Harbor Cooperative is booked for March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Harbor Cooperative also has another, separate safety drill scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming safety drill bookings for Harbor Cooperative may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "independent-team-v2",
+      "steps": [
+        {
+          "text": "March 8 is the scheduled date of the safety drill involving Harbor Cooperative. Harbor Cooperative prefers afternoon sessions.",
+          "at": "2027-03-01T10:00:00Z",
+          "date": "2027-03-08"
+        },
+        {
+          "text": "Please record this confirmed change: Harbor Cooperative will have that same safety drill on March 12 instead.",
+          "at": "2027-03-03T10:00:00Z",
+          "date": "2027-03-12"
+        },
+        {
+          "text": "Harbor Cooperative cancelled that safety drill.",
+          "at": "2027-03-12T10:00:00Z",
+          "status": "cancelled",
+          "actual": null
+        },
+        {
+          "text": "Harbor Cooperative made a fresh booking for safety drill, this time on March 20.",
+          "at": "2027-03-13T10:00:00Z"
+        },
+        {
+          "text": "Harbor Cooperative also has another, separate safety drill scheduled for March 25.",
+          "at": "2027-03-14T10:00:00Z"
+        },
+        {
+          "text": "One of the two upcoming safety drill bookings for Harbor Cooperative may move to March 28, but I do not know which one.",
+          "at": "2027-03-15T10:00:00Z"
+        }
+      ]
+    }
+  ]
+}

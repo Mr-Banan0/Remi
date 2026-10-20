@@ -39,16 +39,17 @@ def test_idempotence_and_conflict():
         engine.add(request("Another payload."))
 
 
-def test_supported_memories_commit_with_unsupported_optional_entity_audited():
-    model = ScriptedModel(lambda state, errors: {'commands': [command(state, 'Move completed', quote='Move completed'),
-        command(state, 'meeting cancelled.', quote='meeting cancelled.', objects=[{'kind':'person','name':'Unmentioned'}])]})
+def test_invalid_identity_keeps_good_sibling_and_indexes_pending_evidence():
+    model = ScriptedModel(lambda state, errors: {'commands': [command(state, 'Move completed'),
+        command(state, 'meeting cancelled.', objects=[{'kind': 'person', 'name': 'Unmentioned'}])]})
     engine = MemoryEngine(model=model)
     engine.add(request('Move completed; meeting cancelled.'))
-    assert len(engine.store.memories('u1'))==2
-    assert not any(e['name']=='Unmentioned' for e in engine.store.list('objects','u1'))
-    progress=engine.store.get('requests','u1','r1')
-    assert progress['status']=='complete' and progress['units']['0']['graph_dispositions']
-    assert engine.store.list('sources','u1')
+    assert [m.current.content for m in engine.store.memories('u1')] == ['Move completed']
+    progress = engine.store.get('requests', 'u1', 'r1')
+    assert progress['status'] == 'complete'
+    assert [d['status'] for d in progress['units']['0']['candidate_dispositions']] == ['accepted','pending']
+    assert any(d.id.startswith('doc_pending_') for d in engine.store.documents('u1'))
+    assert engine.store.list('sources', 'u1')
 
 
 def test_invalid_output_keeps_sources_and_a_retryable_checkpoint():
@@ -95,6 +96,7 @@ def test_embedding_retry_keeps_plan_and_writes_once():
 def test_updates_append_and_distinct_occurrences_stay_distinct():
     model = ScriptedModel()
     engine = MemoryEngine(model=model)
+    model.extractor = lambda state, errors: {"commands": [command(state, status="planned")]}
     engine.add(request("Project launch planned."))
     old = engine.store.memories("u1")[0]
     model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=old.id)]}
@@ -108,15 +110,16 @@ def test_updates_append_and_distinct_occurrences_stay_distinct():
     assert any(edge.relation == "revises" for edge in engine.store.edges_for("u1"))
 
 
-def test_recalled_update_can_change_descriptive_tags():
+def test_relation_and_event_targets_remain_independent():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, kind="preference")]})
     engine = MemoryEngine(model=model)
     engine.add(request("I like watermelon."))
     old = engine.store.memories("u1")[0]
     model.extractor = lambda state, errors: {"commands": [command(state, kind="event", operation="update", target=old.id)]}
     engine.add(request("Watermelon shipment arrived.", request_id="r2"))
-    assert len(engine.store.memories("u1")[0].revisions) == 2
-    assert engine.store.memories("u1")[0].tags == ["event"]
+    assert engine.store.get("requests","u1","r2")["units"]["0"]["candidate_dispositions"][0]["status"] == "pending"
+    assert len(engine.store.memories("u1")[0].revisions) == 1
+    assert engine.store.memories("u1")[0].record_type == "relation"
 
 
 def test_foreign_owner_target_and_sources_are_rejected():
@@ -125,8 +128,7 @@ def test_foreign_owner_target_and_sources_are_rejected():
     engine.add(request("Watermelon arrived."))
     target = engine.store.memories("u1")[0]
     model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=target.id)]}
-    with pytest.raises(ProviderUnavailable):
-        engine.add(request("Watermelon arrived.", owner="u2"))
+    engine.add(request("Watermelon arrived.", owner="u2"))
     assert not engine.store.memories("u2")
     assert not engine.search(query("Watermelon", owner="u3")).data
 
@@ -135,10 +137,9 @@ def test_final_time_failure_preserves_content_with_unknown_time():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, time="next solstice")]})
     engine = MemoryEngine(model=model)
     assert engine.add(request("I completed the move.")).success
-    memory = engine.store.memories("u1")[0]
-    assert memory.current.event_at is None
-    assert memory.current.content == "I completed the move."
-    assert len(model.extractions) == 1
+    assert not engine.store.memories("u1")
+    assert "completed the move" in engine.search(query("move")).data[0].content
+    assert len(model.maintenances) == 2
 
 
 def test_separate_events_get_their_own_dates_and_absolute_references():
@@ -147,9 +148,9 @@ def test_separate_events_get_their_own_dates_and_absolute_references():
                              command(state, "今天搬家", quote="今天搬家", time="今天")]}
     engine = MemoryEngine(model=ScriptedModel(extract))
     engine.add(request("昨天取消了明天的聚会，今天搬家。", when="2026-10-12T10:00:00+00:00"))
-    memories = sorted(engine.store.memories("u1"), key=lambda memory: memory.current.event_at)
+    memories = sorted(engine.store.memories("u1"), key=lambda memory: memory.current.event_at or memory.current.planned_at)
     assert len(memories) == 2
-    assert memories[0].current.event_at.startswith("2026-10-11")
+    assert memories[0].current.planned_at.startswith("2026-10-11")
     assert "2026-10-13" in memories[0].current.content
     assert memories[1].current.event_at.startswith("2026-10-12")
 
@@ -158,4 +159,4 @@ def test_separate_events_get_their_own_dates_and_absolute_references():
 def test_all_kinds_use_the_same_path(kind):
     engine = MemoryEngine(model=ScriptedModel(lambda state, errors: {"commands": [command(state, kind=kind)]}))
     engine.add(request("Concrete independently sourced memory."))
-    assert engine.store.memories("u1")[0].tags[0] == kind
+    assert engine.store.memories("u1")[0].record_type == ("event" if kind == "event" else "relation")

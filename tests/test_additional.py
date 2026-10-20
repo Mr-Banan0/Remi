@@ -18,29 +18,25 @@ def test_same_content_distinct_dated_occurrences_in_one_source():
     assert {memory.current.event_at[:10] for memory in memories} == {"2024-06-02", "2024-06-09"}
 
 
-def test_expiry_changes_hot_view_while_history_stays_available():
-    def extract(state, errors):
-        draft = command(state, kind="fact", quote="2024-06-02至2024-06-09暂停工作", time="2024-06-02")
-        draft["end_expression"] = "2024-06-09"
-        return {"commands": [draft]}
-    engine = MemoryEngine(model=ScriptedModel(extract))
-    engine.add(request("2024-06-02至2024-06-09暂停工作。"))
-    assert hot_view(engine.store.memories("u1"), "2024-06-03T00:00:00Z")
-    assert not hot_view(engine.store.memories("u1"), "2024-06-10T00:00:00Z")
-    assert len(engine.store.memories("u1")) == 1
-    assert engine.store.documents("u1")
+def test_time_bounded_statement_keeps_its_scope_in_content_and_evidence():
+    text = '2024-06-02至2024-06-09暂停工作。'
+    engine = MemoryEngine(model=ScriptedModel(lambda state, errors: {'commands': [command(state, kind='fact')]}))
+    engine.add(request(text))
+    memory = engine.store.memories('u1')[0]
+    assert memory.current.content == text and memory.current.evidence[0].quote == text
+    assert memory.current.observed_at.startswith('2024-06-02')
+    assert '2024-06-09' in memory.current.content
 
 
-def test_retract_retains_history_and_removes_current_condition():
-    model = ScriptedModel(lambda state, errors: {"commands": [command(state, kind="preference")]})
+def test_relation_withdrawal_is_pending_and_keeps_original_statement():
+    model = ScriptedModel(lambda state, errors: {'commands': [command(state, kind='preference')]})
     engine = MemoryEngine(model=model)
-    engine.add(request("I prefer watermelon."))
-    memory = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, kind="preference", operation="retract", target=memory.id)]}
-    engine.add(request("I withdraw my preference for watermelon.", request_id="r2", when="2024-06-03T10:00:00Z"))
-    assert not hot_view(engine.store.memories("u1"), "2024-06-04T00:00:00Z")
-    assert len(engine.store.memories("u1")[0].revisions) == 2
-    assert hot_view(engine.store.memories("u1"), "2024-06-02T12:00:00Z")
+    engine.add(request('I prefer watermelon.'))
+    memory = engine.store.memories('u1')[0]
+    model.extractor = lambda state, errors: {'commands': [command(state, kind='preference', operation='retract', target=memory.id)]}
+    engine.add(request('I withdraw my preference for watermelon.', request_id='r2', when='2024-06-03T10:00:00Z'))
+    assert engine.store.memories('u1')[0] == memory
+    assert engine.store.get('requests','u1','r2')['units']['0']['candidate_dispositions'][0]['status'] == 'pending'
 
 
 def test_current_revision_uses_source_clock_for_out_of_order_archive():

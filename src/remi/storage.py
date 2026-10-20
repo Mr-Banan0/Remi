@@ -107,11 +107,11 @@ class SQLiteStore(MemoryStore):
         if not TABLES <= actual:
             self.connection.close()
             raise RuntimeError("database_schema_missing_use_explicit_approved_init")
-        legacy_memory = self.connection.execute("SELECT 1 FROM memories WHERE json_extract(record_json,'$.kind') IS NOT NULL LIMIT 1").fetchone()
-        legacy_entity = self.connection.execute("SELECT 1 FROM objects WHERE json_extract(record_json,'$.observed_at') IS NULL LIMIT 1").fetchone()
-        if legacy_memory or legacy_entity:
+        old_memory = self.connection.execute("SELECT 1 FROM memories WHERE COALESCE(json_extract(record_json,'$.schema_version'),0) != 10 LIMIT 1").fetchone()
+        old_entity = self.connection.execute("SELECT 1 FROM objects WHERE COALESCE(json_extract(record_json,'$.schema_version'),0) != 10 LIMIT 1").fetchone()
+        if old_memory or old_entity:
             self.connection.close()
-            raise RuntimeError("database_records_require_g08_source_replay")
+            raise RuntimeError("database_records_require_g10_source_replay")
         import sqlite_vec
         self.connection.enable_load_extension(True)
         try:

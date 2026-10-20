@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import PrivateAttr, BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 
 
 def nullable(value):
@@ -52,9 +52,6 @@ class SearchResponse(StrictModel):
     data: list[SearchItem]
 
 
-MemoryKind = Literal["preference", "fact", "event", "experience"]
-
-
 class Source(StrictModel):
     id: str
     owner: str
@@ -72,17 +69,19 @@ class EvidenceRef(StrictModel):
     quote: str = Field(min_length=1, max_length=200000)
 
 
+RecordType = Literal['relation', 'event']
+ExpressionMode = Literal['asserted', 'desired', 'requested', 'hypothetical', 'document']
+
+
 class Mention(StrictModel):
     name: str = Field(min_length=1, max_length=200)
-    kind: str = Field(min_length=1, max_length=60)
 
 
 class Candidate(StrictModel):
-    id: str
+    id: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=4000)
+    mentions: list[Mention] = Field(max_length=12)
     evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
-    entities: list[Mention] = Field(max_length=12)
-    tags: list[MemoryKind] = Field(min_length=1, max_length=4)
 
 
 class ProposalPlan(StrictModel):
@@ -90,99 +89,13 @@ class ProposalPlan(StrictModel):
     reason: str
 
 
-class EntityDecision(StrictModel):
-    ref: str
-    target_id: str | None
-    name: str = Field(min_length=1, max_length=200)
-    kind: str = Field(min_length=1, max_length=60)
-    is_self: bool
-    aliases: list[str] = Field(max_length=12)
-    evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
-
-
-    @field_validator("target_id", mode="before")
-    @classmethod
-    def optional_target(cls, value):
-        return nullable(value)
-
-
-class EntityRole(StrictModel):
-    entity_ref: str
-    role: str = Field(min_length=1, max_length=120)
-
-
-class Assertion(StrictModel):
-    subject_ref: str
-    predicate: str = Field(min_length=1, max_length=160)
-    object_ref: str
-    negated: bool = False
-
-
-class LiteralAttribute(StrictModel):
-    subject_ref: str
-    predicate: str
-    value: str
-    negated: bool = False
-
-
-class MemoryLink(StrictModel):
-    target_ref: str
-    label: str = Field(min_length=1, max_length=160)
-
-
-class BoundMemoryLink(MemoryLink):
-    target_revision_id: str
-
-
-class MemoryEdit(StrictModel):
-    ref: str
-    candidate_ids: list[str] = Field(min_length=1, max_length=24)
-    operation: Literal["write", "keep", "retract"]
-    target_id: str | None = Field(description="Select the same independently maintained claim or particular occurrence. Shared entity alone is insufficient. Use null for an independent claim, including a new ongoing state distinct from its establishing event.")
-    content: str = Field(min_length=1, max_length=4000)
-    change: Literal["confirm", "supplement", "replace"]
-    tags: list[MemoryKind] = Field(min_length=1, max_length=4)
-    evidence: list[EvidenceRef] = Field(min_length=1, max_length=12)
-    roles: list[EntityRole] = Field(max_length=16)
-    assertions: list[Assertion] = Field(max_length=16)
-    links: list[MemoryLink] = Field(max_length=12)
-    time_expression: str | None
-    end_expression: str | None
-    status: Literal["stated", "planned", "occurred", "cancelled", "desired", "unknown"]
-    temporal_scope: Literal["ongoing", "episodic", "unknown"]
-    corrects_occurrence: bool = Field(default=False, description="True only when the new source explicitly corrects the date/details of the same previously completed occurrence. A later independent occurrence uses false.")
-    impact: Literal["high", "low", "unknown"]
-
-    @field_validator("target_id", "time_expression", "end_expression", mode="before")
-    @classmethod
-    def optional_arguments(cls, value):
-        return nullable(value)
-
-    @model_validator(mode="after")
-    def target_contract(self):
-        if self.operation in {"keep", "retract"} and self.target_id is None:
-            raise ValueError("keep_or_retract_selects_existing_history")
-        return self
-
-
-class DiscardedCandidate(StrictModel):
-    candidate_id: str
-    reason: str = Field(min_length=1)
-
-
-class MaintenancePlan(StrictModel):
-    _graph_dispositions: list[dict] = PrivateAttr(default_factory=list)
-    _write_compositions: list[dict] = PrivateAttr(default_factory=list)
-    entities: list[EntityDecision] = Field(max_length=40)
-    edits: list[MemoryEdit] = Field(max_length=24)
-    discarded: list[DiscardedCandidate] = Field(max_length=24)
-
-
 class SourceCitation(StrictModel):
     source_id: str
 
 
-class CandidateDraft(Candidate):
+class CandidateDraft(StrictModel):
+    content: str = Field(min_length=1, max_length=4000)
+    mentions: list[Mention] = Field(max_length=12)
     evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
 
 
@@ -191,18 +104,62 @@ class ProposalDraft(StrictModel):
     reason: str
 
 
-class EntityDraft(EntityDecision):
-    evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
+EventStatus = Literal['planned', 'occurred', 'cancelled', 'desired', 'unknown']
 
 
-class MemoryEditDraft(MemoryEdit):
-    evidence: list[SourceCitation] = Field(max_length=12)
+class CardDecision(StrictModel):
+    """Canonical internal decision; the provider wire shapes expose each operation's own fields."""
+    candidate_id: str
+    operation: Literal['create', 'patch_event', 'keep', 'pending']
+    target_id: str | None = None
+    record_type: RecordType | None = None
+    content: str | None = Field(default=None, max_length=4000)
+    mode: ExpressionMode | None = None
+    context: str | None = Field(default=None, max_length=300)
+    status: EventStatus | None = None
+    event_change: Literal['reschedule', 'complete', 'cancel'] | None = None
+    time_expression: str | None = Field(default=None, max_length=300)
+    reason: str = Field(max_length=600)
+
+    _null_arguments = field_validator('target_id', 'time_expression', mode='before')(nullable)
+
+
+class CreateDraft(StrictModel):
+    candidate_id: str
+    operation: Literal['create']
+    record_type: RecordType
+    content: str = Field(min_length=1, max_length=4000)
+    mode: ExpressionMode
+    context: str | None = Field(max_length=300)
+    status: EventStatus | None
+    time_expression: str | None = Field(max_length=300)
+    reason: str = Field(max_length=600)
+
+
+class EventPatchDraft(StrictModel):
+    candidate_id: str
+    operation: Literal['patch_event']
+    target_id: str
+    event_change: Literal['reschedule', 'complete', 'cancel']
+    time_expression: str | None = Field(max_length=300)
+    reason: str = Field(max_length=600)
+
+
+class KeepDraft(StrictModel):
+    candidate_id: str
+    operation: Literal['keep']
+    target_id: str
+    reason: str = Field(max_length=600)
+
+
+class PendingDraft(StrictModel):
+    candidate_id: str
+    operation: Literal['pending']
+    reason: str = Field(max_length=600)
 
 
 class MaintenanceDraft(StrictModel):
-    entities: list[EntityDraft] = Field(max_length=40)
-    edits: list[MemoryEditDraft] = Field(max_length=24)
-    discarded: list[DiscardedCandidate] = Field(max_length=24)
+    decisions: list[CreateDraft | EventPatchDraft | KeepDraft | PendingDraft] = Field(max_length=24)
 
 
 class Revision(StrictModel):
@@ -210,46 +167,51 @@ class Revision(StrictModel):
     content: str
     source_ids: list[str]
     quote: str
+    evidence: list[EvidenceRef]
+    entity_ids: list[str]
+    mode: ExpressionMode
+    context: str
+    status: Literal['stated', 'planned', 'occurred', 'cancelled', 'desired', 'unknown']
+    planned_at: str | None
     event_at: str | None
-    valid_from: str | None
-    valid_to: str | None
     observed_at: str
     created_at: str
-    status: str
-    time_resolution: Literal["rule", "unknown"]
-    time_precision: Literal["day", "instant", "unknown"] = "unknown"
-    operation: str
-    tags: list[MemoryKind] = Field(default_factory=list)
-    evidence: list[EvidenceRef] = Field(default_factory=list)
-    roles: list[EntityRole] = Field(default_factory=list)
-    assertions: list[Assertion] = Field(default_factory=list)
-    attributes: list[LiteralAttribute] = Field(default_factory=list)
-    links: list[BoundMemoryLink] = Field(default_factory=list)
-    temporal_scope: Literal["ongoing", "episodic", "unknown"] = "unknown"
+    time_resolution: Literal['rule', 'unknown']
+    time_precision: Literal['day', 'instant', 'unknown']
+    operation: Literal['create', 'reschedule', 'complete', 'cancel']
     replaces_revision_id: str | None = None
-    change: str = "new"
 
 
 class Memory(StrictModel):
+    schema_version: Literal[10] = 10
     id: str
     owner: str
-    revisions: list[Revision]
-    impact: Literal["high", "low", "unknown"]
+    record_type: RecordType
+    revisions: list[Revision] = Field(min_length=1)
+    impact: Literal['high', 'low', 'unknown'] = 'unknown'
     pinned: bool = False
     last_accessed_at: str | None = None
+
+    @model_validator(mode='after')
+    def record_contract(self):
+        if self.record_type == 'relation' and (len(self.revisions) != 1 or self.current.status != 'stated'):
+            raise ValueError('relation_cards_are_append_only')
+        if self.record_type == 'event' and any(r.status == 'stated' for r in self.revisions):
+            raise ValueError('events_use_event_status')
+        return self
 
     @property
     def current(self) -> Revision:
         from .clock import parse_time
-        return max(self.revisions, key=lambda revision: (parse_time(revision.observed_at), parse_time(revision.created_at), revision.id))
+        return max(self.revisions, key=lambda r: (parse_time(r.observed_at), parse_time(r.created_at), r.id))
 
     @property
-    def tags(self) -> list[MemoryKind]:
-        return self.current.tags
+    def tags(self):
+        return ['event'] if self.record_type == 'event' else ['fact']
 
     @property
-    def object_ids(self) -> list[str]:
-        return list(dict.fromkeys(role.entity_ref for role in self.current.roles))
+    def entity_ids(self):
+        return list(self.current.entity_ids)
 
 
 class AliasEvidence(StrictModel):
@@ -259,10 +221,11 @@ class AliasEvidence(StrictModel):
 
 
 class GraphObject(StrictModel):
+    schema_version: Literal[10] = 10
     id: str
     owner: str
-    kind: str
     name: str
+    kind: str = 'entity'
     is_self: bool = False
     aliases: list[AliasEvidence] = Field(default_factory=list)
     observed_at: str
@@ -273,12 +236,10 @@ class Edge(StrictModel):
     owner: str
     origin: str
     target: str
-    relation: Literal["involves", "assertion", "related", "supported_by", "revises"]
-    label: str = ""
+    relation: Literal['mentions', 'supported_by', 'revises']
     revision_id: str
     memory_id: str
     source_id: str
-    target_revision_id: str | None = None
 
 
 class SourceWindow(StrictModel):
@@ -288,16 +249,19 @@ class SourceWindow(StrictModel):
 
 
 class MemoryEvidence(StrictModel):
+    record_type: RecordType
+    mode: ExpressionMode
+    context: str
+    structure: str
     memory_id: str
     revision_id: str
     content: str
     quote: str
     source_ids: list[str]
     event_at: str | None
+    planned_at: str | None
     status: str
     time_precision: Literal["day", "instant", "unknown"] = "unknown"
-    valid_from: str | None = None
-    valid_to: str | None = None
     observed_at: str | None = None
     temporal_scope: str = "unknown"
 
@@ -318,6 +282,7 @@ class Document(StrictModel):
 
 
 class RecallStep(StrictModel):
+    purpose: Literal["history", "scheduled"] = "history"
     query: str = Field(min_length=1, max_length=2000)
     time_expression: str | None
     anchor_source_id: str | None
@@ -342,5 +307,6 @@ class RecallStep(StrictModel):
 
 
 class Decision(StrictModel):
+    action_time_expression: str | None = None
     steps: list[RecallStep] = Field(max_length=2)
     relevant_memory_ids: list[str] = Field(max_length=24)

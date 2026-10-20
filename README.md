@@ -1,24 +1,26 @@
 # Remi
 
-Remi 是独立的 G08 候选与联合维护图实验项目，与 TraceWeave 并列开发。
+Remi 是独立的 G10 主体导航与局部事件维护实验项目，与 TraceWeave 并列开发。
+
+当前 G10 Golden 原文 R@10 为 74.36%，主集逻辑 Add 平均 28.54 秒；完整命中 8/13、全漏 2/13。279 个候选中 130 个待定，身份协议与语义分类问题继续保留。独立语义序列完整通过 1/4。详情见 [Golden 对比与实际图](docs/golden-g10-results.md) 和 [独立验收](docs/g10-validation-results.md)。
 
 项目目录为 `solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
 
-完整原文作为证据底座；偏好、事实／条件、事件、经验共用一种有来源和修订的记忆结构。人物、项目、客户、文档等对象提供组织入口。热区是同一张图的有预算视图，冷区继续参与全局检索。
+完整原文作为证据底座；统一主体提供身份入口，关系与事件分别保留稳定身份、来源、状态和修订。关系／状态作为独立命题保存，事件按发生次数维护。热区是同一张图的有预算视图，冷区继续参与全局检索。
 
 ## 当前实现
 
 - 文本模型：`gpt-4o-mini`，先提出候选，再结合历史联合定稿；同时负责一次 Search 补搜决策。
-- Add 维护：实体身份、记忆目标、操作、内容、角色和关系在第二阶段共同决定，程序校验并原子提交。
+- Add 维护：程序对齐主体；第二阶段逐项新增、保持、局部修改计划事件或待定，程序校验并原子提交。
 - 向量模型：`text-embedding-v4`，默认 1024 维，沿用 DashScope。
 - 重排序：`jev-1.13.0`，对检索证据支持度和时间候选活动匹配进行排序判定。
 - Jev 沿用已验证网关协议：`https://api.quickrouter.ai/v1/systemone`，请求使用 `state/questions`，响应读取 `answers` 中的 Noul。
 - HTTP `/add`、`/search` 与现有本地评测请求结构一致。
 - 物理数据库：6 张显式 SQLite 表；向量采用 sqlite-vec 序列化和余弦距离函数，BM25 在程序中计算。
-- Add 同用户串行：普通有界单元两次 GPT，空候选一次；共享一次输出修正。按主体召回并补充少量跨实体与原文入口，覆盖全部标签。图、索引和应用检查点一起提交。
+- Add 同用户串行：普通有界单元两次 GPT，空候选一次；共享一次输出修正。按主体关联卡召回并补充少量全局候选。图、索引和应用检查点一起提交。
 - Search 始终跨冷热混合召回，最多一次 GPT 决策、两步补搜；关系读取采用程序内有界操作。
 
-[当前架构与调用预算](docs/current-architecture.md) · [G08 改造与预算](docs/architecture-changes/g08-propose-maintain-graph.md) · [G08 Golden 实验与实际图](docs/golden-g08-results.md) · [G05 历史 Golden 结果](docs/golden-g05-results.md) · [数据库范围](docs/database-scope.md) · [验收记录](docs/verification.md)
+[G10 Golden 三版对比](docs/golden-g10-results.md) · [G10 实现与独立验收](docs/g10-validation-results.md) · [当前架构与调用预算](docs/current-architecture.md) · [G10 简化范围与预算](docs/architecture-changes/g10-local-maintenance.md) · [G09 三版 Golden 对比与图审计](docs/golden-g09-results.md) · [G08 Golden 实验与实际图](docs/golden-g08-results.md) · [G05 历史 Golden 结果](docs/golden-g05-results.md) · [数据库范围](docs/database-scope.md) · [验收记录](docs/verification.md)
 
 ## 本地安装
 
@@ -74,7 +76,7 @@ uv run remi serve --host 127.0.0.1 --port 8011
 
 原文完整保存，用户消息支持结构化内容；助手消息提供解释上下文并参与原文检索。`timestamp` 为 Unix 毫秒；来源时钟缺失时保留未知。相同请求 ID 与相同内容幂等，冲突内容返回 409。
 
-Add 保存 propose、维护上下文、maintain 及应用检查点，图和索引提交后返回 200。供应商及未解决输出故障返回 503，重发相同请求复用已完成语义阶段。历史实验使用各自冻结代码与数据库，新链路从原文重放生成当前记录。
+Add 保存 propose、维护上下文、maintain 及应用检查点，图和索引提交后返回 200。引用越界、供应商及未解决协议故障返回 503，重发相同请求复用已完成阶段。语义计划经过共享修正仍无法通过证据／身份校验时记录拒绝、保留旧图并提交原文索引；实验单独统计结构化写入拒绝。历史实验使用各自冻结代码与数据库，新链路从原文重放生成当前记录。
 
 ### Search
 
@@ -90,7 +92,7 @@ Add 保存 propose、维护上下文、maintain 及应用检查点，图和索�
 
 ## 最小实验边界
 
-当前实现保留：来源、独立记录、追加修订、明确对象关系、跨冷热检索、程序时间计算、有限补搜和 Jev 排序。
+当前实现保留：来源、独立记录、追加修订、独立主体关系、跨冷热检索、程序时间计算、有限补搜和 Jev 排序。
 
 记忆及关系以明确来源和上下文为依据。实体关系、历史修订和作用域共同支持检索；边际收益广度搜索保留为后续讨论项。
 

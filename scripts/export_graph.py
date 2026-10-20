@@ -28,20 +28,21 @@ def export(database, output):
         memory_rows=[m for m in tables['memories'] if m['owner']==owner]
         for raw in memory_rows:
             view=visible_memory(Memory.model_validate(raw),as_of)
-            if view and in_view(view.current,as_of):active[(owner,view.id)]=view.current.id
+            if view and in_view(view.current,as_of) and (view.record_type == 'event' or view.current.mode == 'asserted'):active[(owner,view.id)]=view.current.id
         edges=[e for e in tables['edges'] if e['owner']==owner]
-        owners[owner]={'as_of':as_of,'sources':len(source_rows),'memories':len(memory_rows),
+        owners[owner]={'as_of':as_of,'sources':len(source_rows),'memories':len(memory_rows), 'record_types':dict(Counter(m['record_type'] for m in memory_rows)),
             'revisions':sum(len(m['revisions']) for m in memory_rows),
             'entities':sum(e['owner']==owner for e in tables['objects']),
-            'tags':dict(Counter(t for m in memory_rows for t in m['revisions'][-1]['tags'])),
+            'tags':dict(Counter(('event' if m['record_type'] == 'event' else 'fact') for m in memory_rows)),
             'relations':dict(Counter(e['relation'] for e in edges)),
-            'active_relations':sum(active.get((owner,e['memory_id']))==e['revision_id'] and e['relation'] in {'involves','assertion','related'} for e in edges)}
-    for name,entity in [('sources','source'),('objects','entity'),('memories','memory')]:
+            'active_relations':sum(active.get((owner,e['memory_id']))==e['revision_id'] and e['relation'] == 'mentions' for e in edges)}
+    for name,node_type in [('sources','source'),('objects','entity'),('memories','memory')]:
         for raw in tables[name]:
             record=dict(raw)
-            if entity=='memory':
+            entity=node_type
+            if node_type=='memory':
                 revisions=record.pop('revisions')
-                record['tags']=revisions[-1]['tags'];record['content']=revisions[-1]['content']
+                entity=record['record_type'];record['content']=Memory.model_validate(raw).current.content
                 record['current_revision_id']=active.get((raw['owner'],raw['id']))
                 for revision in revisions:
                     nodes.append({'id':raw['owner']+'/'+revision['id'],'entity':'revision','record':revision})

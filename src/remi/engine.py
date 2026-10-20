@@ -31,20 +31,6 @@ def source_visible(source, as_of):
     return parse_time(source.message_at or source.created_at) <= parse_time(as_of)
 
 
-def source_quote(text, quote):
-    """Copy the unique source span after whitespace and typographic-quote equivalence."""
-    if quote in text:
-        return quote
-    table = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
-    pattern = r"\s+".join(re.escape(part) for part in quote.translate(table).split())
-    if not pattern:
-        return None
-    matches = list(re.finditer(pattern, text.translate(table)))
-    if len(matches) == 1:
-        return text[matches[0].start():matches[0].end()]
-    return None
-
-
 def source_excerpt(text, query, budget, windows=()):
     """Select a contiguous original span around a retrieved window or a lexical hit."""
     if len(text.encode()) <= budget:
@@ -103,10 +89,10 @@ class MemoryEngine:
                     "content": source.content, "message_at": source.message_at,
                     "created_at": source.created_at},
                 "context_sources": [{"id": item.id, "role": item.role,
-                    "content": clip_bytes(item.content, 4000), "message_at": item.message_at} for item in context],
+                    "content": clip_bytes(item.content, 4000), "message_at": item.message_at, "created_at": item.created_at} for item in context],
                 }
 
-    def _documents(self, unit, memories):
+    def _documents(self, unit, memories, entities=(), *, pending_candidates=(), owner=None):
         documents = []
         if unit:
             combined = "\n".join(source.role + ": " + source.content for source in unit)
@@ -115,7 +101,6 @@ class MemoryEngine:
                 begin = cursor + len(source.role) + 2
                 locations.append((source.id, begin, begin + len(source.content)))
                 cursor = begin + len(source.content) + 1
-            # Retrieval windows share the original whole-message IDs; persisted sources stay complete.
             for offset in range(0, len(combined), 2000):
                 documents.append(Document(id=stable_id("doc_", unit[0].id, offset), owner=unit[0].owner,
                     text=combined[offset:offset + 2240], source_ids=[source.id for source in unit], memory_id=None,
@@ -123,20 +108,32 @@ class MemoryEngine:
                     source_windows=[SourceWindow(source_id=key, start=max(offset, begin) - begin,
                         stop=min(offset + 2240, stop) - begin) for key, begin, stop in locations
                         if max(offset, begin) < min(offset + 2240, stop)]))
+        owner = owner or (unit[0].owner if unit else memories[0].owner if memories else None)
+        names = {raw['id']: raw['name'] for raw in self.store.list('objects', owner)} if owner else {}
+        names.update({e['id']: e['name'] for e in entities})
         for memory in memories:
             for revision in memory.revisions:
                 sources = self.store.sources(memory.owner, revision.source_ids[:1])
                 position = sources[0].content.find(revision.quote) if sources else -1
+                structure = (f"Card {memory.record_type}; mentions=" + ", ".join(names.get(eid, eid) for eid in revision.entity_ids)
+                    + f"; mode={revision.mode}; context={revision.context}; status={revision.status}"
+                    + f"; planned_at={revision.planned_at or 'unknown'}; actual_at={revision.event_at or 'unknown'}")
+                scope = 'episodic' if memory.record_type == 'event' else 'source_reported'
                 documents.append(Document(id=stable_id("doc_", revision.id), owner=memory.owner,
-                    text=revision.content + "\nRelations: " + "; ".join(a.predicate for a in revision.assertions) + "\nSource quote: " + revision.quote, source_ids=revision.source_ids,
-                    memory_id=memory.id, revision_id=revision.id, message_at=revision.observed_at,
-                    event_at=revision.event_at, created_at=revision.created_at,
-                    source_windows=[SourceWindow(source_id=revision.source_ids[0], start=position,
-                        stop=position + len(revision.quote))] if position >= 0 else [],
-                    memory_evidence=[MemoryEvidence(memory_id=memory.id, revision_id=revision.id,
-                        content=revision.content, quote=revision.quote, source_ids=revision.source_ids,
-                        event_at=revision.event_at, status=revision.status, time_precision=revision.time_precision,
-                        valid_from=revision.valid_from, valid_to=revision.valid_to, observed_at=revision.observed_at, temporal_scope=revision.temporal_scope)]))
+                    text=revision.content + "\n" + structure + "\nSource quote: " + revision.quote,
+                    source_ids=revision.source_ids, memory_id=memory.id, revision_id=revision.id,
+                    message_at=revision.observed_at, event_at=revision.event_at or revision.planned_at, created_at=revision.created_at,
+                    source_windows=[SourceWindow(source_id=revision.source_ids[0], start=position, stop=position + len(revision.quote))] if position >= 0 else [],
+                    memory_evidence=[MemoryEvidence(record_type=memory.record_type, mode=revision.mode, context=revision.context,
+                        structure=structure, memory_id=memory.id, revision_id=revision.id, content=revision.content,
+                        quote=revision.quote, source_ids=revision.source_ids, event_at=revision.event_at, planned_at=revision.planned_at,
+                        status=revision.status, time_precision=revision.time_precision, observed_at=revision.observed_at, temporal_scope=scope)]))
+        for candidate in pending_candidates:
+            primary = self.store.sources(owner, [candidate.evidence[0].source_id])[0]
+            documents.append(Document(id=stable_id('doc_pending_', primary.id, candidate.id, candidate.content), owner=owner,
+                text='Pending candidate retrieval hint: ' + candidate.content + "\nOriginal evidence: " + primary.content,
+                source_ids=[e.source_id for e in candidate.evidence], memory_id=None, revision_id=None,
+                message_at=primary.message_at, event_at=None, created_at=primary.created_at))
         return documents
 
     def _embed(self, texts, deadline):
@@ -164,10 +161,6 @@ class MemoryEngine:
                 sources = self.store.sources(owner, document.source_ids)
                 if len(sources) != len(set(document.source_ids)) or not all(source_visible(s, as_of) for s in sources):
                     continue
-                for evidence in document.memory_evidence:
-                    revision = revisions.get(evidence.revision_id)
-                    if revision:
-                        evidence.valid_to = revision.valid_to
                 documents.append(document)
         return documents
 
@@ -177,30 +170,37 @@ class MemoryEngine:
 
     def _graph_candidates(self, owner, query, seed_documents, documents, vector, as_of):
         from .graph import active_edges
+        from .identity import normalized_name, visible_entity
         edges = active_edges(self.store, owner, as_of)
         ids = {d.memory_id for d in seed_documents if d.memory_id}
         source_ids = {key for d in seed_documents for key in d.source_ids}
-        for memory in self.store.memories(owner):
-            view = visible_memory(memory, as_of)
-            if view and source_ids.intersection(view.current.source_ids):
-                ids.add(view.id)
-        objects = {edge.target for edge in edges if edge.relation == 'involves' and edge.origin in ids}
+        for original in self.store.memories(owner):
+            memory = visible_memory(original, as_of)
+            if memory and source_ids.intersection(memory.current.source_ids):
+                ids.add(memory.id)
         self_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_self')}
-        objects -= self_ids
-        # One bounded expansion through meaningful role/entity links, plus explicit memory links.
-        neighbor_objects = set(objects)
-        for edge in edges:
-            if edge.relation == 'assertion' and ({edge.origin, edge.target} & objects):
-                neighbor_objects.update({edge.origin, edge.target} - self_ids)
-        neighbors = {edge.origin for edge in edges if edge.relation == 'involves' and edge.target in neighbor_objects}
-        related_revisions = set()
-        seed_revisions = {d.revision_id for d in seed_documents if d.revision_id}
-        for edge in edges:
-            if edge.relation == 'related' and edge.origin in ids:
-                related_revisions.add(edge.target_revision_id)
-            if edge.relation == 'related' and edge.target_revision_id in seed_revisions:
-                neighbors.add(edge.origin)
-        pool = [d for d in documents if d.memory_id in neighbors or d.revision_id in related_revisions]
+        entities = {e.target for e in edges if e.origin in ids} - self_ids
+        normalized_query = normalized_name(query)
+        for raw in self.store.list('objects', owner):
+            entity = visible_entity(GraphObject.model_validate(raw), as_of)
+            if entity is None or entity.id in self_ids:
+                continue
+            if any(len(normalized_name(n)) > 2 and normalized_name(n) in normalized_query for n in [entity.name, *[a.name for a in entity.aliases]]):
+                entities.add(entity.id)
+        record_ids = {e.origin for e in edges if e.target in entities}
+        adjacent = set()
+        sessions = {}
+        for raw in self.store.list('sources', owner):
+            source = Source.model_validate(raw)
+            if source.role == 'user' and source_visible(source, as_of):
+                sessions.setdefault(source.session_id, []).append(source)
+        for group in sessions.values():
+            group.sort(key=lambda source: (parse_time(source.message_at or source.created_at), source.created_at, source.ordinal))
+            for index, source in enumerate(group):
+                if source.id in source_ids:
+                    adjacent.update(s.id for s in group[max(0, index - 1):index + 2])
+        pool = [d for d in documents if d.memory_id in record_ids
+                or d.memory_id is None and d.source_ids and d.source_ids[0] in adjacent]
         return self._hybrid(owner, query, pool, vector, limit=self.settings.graph_limit)
 
     def _card(self, owner, document, query, budget):
@@ -221,8 +221,9 @@ class MemoryEngine:
                 "event_at": document.event_at, "message_at": document.message_at,
                 "original": raw, "summary": clip_bytes(document.text, 400),
                 "memories": [{"id": memory.memory_id, "revision_id": memory.revision_id,
-                    "content": clip_bytes(memory.content, 300), "event_at": memory.event_at, "status": memory.status,
-                    "time_precision": memory.time_precision, "valid_from": memory.valid_from, "valid_to": memory.valid_to,
+                    "content": clip_bytes(memory.content, 500), "event_at": memory.event_at, "planned_at": memory.planned_at, "status": memory.status,
+                    "record_type": memory.record_type, "mode": memory.mode, "context": memory.context, "structure": memory.structure,
+                    "time_precision": memory.time_precision,
                     "observed_at": memory.observed_at, "temporal_scope": memory.temporal_scope}
                     for memory in document.memory_evidence]}
 
@@ -231,9 +232,11 @@ class MemoryEngine:
                  "reference_time": as_of, "evidence": [], "current_conditions": []}
         for memory in current:
             entry = {"id": memory.id, "tags": memory.tags, "content": clip_bytes(memory.current.content, 800),
-                     "valid_from": memory.current.valid_from, "valid_to": memory.current.valid_to,
                      "observed_at": memory.current.observed_at, "source_ids": memory.current.source_ids}
             entry["status"] = memory.current.status
+            entry["record_type"] = memory.record_type
+            entry["mode"] = memory.current.mode
+            entry["context"] = memory.current.context
             trial = [*state["current_conditions"], entry]
             whole = {**state, "current_conditions": trial}
             if (len(json.dumps(trial, ensure_ascii=False).encode()) <= self.settings.context_bytes
@@ -274,9 +277,10 @@ class MemoryEngine:
                 steps.append(step)
             except (ValidationError, ValueError):
                 errors.append({"position": position, "error": "tool_step_invalid"})
-        if set(raw) - {"steps", "relevant_memory_ids"}:
+        if set(raw) - {"steps", "relevant_memory_ids", "action_time_expression"}:
             errors.append({"field": "decision", "error": "extra_fields_disposed"})
-        return Decision(steps=steps, relevant_memory_ids=identifiers), errors
+        action_time = raw.get("action_time_expression")
+        return Decision(steps=steps, relevant_memory_ids=identifiers, action_time_expression=action_time if isinstance(action_time, str) else None), errors
 
     def _recall_step(self, owner, question, step, allowed_sources, documents, as_of, deadline, prior_results=()):
         scope = None
@@ -316,6 +320,8 @@ class MemoryEngine:
                           or step.relation != "independent")
         if restricted and not scope:
             return [], "time_scope_unresolved"
+        if scope and step.purpose == "history" and parse_time(scope).date() > parse_time(as_of).date():
+            return [], "action_time_is_not_history_scope"
         pool, unknown = [], 0
         for document in documents:
             stamp = document.message_at if step.time_basis == "message" else document.event_at
@@ -381,8 +387,7 @@ class MemoryEngine:
                               for index, (doc, _) in enumerate(merged)}
             channels = [{"channel": "base", "source_ids": sorted({key for doc, _ in base for key in doc.source_ids})},
                         {"channel": "graph", "source_ids": sorted({key for doc, _ in graph for key in doc.source_ids})}]
-            current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit,
-                               kinds={"preference", "fact"}) if self.settings.hot_enabled else []
+            current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
             decision = Decision(steps=[], relevant_memory_ids=[])
             decision_errors = []
@@ -407,9 +412,10 @@ class MemoryEngine:
                     scoped_new = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
                     result = {"coverage": coverage, "scoped_new_documents": scoped_new, "fallback_executed": False}
                     tool_results.append(result)
-                    if not hits and coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous"}:
+                    if not hits and coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
                         # An invalid temporal constraint still permits a clearly diagnosed unrestricted supplemental search.
-                        supplemental = self._hybrid(request.user_id, step.query, documents, vector=None, limit=self.settings.candidate_limit)
+                        supplement_vector = self._embed([step.query], deadline)[0] if self.embedder else None
+                        supplemental = self._hybrid(request.user_id, step.query, documents, vector=supplement_vector, limit=self.settings.candidate_limit)
                         hits = supplemental
                         result["fallback_executed"] = True
                     result["new_documents"] = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
@@ -477,10 +483,9 @@ class MemoryEngine:
             order = list(dict.fromkeys(mandatory))
             forced = {key: index for index, key in enumerate(order)}
             ranked.sort(key=lambda item: (0, forced[item[0].id]) if item[0].id in forced else (1, 0))
-            prefix_lines = [f"[{memory.id}] {memory.current.content} (valid_from={memory.current.valid_from or 'unknown'}, "
-                            f"valid_to={memory.current.valid_to or 'unknown'}, status={memory.current.status}, scope={memory.current.temporal_scope}, observed_at={memory.current.observed_at}, "
+            prefix_lines = [f"[{memory.id}] {memory.current.content} (status={memory.current.status}, scope={('episodic' if memory.record_type == 'event' else 'source_reported')}, observed_at={memory.current.observed_at}, "
                             f"sources={','.join(memory.current.source_ids)})" for memory in selected]
-            prefix = clip_bytes("Current relevant conditions:\n" + "\n".join(prefix_lines), self.settings.context_bytes) if prefix_lines else ""
+            prefix = clip_bytes("Relevant source-reported statements:\n" + "\n".join(prefix_lines), self.settings.context_bytes) if prefix_lines else ""
             items = []
             cards_by_id = {card["id"]: card for card in cards}
             for document, base_score in ranked[:request.top_k]:

@@ -61,7 +61,7 @@ def test_current_conditions_are_bounded_and_selected_in_one_decision():
     assert len(model.decisions[0]["current_conditions"]) <= 3
     assert engine.last_search["decision_bytes"] <= 24000
     assert engine.last_search["selected_conditions"] == 1
-    assert all(item.content.startswith("Current relevant conditions:") for item in result.data)
+    assert all(item.content.startswith("Relevant source-reported statements:") for item in result.data)
 
 
 def test_graph_reads_only_matching_object_with_a_cap():

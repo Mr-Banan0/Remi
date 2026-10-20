@@ -3,7 +3,6 @@ from time import monotonic
 
 import pytest
 
-from remi.engine import source_quote
 from .helpers import TestEngine as MemoryEngine
 from remi.models import Document, RecallStep
 from remi.providers import RankResult
@@ -24,10 +23,6 @@ def test_equivalent_quote_is_copied_from_the_actual_original(text, quoted):
     assert len(model.extractions) == 1
 
 
-def test_ambiguous_or_changed_quotes_keep_the_source_boundary():
-    assert source_quote("access\nrestricted; access   restricted", "access restricted") is None
-    assert source_quote("access is restricted", "access is unrestricted") is None
-    assert source_quote("access restricted", "accessrestricted") is None
 
 
 def test_long_input_windows_cover_every_character():
@@ -46,7 +41,7 @@ def test_invalid_source_is_diagnosed_and_the_unit_stays_retryable():
     with pytest.raises(ProviderUnavailable): engine.add(request('Access remains restricted.'))
     saved=engine.store.get('requests','u1','r1')['units']['0']
     assert saved['phase']=='pending'
-    assert saved['validation'][0]['error']=='evidence_requires_supplied_source'
+    assert saved['validation'][0]['error']=='candidate_source_requires_supplied_original'
     assert not engine.store.memories('u1')
 
 
@@ -60,9 +55,9 @@ def test_each_memory_keeps_its_own_date_and_exact_supporting_clause():
     engine = MemoryEngine(model=ScriptedModel(extract))
     engine.add(request("Yesterday I reviewed Orion. Tomorrow I launch Vega. Access remains restricted."))
     events = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "event"]
-    assert {memory.current.event_at[:10] for memory in events} == {"2024-06-01", "2024-06-03"}
+    assert {(memory.current.event_at or memory.current.planned_at)[:10] for memory in events} == {"2024-06-01", "2024-06-03"}
     facts = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "fact"]
-    assert len(facts) == 1 and facts[0].current.valid_from.startswith("2024-06-02")
+    assert len(facts) == 1 and facts[0].current.status == "stated"
 
 
 def test_context_source_does_not_pollute_the_event_anchor():

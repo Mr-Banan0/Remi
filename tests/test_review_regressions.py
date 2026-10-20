@@ -11,7 +11,7 @@ from remi.api import create_app
 from remi.clock import absolute_content, message_time, resolve_time
 from .helpers import TestEngine as MemoryEngine
 from remi.heat import hot_view
-from remi.models import Decision, RecallStep, ProposalPlan, MaintenancePlan
+from remi.models import Decision, RecallStep, ProposalPlan, MaintenanceDraft
 from remi.providers import JevReranker, OutputInvalid, RankResult, strict_schema
 from remi.settings import Settings
 from remi.storage import MemoryStore, SQLiteStore
@@ -130,14 +130,16 @@ def test_future_graph_update_preserves_past_expansion():
     assert {item.id for item, _ in before} == {item.id for item, _ in after}
 
 
-def test_same_source_conflicting_target_edits_require_joint_resolution():
-    from remi.providers import ProviderUnavailable
+def test_same_source_conflicting_target_edits_reject_the_plan_after_shared_repair():
     model=ScriptedModel(lambda state,errors:{'commands':[command(state,'Northstar meeting',status='planned')]})
     engine=MemoryEngine(model=model)
     engine.add(request('Northstar meeting is planned.'))
     target=engine.store.memories('u1')[0].id
     model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',operation='update',target=target,quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
-    with pytest.raises(ProviderUnavailable): engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
+    engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
+    unit=next(iter(engine.store.get('requests','u1','r2')['units'].values()))
+    assert all(d['status']=='pending' for d in unit['candidate_dispositions'])
+    assert all(d['reason']=='conflicting_event_patches_require_clarification' for d in unit['candidate_dispositions'])
     assert len(engine.store.memories('u1')[0].revisions)==1
 
 
@@ -151,20 +153,14 @@ def test_update_retains_unspecified_event_date():
     assert engine.store.memories("u1")[0].current.event_at == before.current.event_at
 
 
-def test_confirmation_retains_validity_end_and_does_not_reopen_expiry():
-    def initial(state, errors):
-        draft = command(state, kind="fact", time="2024-06-02")
-        draft["end_expression"] = "2024-06-09"
-        return {"commands": [draft]}
-    model = ScriptedModel(initial)
+def test_relation_patch_preserves_time_scope_in_original_statement():
+    model = ScriptedModel(lambda state, errors: {'commands': [command(state, kind='fact')]})
     engine = MemoryEngine(model=model)
-    engine.add(request("Restriction applies 2024-06-02 until 2024-06-09."))
-    before = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, kind="fact", operation="update", target=before.id)]}
-    engine.add(request("The restriction still applies.", request_id="r2", when="2024-06-03T10:00:00Z"))
-    after = engine.store.memories("u1")[0]
-    assert (after.current.valid_from, after.current.valid_to) == (before.current.valid_from, before.current.valid_to)
-    assert not hot_view([after], "2024-07-01T00:00:00Z")
+    engine.add(request('Restriction applies 2024-06-02 until 2024-06-09.'))
+    before = engine.store.memories('u1')[0]
+    model.extractor = lambda state, errors: {'commands': [command(state, kind='fact', operation='update', target=before.id)]}
+    engine.add(request('The restriction still applies.', request_id='r2', when='2024-06-03T10:00:00Z'))
+    assert engine.store.memories('u1')[0] == before
 
 
 def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
@@ -188,15 +184,15 @@ def test_plan_repair_can_resolve_operations_jointly():
     assert len(engine.model.extractions)==2
 
 
-def test_malformed_repair_keeps_original_time_failure_for_local_degradation():
+def test_malformed_repair_preserves_unresolved_candidate_as_pending():
     def extract(state, errors):
         if errors:
-            raise OutputInvalid("simulated malformed repair")
-        return {"commands": [command(state, time="yesterday")]}
+            raise OutputInvalid('simulated malformed repair')
+        return {'commands': [command(state, time='next solstice')]}
     engine = MemoryEngine(model=ScriptedModel(extract))
-    assert engine.add(request("The move completed yesterday.", when=None)).success
-    assert len(engine.store.memories("u1")) == 1
-    assert engine.store.memories("u1")[0].current.event_at is None
+    assert engine.add(request('The move completed yesterday.')).success
+    assert not engine.store.memories('u1')
+    assert engine.store.get('requests','u1','r1')['units']['0']['candidate_dispositions'][0]['status'] == 'pending'
 
 
 def test_equivalent_day_does_not_accept_an_invented_clock():
@@ -233,19 +229,17 @@ def test_initial_state_also_obeys_the_decision_budget():
     assert engine.last_search["decision_bytes"] <= 4000
 
 
-def test_planned_fact_is_disposed_and_cannot_become_a_current_condition():
-    model = ScriptedModel(lambda state, errors: {"commands": [command(state, "I reside in Shanghai.", kind="fact",
-        time="tomorrow", status="planned")]})
+def test_desired_relation_keeps_mode_and_stays_out_of_asserted_background():
+    model = ScriptedModel(lambda state, errors: {'commands': [{**command(state, kind='fact'), 'mode':'desired'}]})
     engine = MemoryEngine(model=model)
-    engine.add(request("I plan to live in Shanghai tomorrow."))
-    engine.search(query("Where do I currently live?"), "2024-06-04T00:00:00Z")
-    assert engine.store.memories("u1")[0].current.status == "planned"
-    assert not model.decisions[-1]["current_conditions"]
-    assert engine.store.list("sources", "u1")
+    engine.add(request('I want to live somewhere warmer.'))
+    engine.search(query('Where do I currently live?'), '2024-06-04T00:00:00Z')
+    assert engine.store.memories('u1')[0].current.mode == 'desired'
+    assert not model.decisions[-1]['current_conditions']
 
 
 def test_all_model_schema_properties_are_required_without_dynamic_enums():
-    for model in (Decision, ProposalPlan, MaintenancePlan):
+    for model in (Decision, ProposalPlan, MaintenanceDraft):
         schema = strict_schema(model)
         assert len(json.dumps(schema)) < 10000
         for item in [schema, *schema.get("$defs", {}).values()]:
@@ -331,7 +325,7 @@ def test_encoded_null_arguments_commit_without_a_repair_call():
     engine.add(request("I have a peanut allergy."))
     assert len(model.extractions) == 1
     assert engine.store.memories("u1")[0].tags[0] == "fact"
-    assert engine.store.memories("u1")[0].current.valid_to is None
+    assert engine.store.memories("u1")[0].current.status == "stated"
 
 
 def test_encoded_null_keeps_a_dependent_tool_step_valid():
@@ -356,15 +350,12 @@ def test_source_grounded_english_calendar_dates(expression, text, expected):
     assert result.startswith(expected) and "23:59:59" not in result
 
 
-def test_two_unknown_time_fields_degrade_locally_without_losing_valid_content():
-    def extract(state, errors):
-        draft = command(state, kind="fact", time="next solstice")
-        draft["end_expression"] = "until the eclipse"
-        return {"commands": [draft]}
-    engine = MemoryEngine(model=ScriptedModel(extract))
-    assert engine.add(request("The restriction applies until further notice.")).success
-    assert len(engine.store.memories("u1")) == 1
-    assert engine.store.memories("u1")[0].current.valid_to is None
+def test_relation_time_uncertainty_is_preserved_in_its_statement():
+    engine = MemoryEngine(model=ScriptedModel(lambda state, errors: {'commands':[command(state,kind='fact')]}))
+    engine.add(request('The restriction applies until further notice.'))
+    memory = engine.store.memories('u1')[0]
+    assert 'until further notice' in memory.current.content
+    assert memory.current.planned_at is None and memory.current.event_at is None
 
 
 def test_supported_relative_dates_share_the_same_content_normalization():

@@ -90,28 +90,25 @@ def test_prior_user_and_assistant_context_survives_reopening(database):
         memory = second.store.memories("u1")[0]
         assert len(memory.current.source_ids) == 3
         assert memory.current.status == "planned"
-        assert second.store.edges_for("u1", origins={memory.id})[0].relation == "involves"
+        assert second.store.edges_for("u1", origins={memory.id})[0].relation == "mentions"
     finally:
         second.close()
 
 
-def test_revisions_and_retraction_survive_reopening(database):
-    model = ScriptedModel(lambda state, errors: {"commands": [command(state, kind="preference")]})
-    engine = MemoryEngine(SQLiteStore(database), model, HashEmbedder())
-    engine.add(request("I prefer watermelon."))
-    memory_id = engine.store.memories("u1")[0].id
-    model.extractor = lambda state, errors: {"commands": [command(state, kind="preference", operation="retract", target=memory_id)]}
-    engine.add(request("I withdraw the watermelon preference.", request_id="r2", when="2024-06-03T10:00:00Z"))
+def test_event_cancellation_and_history_survive_reopening(database):
+    model=ScriptedModel(lambda state, errors: {'commands':[command(state,status='planned',time='tomorrow')]})
+    engine=MemoryEngine(SQLiteStore(database),model,HashEmbedder())
+    engine.add(request('I plan a workshop tomorrow.'))
+    mid=engine.store.memories('u1')[0].id
+    model.extractor=lambda state, errors: {'commands':[command(state,operation='update',target=mid,status='cancelled')]}
+    engine.add(request('I cancelled that workshop.',request_id='r2',when='2024-06-03T10:00:00Z'))
     engine.close()
-
-    store = SQLiteStore(database)
+    store=SQLiteStore(database)
     try:
-        memory = store.memories("u1", [memory_id])[0]
-        assert len(memory.revisions) == 2
-        assert memory.current.status == "retracted"
-        assert hot_view([memory], "2024-06-02T12:00:00Z")
-        assert hot_view([memory], "2024-06-04T12:00:00Z") == []
-        assert any(edge.relation == "revises" for edge in store.edges_for("u1"))
+        memory=store.memories('u1',[mid])[0]
+        assert len(memory.revisions)==2 and memory.current.status=='cancelled'
+        assert memory.current.planned_at.startswith('2024-06-03')
+        assert any(edge.relation=='revises' for edge in store.edges_for('u1'))
     finally:
         store.close()
 

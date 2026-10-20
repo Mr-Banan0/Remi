@@ -56,13 +56,14 @@ def resolve_time(expression: str | None, text: str, anchor: str | None) -> str |
                     return date.isoformat()
             return None
         match = re.fullmatch(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日", expression)
-        if match and expression in text:
+        if match:
             year = int(match[1]) if match[1] else base.year if base else None
-            return datetime(year, int(match[2]), int(match[3]), tzinfo=timezone.utc).isoformat() if year else None
-        if expression.casefold() in text.casefold():
-            dates = list(calendar_dates(expression, base))
-            if len(dates) == 1:
-                return dates[0].isoformat()
+            if year:
+                candidate = datetime(year, int(match[2]), int(match[3]), tzinfo=timezone.utc)
+                return resolve_time(candidate.date().isoformat(), text, anchor)
+        dates = list(calendar_dates(expression, base))
+        if len(dates) == 1:
+            return resolve_time(dates[0].date().isoformat(), text, anchor)
     except (ValueError, OverflowError):
         return None
     return None
@@ -97,7 +98,4 @@ def absolute_content(content: str, source_text: str, anchor: str | None) -> str:
 
 
 def in_view(revision, as_of: str) -> bool:
-    clock = parse_time(as_of)
-    return (parse_time(revision.observed_at) <= clock and revision.status not in {"retracted", "cancelled"}
-            and (not revision.valid_from or parse_time(revision.valid_from) <= clock)
-            and (not revision.valid_to or clock < parse_time(revision.valid_to)))
+    return parse_time(revision.observed_at) <= parse_time(as_of)

@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from remi.clock import resolve_time
-from remi.models import MemoryEdit
+from remi.models import CardDecision
 from remi.providers import JevReranker
 from remi.storage import MemoryStore, SQLiteStore, TABLES
 
@@ -35,7 +35,7 @@ def test_jev_failure_uses_existing_order_without_retry(status):
 
 
 def test_static_schema_has_no_dynamic_source_or_memory_enums():
-    schema = MemoryEdit.model_json_schema()
+    schema = CardDecision.model_json_schema()
     assert len(json.dumps(schema)) < 10000
     assert schema["additionalProperties"] is False
     assert schema["properties"]["target_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
@@ -92,7 +92,7 @@ def test_gpt_model_contract_and_bounded_transport_retry():
     sdk = OpenAI(api_key="dummy-test", base_url="https://test.invalid/v1", max_retries=0,
                  http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     model = GPTModel("dummy-test", "https://test.invalid/v1", client=sdk)
-    assert model.propose({"new_user_source": {"content": "Original"}}, deadline=monotonic() + 5) == {"items": []}
+    assert model.propose({"new_user_source": {"id":"src_test", "role":"user", "content": "Original"}}, deadline=monotonic() + 5) == {"items": []}
     assert len(calls) == 2 and len(model.calls) == 2
     assert all(call["model"] == "gpt-4o-mini" for call in calls)
     assert calls[0]["response_format"]["json_schema"]["strict"] is True
@@ -132,58 +132,49 @@ def test_sqlite_round_trip_checkpoint_vectors_and_exact_table_count(tmp_path):
     second.close()
 
 
-def test_add_uses_short_typed_references_and_restores_ids_without_rewriting_source_words():
+def test_add_uses_short_references_without_rewriting_source_words():
     from remi.providers import semantic_references
-    payload={'owner':'golden:opaque-owner','new_user_source':{'id':'src_opaque','role':'user','content':'I said src_opaque and M1 literally.'},
-        'candidate_entities':[{'id':'obj_opaque','name':'Nora','is_self':False}],
-        'history':[{'id':'mem_opaque','revision_id':'rev_opaque','sources':[],
-                    'roles':[{'entity_ref':'obj_opaque','role':'subject'}]}]}
+    payload={'owner':'opaque-owner','new_user_source':{'id':'src_opaque','role':'user','content':'I said src_opaque and M1 literally.'},
+        'history':[{'id':'mem_opaque','sources':[]}]}
     sent,restore=semantic_references(payload)
-    assert sent['owner']=='U1' and sent['new_user_source']['id']=='S1'
-    assert sent['candidate_entities'][0]['id']=='E1' and sent['history'][0]['id']=='M1'
+    assert sent['owner']=='U1' and sent['new_user_source']['id']=='S1' and sent['history'][0]['id']=='M1'
     assert sent['new_user_source']['content']==payload['new_user_source']['content']
-    returned=restore({'ref':'E1','target_id':'M1','roles':[{'entity_ref':'E1'}],
-        'evidence':[{'source_id':'S1'}],'content':'Literal M1 remains source wording.'})
-    assert returned['ref']=='obj_opaque' and returned['target_id']=='mem_opaque'
-    assert returned['roles'][0]['entity_ref']=='obj_opaque' and returned['evidence'][0]['source_id']=='src_opaque'
-    assert returned['content']=='Literal M1 remains source wording.'
+    returned=restore({'decisions':[{'candidate_id':'S1','target_id':'M1'}],
+        'items':[{'id':'M1','content':'Literal M1 remains source wording.','mentions':[],'evidence':[{'source_id':'S1'}]}]})
+    assert returned['decisions'][0]=={'candidate_id':'S1','target_id':'mem_opaque'}
+    assert returned['items'][0]['id']=='M1' and returned['items'][0]['evidence'][0]['source_id']=='src_opaque'
+    assert returned['items'][0]['content']=='Literal M1 remains source wording.'
 
 
-def test_short_refs_preserve_candidate_ids_and_declared_local_namespaces():
+def test_short_refs_preserve_candidate_namespace_collisions():
     from remi.providers import semantic_references
     payload={'new_user_source':{'id':'src_actual','role':'user','content':'Original'},
-        'proposal':{'items':[{'id':'M1','content':'A claim','entities':[],'tags':['fact'],'evidence':[{'source_id':'src_actual'}]}]},
-        'candidate_entities':[{'id':'obj_actual','name':'Nora','is_self':False}],
-        'history':[{'id':'mem_actual','revision_id':'rev_actual','sources':[]}]}
+        'proposal':{'items':[{'id':'M1','content':'A claim','mentions':[],'evidence':[{'source_id':'src_actual'}]}]},
+        'history':[{'id':'mem_actual','sources':[]}]}
     sent,restore=semantic_references(payload)
     assert sent['proposal']['items'][0]['id']=='M1' and sent['history'][0]['id']=='M2'
-    result=restore({'entities':[{'ref':'E1','target_id':None}],
-        'edits':[{'ref':'W1','target_id':'M2','candidate_ids':['M1'],
-            'roles':[{'entity_ref':'E1'}], 'assertions':[{'subject_ref':'E1','object_ref':'literal:M1'}]}]})
-    assert result['edits'][0]['target_id']=='mem_actual' and result['edits'][0]['candidate_ids']==['M1']
-    assert result['entities'][0]['ref']=='E1' and result['edits'][0]['roles'][0]['entity_ref']=='E1'
-    assert result['edits'][0]['assertions'][0]['object_ref']=='literal:M1'
+    assert restore({'decisions':[{'target_id':'M2','candidate_id':'M1'}]})['decisions'][0] == {'target_id':'mem_actual','candidate_id':'M1'}
 
 
-def test_add_model_sees_only_selectable_semantic_ids_and_returns_real_targets():
+def test_add_model_exposes_only_supplied_candidate_and_target_catalogues():
     from openai import OpenAI
     from remi.providers import GPTModel
     calls=[]
     def handler(request):
         calls.append(json.loads(request.content))
-        content=json.dumps({'edits':[{'ref':'W1','target_id':'M1','candidate_ids':['C1'],'evidence':[{'source_id':'S1'}]}]})
+        content=json.dumps({'decisions':[{'candidate_id':'C1','target_id':'M1'}]})
         return httpx.Response(200,json={'id':'test','object':'chat.completion','created':1,'model':'gpt-4o-mini',
             'choices':[{'index':0,'message':{'role':'assistant','content':content},'finish_reason':'stop'}]})
     sdk=OpenAI(api_key='dummy-test',base_url='https://test.invalid/v1',max_retries=0,
         http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     model=GPTModel('dummy-test','https://test.invalid/v1',client=sdk)
     state={'owner':'private-scope','new_user_source':{'id':'src_actual','role':'user','content':'Original','message_at':'2024-06-02T10:00:00Z'},
-        'candidate_entities':[{'id':'obj_actual','name':'Nora','is_self':False,'owner':'private-scope'}],
-        'history':[{'id':'mem_actual','revision_id':'rev_actual','sources':[],'links':[{'target_ref':'outside_recall','target_revision_id':'rev_other','label':'related'}]}]}
+        'proposal':{'items':[{'id':'C1','content':'One claim','mentions':[],'evidence':[{'source_id':'src_actual'}]}]},
+        'history':[{'id':'mem_actual','sources':[]}]}
     result=model.maintain(state,deadline=monotonic()+5)
     body=json.loads(calls[0]['messages'][1]['content'])
-    assert 'owner' not in body and 'revision_id' not in body['history'][0]
-    assert body['history'][0]['id']=='M1' and body['history'][0]['links']==[]
-    assert result['edits'][0]['target_id']=='mem_actual' and result['edits'][0]['evidence'][0]['source_id']=='src_actual'
-    assert state['history'][0]['revision_id']=='rev_actual' and state['history'][0]['links']
+    props=calls[0]['response_format']['json_schema']['schema']['$defs']['EventPatchDraft']['properties']
+    assert 'owner' not in body and body['history'][0]['id']=='M1'
+    assert props['candidate_id']['enum']==['C1'] and props['target_id']['enum']==['M1']
+    assert result['decisions'][0]['target_id']=='mem_actual'
     model.close()

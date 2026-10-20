@@ -178,7 +178,8 @@ def execute(args):
     plan = list(actions(dataset))
     report = {"architecture": PIPELINE, "complete": False, "dataset": str(args.dataset),
         "dataset_sha256": dataset_hash, "baseline_result": str(args.baseline), "runtime_directory": str(root),
-        "runtime_code_fingerprint": fingerprint(root), "started_at": time.time(), "planned_add_calls": sum(
+        "runtime_code_fingerprint": fingerprint(root), "active_runtime_code_fingerprint": fingerprint(root),
+        "active_runtime_directory": str(root), "started_at": time.time(), "planned_add_calls": sum(
             kind == "add" for kind, action in plan) + len(dataset["lifecycle"]), "planned_questions": len(dataset["cases"]),
         "add_calls": [], "questions": [], "lifecycle_add_calls": [], "lifecycle_searches": [],
         "protocol_checks": [], "errors": [], "diagnostic_calls": [], "source_to_ref": {},
@@ -187,10 +188,15 @@ def execute(args):
             "settings": vars(engine.settings)}, "database": str(database)}
     prior_calls = []
     if previous_report:
+        if previous_report['active_runtime_code_fingerprint'] != fingerprint(root):
+            raise ValueError('resume_requires_frozen_runtime')
+        if previous_report['dataset_sha256'] != dataset_hash:
+            raise ValueError('resume_requires_frozen_dataset')
         report = previous_report
         prior_calls = list(report["diagnostic_calls"])
         report["resumed_at"] = time.time()
         report["runner_resume_code_fingerprint"] = fingerprint(root)
+        report["active_runtime_directory"] = str(root)
         report["physical_call_statistics_complete"] = False
     mapping, catalog, last_payload = {}, {}, None
     def save(status):
@@ -205,9 +211,19 @@ def execute(args):
             **progress_counts(report), "planned_add_calls": report["planned_add_calls"],
             "planned_questions": report["planned_questions"], "result": str(args.output / "result.json")}, indent=2))
     def post(client, path, payload, clock=None):
-        started = time.monotonic()
-        response = client.post(path, json=payload, headers={"x-memory-reference-time": clock} if clock else None)
-        return response, round(time.monotonic() - started, 3)
+        seconds = 0.0
+        for attempt in range(1, 4):
+            started = time.monotonic()
+            response = client.post(path, json=payload, headers={"x-memory-reference-time": clock} if clock else None)
+            elapsed = time.monotonic() - started
+            seconds += elapsed
+            with (args.output / 'http-attempts.jsonl').open('a') as journal:
+                journal.write(json.dumps({'path': path, 'request_id': payload.get('request_id'),
+                    'query': payload.get('query'), 'attempt': attempt, 'http_status': response.status_code,
+                    'seconds': round(elapsed, 3)}) + '\n')
+            if response.status_code not in {429, 502, 503, 504}:
+                break
+        return response, round(seconds, 3)
     save("running")
     try:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"Authorization": "Bearer " + token}, timeout=1800) as client:
@@ -246,7 +262,7 @@ def execute(args):
                     print(f"Add {len(report['add_calls'])}: {record['units']} units, {seconds}s", flush=True)
                 else:
                     question = action["question"]
-                    if any(record["question_id"] == question["id"] for record in report["questions"]):
+                    if any(record["question_id"] == question["id"] and record.get('http_status') == 200 for record in report["questions"]):
                         continue
                     response, seconds = post(client, "/search", {"user_id": owner, "query": question["text"], "top_k": 10},
                                              question["day"] + "T23:59:59Z")
@@ -254,9 +270,10 @@ def execute(args):
                     record = score_case(action, candidates, mapping, catalog)
                     record.update(seconds=seconds, http_status=response.status_code, candidates=candidates,
                                   trace=engine.last_search, input_complete=all(ref in mapping.values() for ref in question["evidence"]))
-                    report["questions"].append(record)
                     if response.status_code != 200:
                         report["errors"].append({"operation": "search", "question_id": question["id"], "http_status": response.status_code})
+                        raise RuntimeError('golden_search_interrupted')
+                    report["questions"].append(record)
                     print(f"Search {len(report['questions'])}: recall={record['evidence_recall']:.3f}, {seconds}s", flush=True)
                 save("running")
             if last_payload:
@@ -288,7 +305,9 @@ def execute(args):
                 if any(record["query"] == question for record in report["lifecycle_searches"]):
                     continue
                 response, seconds = post(client, "/search", {"user_id": life_owner, "query": question, "top_k": 5})
-                candidates = response.json()["data"] if response.status_code == 200 else []
+                if response.status_code != 200:
+                    raise RuntimeError('golden_lifecycle_search_interrupted')
+                candidates = response.json()["data"]
                 report["lifecycle_searches"].append({"query": question, "seconds": seconds, "http_status": response.status_code,
                     "top1_expected_evidence": bool(candidates) and all(term in candidates[0]["content"] for term in expected),
                     "candidates": candidates, "trace": engine.last_search})
