@@ -1,0 +1,1221 @@
+{
+  "cases": [
+    {
+      "id": "new-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Emilia is also known as Em."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Emilia",
+            "Em"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "new-person-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "陆青还有个昵称青子，这两个名字说的是同一个人。"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "陆青",
+            "青子"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "existing-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The same Idris I mentioned earlier also goes by Id."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Idris",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Idris",
+                "quote": "Idris is the librarian."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Idris is the librarian."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Idris",
+            "Id"
+          ],
+          "target": "E1",
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "changed-role-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "之前那位宋言改做画家了，他也叫阿言。"
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "宋言",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "宋言",
+                "quote": "宋言是工程师。"
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "宋言是工程师。"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "宋言",
+            "阿言",
+            "画家"
+          ],
+          "target": "E1",
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "different-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I met another person named Rory today."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Rory",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Rory",
+                "quote": "Rory is my neighbor."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Rory is my neighbor."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Rory"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "different-person-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "今天我认识了另一个周淼。"
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "周淼",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "周淼",
+                "quote": "周淼是我以前的老师。"
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "周淼是我以前的老师。"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "周淼"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "shared-description-people",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The first volunteer and the second volunteer are two different people."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "volunteer"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "volunteer"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "new-animal-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My cat Nutmeg is also called Meg."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Nutmeg",
+            "Meg",
+            "cat"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "new-animal-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "这只狗的名字是芝麻，小名麻麻。"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "芝麻",
+            "麻麻",
+            "狗"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "existing-animal-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "That same bird Lark is also called LK."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Lark",
+            "kind": "animal",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Lark",
+                "quote": "Lark is my pet bird."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Lark is my pet bird."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Lark",
+            "LK"
+          ],
+          "target": "E1",
+          "kind": "animal",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "same-name-animals-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "左边的猫叫圆圆，右边的猫也叫圆圆，它们是两只不同的猫。"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "圆圆",
+            "猫"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "圆圆",
+            "猫"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "same-name-animals-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The older dog and the younger dog are two different dogs, both named Spark."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Spark"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "Spark"
+          ],
+          "target": null,
+          "kind": "animal",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "renamed-organization-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Hillside Circle is now called Daybreak Circle. It is the same organization."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Hillside Circle",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Hillside Circle",
+                "quote": "Hillside Circle is a volunteer organization."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Hillside Circle is a volunteer organization."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Hillside Circle",
+            "Daybreak Circle"
+          ],
+          "target": "E1",
+          "kind": "organization",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "organization-alias-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "白鹭合作社简称白鹭。"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "白鹭合作社",
+            "白鹭"
+          ],
+          "target": null,
+          "kind": "organization",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "shared-short-name-orgs-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "溪谷读书会与溪谷运动社是两个独立团体，均简称溪谷。"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "溪谷"
+          ],
+          "target": null,
+          "kind": "organization",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "溪谷"
+          ],
+          "target": null,
+          "kind": "organization",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "different-organization-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Another Beacon Assembly was founded independently of the one I mentioned earlier."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Beacon Assembly",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Beacon Assembly",
+                "quote": "Beacon Assembly is a choir."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Beacon Assembly is a choir."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Beacon Assembly"
+          ],
+          "target": null,
+          "kind": "organization",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-same-name-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Jules sent an email."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Jules",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Jules",
+                "quote": "Jules is a teacher."
+              }
+            ]
+          },
+          {
+            "id": "E2",
+            "name": "Jules",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Jules",
+                "quote": "A different Jules is a neighbor."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": []
+    },
+    {
+      "id": "quoted-person-alias-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "韩舒在信中写道：“我也叫舒舒。”"
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "韩舒",
+            "舒舒"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "no_user": true
+    },
+    {
+      "id": "actual-user-alias-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My name is Nessa and friends call me Ness."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Nessa",
+            "Ness"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": true
+        }
+      ]
+    },
+    {
+      "id": "unchanged-existing-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "That same Dante sent a letter."
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Dante",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Dante",
+                "quote": "Dante is my uncle."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Dante is my uncle."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Dante"
+          ],
+          "target": "E1",
+          "kind": "person",
+          "is_user": false
+        }
+      ]
+    },
+    {
+      "id": "relation-new-pet",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Leda owns the rabbit Pip."
+        },
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "target": null,
+          "aliases": [
+            "Leda"
+          ],
+          "kind": "person",
+          "is_user": false
+        },
+        {
+          "target": null,
+          "aliases": [
+            "Pip"
+          ],
+          "kind": "animal",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "Leda owns the rabbit Pip.",
+          "operation": "create",
+          "target_id": null,
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-end-employment",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I have stopped working at Maple Guild."
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "target": "speaker",
+          "aliases": [],
+          "kind": "person",
+          "is_user": true
+        },
+        {
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ],
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "I have stopped working at Maple Guild.",
+          "operation": "update",
+          "target_id": "job_history",
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-unchanged",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I continue to work at Maple Guild."
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "target": "speaker",
+          "aliases": [],
+          "kind": "person",
+          "is_user": true
+        },
+        {
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ],
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "I continue to work at Maple Guild.",
+          "operation": "keep",
+          "target_id": "job_history",
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-add-aspect",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I still work at Maple Guild. I also donate to it."
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "target": "speaker",
+          "aliases": [],
+          "kind": "person",
+          "is_user": true
+        },
+        {
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ],
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "I still work at Maple Guild.",
+          "operation": "keep",
+          "target_id": "job_history",
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        },
+        {
+          "quote": "I also donate to it.",
+          "operation": "create",
+          "target_id": null,
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-alias-endpoints",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My rabbit Pip is also called Pippy. Pippy lives with my cousin Leda."
+        },
+        "subject_catalog": [
+          {
+            "id": "rabbit",
+            "name": "Pip",
+            "kind": "animal",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Pip",
+                "quote": "My rabbit is Pip."
+              }
+            ]
+          },
+          {
+            "id": "cousin",
+            "name": "Leda",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Leda",
+                "quote": "Leda is my cousin."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "target": "rabbit",
+          "aliases": [
+            "Pip",
+            "Pippy"
+          ],
+          "kind": "animal",
+          "is_user": false
+        },
+        {
+          "target": "cousin",
+          "aliases": [
+            "Leda"
+          ],
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "Pippy lives with my cousin Leda.",
+          "operation": "create",
+          "target_id": null,
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-desired-mode",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I would like to work at Maple Guild again."
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [
+          {
+            "id": "past_job",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I no longer work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "target": "speaker",
+          "aliases": [],
+          "kind": "person",
+          "is_user": true
+        },
+        {
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ],
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "I would like to work at Maple Guild again.",
+          "operation": "create",
+          "target_id": null,
+          "mode": "desired",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-ambiguous-person",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Sam works at our Maple Guild."
+        },
+        "subject_catalog": [
+          {
+            "id": "neighbor",
+            "name": "Sam",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Sam",
+                "quote": "Sam is my neighbor."
+              }
+            ]
+          },
+          {
+            "id": "cousin",
+            "name": "Sam",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Sam",
+                "quote": "A different Sam is my cousin."
+              }
+            ]
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "Maple Guild is our guild."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ],
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "Sam works at our Maple Guild.",
+          "operation": "pending",
+          "target_id": null,
+          "mode": "asserted",
+          "endpoints": [
+            null,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation-direction",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My colleague Una now coaches my colleague Teo."
+        },
+        "subject_catalog": [
+          {
+            "id": "una",
+            "name": "Una",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Una",
+                "quote": "Una is my colleague."
+              }
+            ]
+          },
+          {
+            "id": "teo",
+            "name": "Teo",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Teo",
+                "quote": "Teo is my colleague."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": [
+          {
+            "id": "old_coaching",
+            "endpoint_ids": [
+              "una",
+              "teo"
+            ],
+            "content": "My colleague Teo coaches my colleague Una.",
+            "mode": "asserted",
+            "ordered_subject_ids": [
+              "teo",
+              "una"
+            ]
+          }
+        ]
+      },
+      "groups": [
+        {
+          "target": "una",
+          "aliases": [
+            "Una"
+          ],
+          "kind": "person",
+          "is_user": false
+        },
+        {
+          "target": "teo",
+          "aliases": [
+            "Teo"
+          ],
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "My colleague Una now coaches my colleague Teo.",
+          "operation": "create",
+          "target_id": null,
+          "mode": "asserted",
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

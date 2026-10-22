@@ -56,7 +56,7 @@ def test_invalid_output_keeps_sources_and_a_retryable_checkpoint():
     model=ScriptedModel(lambda state,errors: (_ for _ in ()).throw(OutputInvalid('invalid')))
     engine=MemoryEngine(model=model)
     with pytest.raises(ProviderUnavailable): engine.add(request('My original evidence survives.'))
-    assert len(model.extractions)==2
+    assert len(model.extractions)==0 and len(model.subject_calls)==2
     assert not engine.store.memories('u1')
     assert engine.store.get('requests','u1','r1')['status']=='pending'
     assert engine.store.list('sources','u1')[0]['content']=='My original evidence survives.'
@@ -99,38 +99,38 @@ def test_updates_append_and_distinct_occurrences_stay_distinct():
     model.extractor = lambda state, errors: {"commands": [command(state, status="planned")]}
     engine.add(request("Project launch planned."))
     old = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=old.id)]}
+    model.extractor = lambda state, errors: {"commands": [command(state, )]}
     engine.add(request("Project launch completed.", request_id="r2"))
     updated = engine.store.memories("u1", [old.id])[0]
-    assert len(updated.revisions) == 2
-    assert updated.revisions[0].content == "Project launch planned."
+    assert updated == old
+    assert updated.current.content == "Project launch planned."
+    assert len(engine.store.memories("u1")) == 2
     model.extractor = lambda state, errors: {"commands": [command(state)]}
     engine.add(request("Another project launch happened.", request_id="r3"))
-    assert len(engine.store.memories("u1")) == 2
-    assert any(edge.relation == "revises" for edge in engine.store.edges_for("u1"))
+    assert len(engine.store.memories("u1")) == 3
+    assert not any(edge.relation == "revises" for edge in engine.store.edges_for("u1"))
 
 
-def test_relation_and_event_targets_remain_independent():
+def test_preference_and_new_event_remain_independent():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, kind="preference")]})
     engine = MemoryEngine(model=model)
     engine.add(request("I like watermelon."))
     old = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, kind="event", operation="update", target=old.id)]}
+    model.extractor = lambda state, errors: {"commands": [command(state, kind="event", )]}
     engine.add(request("Watermelon shipment arrived.", request_id="r2"))
-    assert engine.store.get("requests","u1","r2")["units"]["0"]["candidate_dispositions"][0]["status"] == "pending"
+    assert engine.store.get("requests","u1","r2")["units"]["0"]["candidate_dispositions"][0]["status"] == "accepted"
+    assert len(engine.store.memories("u1")) == 2
     assert len(engine.store.memories("u1")[0].revisions) == 1
-    assert engine.store.memories("u1")[0].record_type == "relation"
+    assert engine.store.memories("u1")[0].record_type == "preference"
 
 
-def test_foreign_owner_target_and_sources_are_rejected():
-    model = ScriptedModel()
-    engine = MemoryEngine(model=model)
-    engine.add(request("Watermelon arrived."))
-    target = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=target.id)]}
-    engine.add(request("Watermelon arrived.", owner="u2"))
-    assert not engine.store.memories("u2")
-    assert not engine.search(query("Watermelon", owner="u3")).data
+def test_foreign_owner_sources_are_rejected():
+    model=ScriptedModel();engine=MemoryEngine(model=model)
+    engine.add(request('Private source.'));source=engine.store.list('sources','u1')[0]['id']
+    model.extractor=lambda state,errors:{'commands':[{**command(state),'source_id':source}]}
+    with pytest.raises(ProviderUnavailable):engine.add(request('New source.',owner='u2'))
+    assert not engine.store.memories('u2')
+    assert not engine.search(query('Private',owner='u3')).data
 
 
 def test_final_time_failure_preserves_content_with_unknown_time():
@@ -139,7 +139,7 @@ def test_final_time_failure_preserves_content_with_unknown_time():
     assert engine.add(request("I completed the move.")).success
     assert not engine.store.memories("u1")
     assert "completed the move" in engine.search(query("move")).data[0].content
-    assert len(model.maintenances) == 2
+    assert len(model.extractions) == 1 and len(model.subject_calls) == 1
 
 
 def test_separate_events_get_their_own_dates_and_absolute_references():
@@ -159,4 +159,4 @@ def test_separate_events_get_their_own_dates_and_absolute_references():
 def test_all_kinds_use_the_same_path(kind):
     engine = MemoryEngine(model=ScriptedModel(lambda state, errors: {"commands": [command(state, kind=kind)]}))
     engine.add(request("Concrete independently sourced memory."))
-    assert engine.store.memories("u1")[0].record_type == ("event" if kind == "event" else "relation")
+    assert engine.store.memories("u1")[0].record_type == kind

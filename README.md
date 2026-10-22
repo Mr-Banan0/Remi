@@ -1,25 +1,25 @@
 # Remi
 
-Remi 是独立的 G10 主体导航与局部事件维护实验项目，与 TraceWeave 并列开发。
+Remi 当前在开发 G11 主体记忆原型：具体人物、动物、组织／团队的主体 ID、可搜索称呼、原文联系与独立事件维护。
 
-最近一次 Golden（G10 V5 冻结版）原文 R@10 为 74.36%，主集逻辑 Add 平均 28.54 秒；完整命中 8/13、全漏 2/13。279 个候选中 130 个待定，暴露身份协议与语义分类问题。独立语义序列完整通过 1/4。详情见 [Golden 对比与实际图](docs/golden-g10-results.md) 和 [独立验收](docs/g10-validation-results.md)。
+当前为 **V29 四类记忆直接保存**：先共用召回，再维护主体与关系；程序固定身份后，模型一次提取事实 fact、偏好 preference、经验 experience、事件 event，随后经程序校验追加保存。relation 专用于主体间关系。正常两次模型调用，共用同一份召回历史。当前边界见 [V29](docs/architecture-changes/g11-direct-memory-v29.md)，验证见 [验证记录](docs/verification.md)。工作区保持未提交。
 
-当前代码已统一使用 `user` 身份，并补充候选参与判断、维护复核和提交前图边检测。该修复使用独立归属测试验收，Golden 成绩仍对应 V5。范围与结果见 [用户身份修复与验证](docs/user-identity-validation.md)。
+最近一次已完成 Golden 仍为 G10 V5：原文 R@10=74.36%，完整命中 8/13、全漏 2/13，主集逻辑 Add 平均 28.54 秒。该成绩对应历史冻结代码，详情见 [G10 Golden](docs/golden-g10-results.md)。
 
 项目目录为 `solutions/remi`。包和 CLI 均使用 `remi`，当前配置变量使用 `REMI_`。历史报告继续保留生成时的名称和代码指纹，目录迁移规则见 [改名记录](docs/rename-to-remi.md)。
 
-完整原文作为证据底座；统一主体提供身份入口，关系与事件分别保留稳定身份、来源、状态和修订。关系／状态作为独立命题保存，事件按发生次数维护。热区是同一张图的有预算视图，冷区继续参与全局检索。
+完整原文作为证据底座；主体提供身份入口，关系保存主体之间的联系，四类记忆保存事实、偏好、经验和事件。主体关系按稳定 ID 维护修订，四类记忆按来源追加记录。热区是同一张图的有预算视图，冷区继续参与全局检索。
 
 ## 当前实现
 
-- 文本模型：`gpt-4o-mini`，先提出候选，再结合历史联合定稿；同时负责一次 Search 补搜决策。
-- Add 维护：候选声明当前用户参与情况，程序生成 `user` 身份并对齐其他主体；第二阶段逐项新增、保持、局部修改计划事件或待定，程序校验并原子提交。
+- 文本模型：`gpt-4o-mini`，维护主体与关系、提取四类记忆，同时负责 Search 补搜决策。
+- Add 写入：原文与上下文共用召回主体、关系和四类记忆；主体模型输出名称、别名、关系与证据；固定身份后，提取模型直接输出带类型和来源的记忆，程序校验并保存。
 - 向量模型：`text-embedding-v4`，默认 1024 维，沿用 DashScope。
 - 重排序：`jev-1.13.0`，对检索证据支持度和时间候选活动匹配进行排序判定。
 - Jev 沿用已验证网关协议：`https://api.quickrouter.ai/v1/systemone`，请求使用 `state/questions`，响应读取 `answers` 中的 Noul。
 - HTTP `/add`、`/search` 与现有本地评测请求结构一致。
 - 物理数据库：6 张显式 SQLite 表；向量采用 sqlite-vec 序列化和余弦距离函数，BM25 在程序中计算。
-- Add 同用户串行：普通有界单元两次 GPT，空候选一次；共享一次输出修正。按主体关联卡召回并补充少量全局候选。图、索引和应用检查点一起提交。
+- Add 同用户串行：每个用户文本单元一次主体及关系模型、一次四类记忆提取模型，共两次；共享一次协议修正。图、索引和应用检查点一起提交。
 - Search 始终跨冷热混合召回，最多一次 GPT 决策、两步补搜；关系读取采用程序内有界操作。
 
 [G10 Golden 三版对比](docs/golden-g10-results.md) · [G10 实现与独立验收](docs/g10-validation-results.md) · [当前架构与调用预算](docs/current-architecture.md) · [G10 简化范围与预算](docs/architecture-changes/g10-local-maintenance.md) · [G09 三版 Golden 对比与图审计](docs/golden-g09-results.md) · [G08 Golden 实验与实际图](docs/golden-g08-results.md) · [G05 历史 Golden 结果](docs/golden-g05-results.md) · [数据库范围](docs/database-scope.md) · [验收记录](docs/verification.md)
@@ -78,7 +78,7 @@ uv run remi serve --host 127.0.0.1 --port 8011
 
 原文完整保存，用户消息支持结构化内容；助手消息提供解释上下文并参与原文检索。`timestamp` 为 Unix 毫秒；来源时钟缺失时保留未知。相同请求 ID 与相同内容幂等，冲突内容返回 409。
 
-Add 保存 propose、维护上下文、maintain 及应用检查点，图和索引提交后返回 200。引用越界、供应商及未解决协议故障返回 503，重发相同请求复用已完成阶段。语义计划经过共享修正仍无法通过证据／身份校验时记录拒绝、保留旧图并提交原文索引；实验单独统计结构化写入拒绝。历史实验使用各自冻结代码与数据库，新链路从原文重放生成当前记录。当前 JSON 记录版本为 `schema_version=11`，检查点为 `G10-user-identity-v8`；已有六表继续复用，旧实验库通过各自冻结代码读取。
+Add 先共用召回，再调用一次主体与关系维护、一次四类记忆提取。程序校验类型、来源、主体引用和日期支持，直接追加保存事实、偏好、经验、事件；改期或完成也保存为新记录。主体及关系维护继续保留。两个阶段共享最多一次协议修正。检查点保存 shared_recall、主体计划、propose、write_plan 和应用状态；索引故障重试复用已完成输出。来源／协议无法修正时返回 503，待定身份和无依据日期保留为检索提示。原文、记录、图和索引提交后返回 200。JSON 记录保持 schema_version=13，检查点为 G11-readable-subjects-v32，沿用已有六表。旧实验及冻结结果保留原归属。
 
 ### Search
 
@@ -94,7 +94,7 @@ Add 保存 propose、维护上下文、maintain 及应用检查点，图和索�
 
 ## 最小实验边界
 
-当前实现保留：来源、独立记录、追加修订、独立主体关系、跨冷热检索、程序时间计算、有限补搜和 Jev 排序。
+当前实现保留：来源、四类记忆追加记录、主体与关系维护、关系追加修订、跨冷热检索、程序时间计算、有限补搜和 Jev 排序。
 
 记忆及关系以明确来源和上下文为依据。实体关系、历史修订和作用域共同支持检索；边际收益广度搜索保留为后续讨论项。
 
@@ -133,3 +133,7 @@ uv run python -m scripts.run_david --data-dir /absolute/path/rhelm --golden-data
 5. 比较严格原文证据召回、完整命中、排名、上下文大小、Add/Search 延迟与成本；最终回答质量另行 judge。
 
 结构性测试通过表示程序执行合同正确。内容支持、同一记忆身份及语义召回效果仍需真实模型数据验证。付费测试按用户批准的数据、供应商及范围单独执行。
+
+主体边界与设备／地点等内容分流见 [V22 说明](docs/architecture-changes/g11-subject-boundary-v22.md)。
+
+主体维护使用 3 个身份与 7 个关系的英文原文 few-shot，每例直接给出维护 JSON，见 [V26](docs/architecture-changes/g11-direct-subject-v26.md)。候选驱动的历史版本及其冻结成绩见 [V25](docs/architecture-changes/g11-relation-fewshot-v25.md)、[V24](docs/architecture-changes/g11-subject-fewshot-v24.md) 和 [V23](docs/architecture-changes/g11-subject-fewshot-v23.md)。

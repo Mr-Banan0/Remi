@@ -1,4 +1,4 @@
-"""Independent, frozen-input validation of stored memory changes through configured providers."""
+"""Independent, frozen-input validation of typed memory extraction and append-only snapshots through configured providers."""
 from __future__ import annotations
 
 import argparse
@@ -29,7 +29,7 @@ def validate_case(case, output):
     SQLiteStore.initialize(path,allow_create_schema=True)
     engine=MemoryEngine(SQLiteStore(path),model,embedder,ranker,Settings(add_timeout=180))
     result={'id':case['id'],'steps':[],'checks':[],'provider_calls':{},'database':str(path)}
-    first=None; relation=None; prior=None
+    first=None; saved_statement=None; prior=None
     def check(name, passed):
         result['checks'].append({'name':name,'passed':bool(passed)})
     try:
@@ -46,37 +46,31 @@ def validate_case(case, output):
                 break
             all_memory=engine.store.memories(case['id']); by_id={m.id:m for m in all_memory}
             events=[m for m in all_memory if m.record_type=='event']
-            relations=[m for m in all_memory if m.record_type=='relation']
+            statements=[m for m in all_memory if m.record_type in {'fact','preference','experience'}]
             unit=engine.store.get('requests',case['id'],request.request_id)['units']
             result['steps'].append({'index':i,'seconds':monotonic()-started,
                 'dispositions':[x for c in unit.values() for x in c.get('candidate_dispositions',[])],
                 'memory_ids':list(by_id)})
             if i==0:
-                check('initial_one_plan_one_state',len(events)==1 and len(relations)==1)
-                if len(events)!=1 or len(relations)!=1: break
-                first=events[0].id; relation=relations[0].model_dump()
+                check('initial_one_plan_one_state',len(events)==1 and len(statements)==1)
+                if len(events)!=1 or len(statements)!=1: break
+                first=events[0].id; saved_statement=statements[0].model_dump()
                 check('initial_date_is_plan_only',events[0].current.planned_at and events[0].current.planned_at[:10]==step['date'] and events[0].current.event_at is None)
-                check('initial_subject_links_exist',bool(events[0].current.entity_ids) and bool(relations[0].current.entity_ids))
-            elif i==1:
-                m=by_id[first]
-                check('reschedule_reuses_occurrence',len(events)==1 and len(m.revisions)==2)
-                check('reschedule_changes_planned_date',m.current.planned_at and m.current.planned_at[:10]==step['date'] and m.current.event_at is None)
-                old=before[first]['revisions'][-1]
-                check('reschedule_preserves_local_fields',all(getattr(m.current,k)==old[k] for k in ['content','entity_ids','mode','context']))
-            elif i==2:
-                m=by_id[first]
-                check('terminal_reuses_occurrence',len(events)==1 and len(m.revisions)==3)
-                check('terminal_state_correct',m.current.status==step['status'])
-                check('terminal_date_correct',m.current.planned_at and m.current.planned_at[:10]=='2027-03-12' and
-                      ((m.current.event_at or '')[:10]==step['actual'] if step['actual'] else m.current.event_at is None))
-                check('terminal_keeps_all_evidence',len(m.current.source_ids)==3)
-            elif i in {3,4}:
-                check(f'new_occurrence_{i}_has_new_identity',len(events)==i-1 and by_id[first].model_dump()==before[first])
+                check('initial_subject_links_exist',bool(events[0].current.entity_ids) and bool(statements[0].current.entity_ids))
             else:
-                check('ambiguous_reference_keeps_existing_graph',before=={m.id:m.model_dump() for m in all_memory})
-                check('ambiguous_reference_is_pending',any(d['status']=='pending' for d in result['steps'][-1]['dispositions']))
-            if relation:
-                check(f'state_unchanged_after_step_{i}',by_id[relation['id']].model_dump()==relation)
+                check(f'step_{i}_all_previous_records_unchanged',all(by_id.get(mid) and by_id[mid].model_dump()==raw for mid,raw in before.items()))
+                added=[m for m in all_memory if m.id not in before]
+                check(f'step_{i}_all_new_records_have_one_revision',all(len(m.revisions)==1 for m in added))
+                if i in {1,2}:
+                    expected_status='planned' if i==1 else step['status']
+                    check(f'step_{i}_new_event_saved',len(added)==1 and added[0].record_type=='event' and added[0].current.status==expected_status)
+                    if len(added)==1:
+                        current=added[0].current
+                        if i==1:check('new_plan_date',bool(current.planned_at) and current.planned_at[:10]==step['date'])
+                        elif step['actual']:check('new_actual_date',bool(current.event_at) and current.event_at[:10]==step['actual'])
+                check(f'step_{i}_memory_review_calls',all(c['kind'] in {'add_subjects','add_subjects_repair','add_propose','add_propose_repair'} for c in model.calls))
+            if saved_statement:
+                check(f'state_unchanged_after_step_{i}',by_id[saved_statement['id']].model_dump()==saved_statement)
             prior=all_memory
         try:
             found=engine.search(SearchRequest(user_id=case['id'],query='Find source statements relevant to: '+case['steps'][0]['text'],top_k=3),case['steps'][-1]['at'])

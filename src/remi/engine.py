@@ -117,6 +117,7 @@ class MemoryEngine:
                 position = sources[0].content.find(revision.quote) if sources else -1
                 structure = (f"Card {memory.record_type}; mentions=" + ", ".join(names.get(eid, eid) for eid in revision.entity_ids)
                     + f"; mode={revision.mode}; context={revision.context}; status={revision.status}"
+                    + ("; connects="+", ".join(names.get(e,e) for e in memory.endpoint_ids)+"; quote="+memory.connection_evidence.quote if memory.endpoint_ids else "")
                     + f"; planned_at={revision.planned_at or 'unknown'}; actual_at={revision.event_at or 'unknown'}")
                 scope = 'episodic' if memory.record_type == 'event' else 'source_reported'
                 documents.append(Document(id=stable_id("doc_", revision.id), owner=memory.owner,
@@ -180,14 +181,13 @@ class MemoryEngine:
                 ids.add(memory.id)
         user_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_user')}
         entities = {e.target for e in edges if e.origin in ids} - user_ids
-        normalized_query = normalized_name(query)
-        for raw in self.store.list('objects', owner):
-            entity = visible_entity(GraphObject.model_validate(raw), as_of)
-            if entity is None or entity.id in user_ids:
-                continue
-            if any(len(normalized_name(n)) > 2 and normalized_name(n) in normalized_query for n in [entity.name, *[a.name for a in entity.aliases]]):
-                entities.add(entity.id)
-        record_ids = {e.origin for e in edges if e.target in entities}
+        from .identity import subject_hits
+        from .graph import active_connections
+        entities.update(obj.id for obj in subject_hits(self.store,owner,query,as_of))
+        related = [e for e in active_connections(self.store,owner,as_of) if e.origin in entities or e.target in entities]
+        neighbors = {node for e in related for node in [e.origin,e.target]} - user_ids
+        entities.update(neighbors)
+        record_ids = {e.origin for e in edges if e.target in entities} | {e.memory_id for e in related}
         adjacent = set()
         sessions = {}
         for raw in self.store.list('sources', owner):

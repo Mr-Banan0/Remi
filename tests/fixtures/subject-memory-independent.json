@@ -1,0 +1,399 @@
+{
+  "cases": [
+    {
+      "id": "identity-and-company",
+      "steps": [
+        {
+          "text": "My name is Irene Shaw. People also call me Iri.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "Iri",
+              "is_user": true,
+              "aliases": [
+                "Irene Shaw"
+              ]
+            }
+          ],
+          "object_count": 1
+        },
+        {
+          "text": "I work at Meridian Analytics, also called Meridian.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "user",
+              "is_user": true
+            },
+            {
+              "key": "company",
+              "lookup": "Meridian",
+              "is_user": false,
+              "aliases": [
+                "Meridian Analytics"
+              ]
+            }
+          ],
+          "distinct": [
+            [
+              "me",
+              "company"
+            ]
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "company",
+              "contains": "work"
+            }
+          ]
+        },
+        {
+          "text": "I no longer work at Meridian.",
+          "subjects": [
+            {
+              "key": "company",
+              "lookup": "Meridian"
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "company",
+              "contains": "no longer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other-person-alias",
+      "steps": [
+        {
+          "text": "My coworker Dorothea Vale is also called Dory.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Dory",
+              "is_user": false,
+              "aliases": [
+                "Dorothea Vale"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Dory leads the Copper project.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Dory"
+            },
+            {
+              "key": "project",
+              "lookup": "Copper",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "person",
+              "b": "project",
+              "contains": "leads"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pet-descriptions",
+      "steps": [
+        {
+          "text": "My pet dog is Miso. Her nickname is Mimi.",
+          "subjects": [
+            {
+              "key": "dog",
+              "lookup": "Mimi",
+              "is_user": false,
+              "aliases": [
+                "Miso"
+              ],
+              "searches": [
+                "dog",
+                "pet"
+              ]
+            },
+            {
+              "key": "me",
+              "lookup": "user",
+              "is_user": true
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "dog",
+              "contains": "dog"
+            }
+          ]
+        },
+        {
+          "text": "Mimi is looked after by my sister Nell.",
+          "subjects": [
+            {
+              "key": "dog",
+              "lookup": "Mimi"
+            },
+            {
+              "key": "sister",
+              "lookup": "Nell",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "dog",
+              "b": "sister",
+              "contains": "looked after"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "same-name-people",
+      "steps": [
+        {
+          "text": "Noel is a nurse at Elm Clinic.",
+          "subjects": [
+            {
+              "key": "nurse",
+              "lookup": "Noel",
+              "evidence": "nurse",
+              "is_user": false
+            }
+          ]
+        },
+        {
+          "text": "I met a different Noel, a carpenter at Birch Workshop.",
+          "subjects": [
+            {
+              "key": "carpenter",
+              "lookup": "Noel",
+              "evidence": "carpenter",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "nurse",
+              "carpenter"
+            ]
+          ]
+        },
+        {
+          "text": "The nurse Noel is also called N.",
+          "subjects": [
+            {
+              "key": "nurse",
+              "lookup": "N",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "nurse",
+              "carpenter"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quoted-identity",
+      "steps": [
+        {
+          "text": "A note by Rina says: 'I am also called Riri.' The speaker of the note is Rina.",
+          "subjects": [
+            {
+              "key": "author",
+              "lookup": "Riri",
+              "is_user": false,
+              "aliases": [
+                "Rina"
+              ]
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "Riri manages Seabright Studio.",
+          "subjects": [
+            {
+              "key": "author",
+              "lookup": "Riri"
+            },
+            {
+              "key": "studio",
+              "lookup": "Seabright Studio",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "author",
+              "b": "studio",
+              "contains": "manages"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "two-pets-one-label",
+      "steps": [
+        {
+          "text": "I have two pets: the dog Pogo and the dog Leto. Pogo is also called Pog; Leto is also called Let.",
+          "subjects": [
+            {
+              "key": "one",
+              "lookup": "Pog",
+              "is_user": false
+            },
+            {
+              "key": "two",
+              "lookup": "Let",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "one",
+              "two"
+            ]
+          ]
+        },
+        {
+          "text": "Let lives with my brother Alden.",
+          "subjects": [
+            {
+              "key": "two",
+              "lookup": "Let"
+            },
+            {
+              "key": "brother",
+              "lookup": "Alden",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "two",
+              "b": "brother",
+              "contains": "lives"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chinese-names",
+      "steps": [
+        {
+          "text": "我叫顾清，大家也叫我小顾。我在澄川工作室工作，简称澄川。",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "小顾",
+              "is_user": true,
+              "aliases": [
+                "顾清"
+              ]
+            },
+            {
+              "key": "org",
+              "lookup": "澄川",
+              "is_user": false,
+              "aliases": [
+                "澄川工作室"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "org",
+              "contains": "工作"
+            }
+          ]
+        },
+        {
+          "text": "我的宠物狗叫豆包，也叫包包。",
+          "subjects": [
+            {
+              "key": "pet",
+              "lookup": "包包",
+              "is_user": false,
+              "aliases": [
+                "豆包"
+              ],
+              "searches": [
+                "狗",
+                "宠物"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "pet",
+              "contains": "狗"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "source-attribution",
+      "steps": [
+        {
+          "text": "The manual uses the word 'user' for a device operator. In a fictional tale, Tomas is also called Tom.",
+          "subjects": [
+            {
+              "key": "character",
+              "lookup": "Tom",
+              "is_user": false,
+              "aliases": [
+                "Tomas"
+              ]
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "In that tale, Tom belongs to the Lantern Guild.",
+          "subjects": [
+            {
+              "key": "character",
+              "lookup": "Tom"
+            },
+            {
+              "key": "guild",
+              "lookup": "Lantern Guild",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "character",
+              "b": "guild",
+              "contains": "belongs"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    }
+  ]
+}

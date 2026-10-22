@@ -11,7 +11,7 @@ from remi.api import create_app
 from remi.clock import absolute_content, message_time, resolve_time
 from .helpers import TestEngine as MemoryEngine
 from remi.heat import hot_view
-from remi.models import Decision, RecallStep, ProposalPlan, MaintenanceDraft
+from remi.models import Decision, RecallStep, ProposalPlan, ProposalDraft
 from remi.providers import JevReranker, OutputInvalid, RankResult, strict_schema
 from remi.settings import Settings
 from remi.storage import MemoryStore, SQLiteStore
@@ -123,42 +123,43 @@ def test_future_graph_update_preserves_past_expansion():
     documents = engine._visible_documents("u1", clock)
     seed = next(document for document in documents if document.memory_id is None and document.source_ids[0] == target.current.source_ids[0])
     before = engine._graph_candidates("u1", "Northstar", [seed], documents, None, clock)
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=target.id,
+    model.extractor = lambda state, errors: {"commands": [command(state,
         objects=[{"kind": "project", "name": "Northstar"}])]}
     engine.add(request("Northstar kickoff completed", request_id="r3", when="2025-01-01T10:00:00Z"))
     after = engine._graph_candidates("u1", "Northstar", [seed], engine._visible_documents("u1", clock), None, clock)
     assert {item.id for item, _ in before} == {item.id for item, _ in after}
 
 
-def test_same_source_conflicting_target_edits_reject_the_plan_after_shared_repair():
+def test_multiple_source_reported_dates_append_without_changing_the_old_plan():
     model=ScriptedModel(lambda state,errors:{'commands':[command(state,'Northstar meeting',status='planned')]})
     engine=MemoryEngine(model=model)
     engine.add(request('Northstar meeting is planned.'))
     target=engine.store.memories('u1')[0].id
-    model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',operation='update',target=target,quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
+    model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
     engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
     unit=next(iter(engine.store.get('requests','u1','r2')['units'].values()))
-    assert all(d['status']=='pending' for d in unit['candidate_dispositions'])
-    assert all(d['reason']=='conflicting_event_patches_require_clarification' for d in unit['candidate_dispositions'])
-    assert len(engine.store.memories('u1')[0].revisions)==1
+    assert all(d['operation']=='create' for d in unit['candidate_dispositions'])
+    assert len(engine.store.memories('u1'))==3
+    assert engine.store.memories('u1',[target])[0].current.status=='planned'
+    assert all(len(m.revisions)==1 for m in engine.store.memories('u1'))
 
 
-def test_update_retains_unspecified_event_date():
+def test_new_observation_preserves_the_old_record_and_its_date():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, time="6月9日", status="planned")]})
     engine = MemoryEngine(model=model)
     engine.add(request("Northstar meeting 6月9日。"))
     before = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=before.id, status="planned")]}
+    model.extractor = lambda state, errors: {"commands": [command(state,   status="planned")]}
     engine.add(request("Northstar meeting requires slides.", request_id="r2"))
     assert engine.store.memories("u1")[0].current.event_at == before.current.event_at
 
 
-def test_relation_patch_preserves_time_scope_in_original_statement():
+def test_new_fact_preserves_time_scope_in_original_statement():
     model = ScriptedModel(lambda state, errors: {'commands': [command(state, kind='fact')]})
     engine = MemoryEngine(model=model)
     engine.add(request('Restriction applies 2024-06-02 until 2024-06-09.'))
     before = engine.store.memories('u1')[0]
-    model.extractor = lambda state, errors: {'commands': [command(state, kind='fact', operation='update', target=before.id)]}
+    model.extractor = lambda state, errors: {'commands': [command(state, kind='fact', )]}
     engine.add(request('The restriction still applies.', request_id='r2', when='2024-06-03T10:00:00Z'))
     assert engine.store.memories('u1')[0] == before
 
@@ -168,9 +169,11 @@ def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
     engine = MemoryEngine(model=model)
     engine.add(request("Northstar meeting 6月9日。"))
     target = engine.store.memories("u1")[0].id
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=target, status="occurred")]}
+    model.extractor = lambda state, errors: {"commands": [command(state,   status="occurred")]}
     engine.add(request("That meeting completed.", request_id="r2", when="2024-06-15T10:00:00Z"))
-    assert engine.store.memories("u1")[0].current.event_at is None
+    new=next(m for m in engine.store.memories("u1") if m.id!=target)
+    assert new.current.status=="occurred" and new.current.event_at is None
+    assert engine.store.memories("u1",[target])[0].current.planned_at.startswith("2024-06-09")
 
 
 def test_plan_repair_can_resolve_operations_jointly():
@@ -239,7 +242,7 @@ def test_desired_relation_keeps_mode_and_stays_out_of_asserted_background():
 
 
 def test_all_model_schema_properties_are_required_without_dynamic_enums():
-    for model in (Decision, ProposalPlan, MaintenanceDraft):
+    for model in (Decision, ProposalPlan, ProposalDraft):
         schema = strict_schema(model)
         assert len(json.dumps(schema)) < 10000
         for item in [schema, *schema.get("$defs", {}).values()]:
@@ -276,7 +279,7 @@ def test_sqlite_restart_retains_date_and_original_hit_windows(tmp_path):
     engine = MemoryEngine(SQLiteStore(path), model=model)
     engine.add(request("Northstar meeting 6月9日。"))
     before = engine.store.memories("u1")[0]
-    model.extractor = lambda state, errors: {"commands": [command(state, operation="update", target=before.id, status="planned")]}
+    model.extractor = lambda state, errors: {"commands": [command(state,   status="planned")]}
     engine.add(request("Northstar meeting requires slides.", request_id="r2"))
     model.extractor = lambda state, errors: {"commands": []}
     engine.add(request("filler " * 1800 + "The device was Dell XPS 13.", request_id="r3"))

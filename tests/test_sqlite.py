@@ -80,7 +80,7 @@ def test_prior_user_and_assistant_context_survives_reopening(database):
         assistant = next(source for source in state["context_sources"] if source["role"] == "assistant")
         assert any(source["role"] == "user" and "Northstar" in source["content"] for source in state["context_sources"])
         draft = command(state, "User selected Thursday for Northstar", status="planned",
-                        objects=[{"kind": "project", "name": "Northstar"}])
+                        objects=[{"kind": "user", "name": "user"}])
         draft["context_source_ids"] = [source["id"] for source in state["context_sources"]]
         return {"commands": [draft]}
 
@@ -100,15 +100,17 @@ def test_event_cancellation_and_history_survive_reopening(database):
     engine=MemoryEngine(SQLiteStore(database),model,HashEmbedder())
     engine.add(request('I plan a workshop tomorrow.'))
     mid=engine.store.memories('u1')[0].id
-    model.extractor=lambda state, errors: {'commands':[command(state,operation='update',target=mid,status='cancelled')]}
+    model.extractor=lambda state, errors: {'commands':[command(state,status='cancelled')]}
     engine.add(request('I cancelled that workshop.',request_id='r2',when='2024-06-03T10:00:00Z'))
     engine.close()
     store=SQLiteStore(database)
     try:
         memory=store.memories('u1',[mid])[0]
-        assert len(memory.revisions)==2 and memory.current.status=='cancelled'
+        assert len(memory.revisions)==1 and memory.current.status=='planned'
+        cancelled=next(m for m in store.memories('u1') if m.id!=mid)
+        assert len(cancelled.revisions)==1 and cancelled.current.status=='cancelled'
         assert memory.current.planned_at.startswith('2024-06-03')
-        assert any(edge.relation=='revises' for edge in store.edges_for('u1'))
+        assert not any(edge.relation=='revises' for edge in store.edges_for('u1'))
     finally:
         store.close()
 

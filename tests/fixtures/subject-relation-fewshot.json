@@ -1,0 +1,836 @@
+{
+  "cases": [
+    {
+      "id": "relation-new-pet",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Leda owns the rabbit Pip."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Leda",
+              "kind": "person",
+              "aliases": [
+                "Leda"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Pip",
+              "kind": "animal",
+              "aliases": [
+                "Pip"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "rabbit_owner",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "Leda owns the rabbit Pip.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": null,
+          "aliases": [
+            "Leda"
+          ]
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": null,
+          "aliases": [
+            "Pip"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "rabbit_owner",
+          "operation": "create",
+          "target_id": null
+        }
+      ]
+    },
+    {
+      "id": "relation-end-employment",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I have stopped working at Maple Guild."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "@user",
+              "kind": "person",
+              "aliases": []
+            },
+            {
+              "ref": 1,
+              "name": "Maple Guild",
+              "kind": "organization",
+              "aliases": [
+                "Maple Guild"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "ended",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "I have stopped working at Maple Guild.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "speaker"
+          ],
+          "1": [
+            "guild"
+          ]
+        },
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": "speaker",
+          "aliases": []
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "ended",
+          "operation": "update",
+          "target_id": "job_history"
+        }
+      ]
+    },
+    {
+      "id": "relation-unchanged",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I continue to work at Maple Guild."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "@user",
+              "kind": "person",
+              "aliases": []
+            },
+            {
+              "ref": 1,
+              "name": "Maple Guild",
+              "kind": "organization",
+              "aliases": [
+                "Maple Guild"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "unchanged",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "I continue to work at Maple Guild.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "speaker"
+          ],
+          "1": [
+            "guild"
+          ]
+        },
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": "speaker",
+          "aliases": []
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ]
+        }
+      ],
+      "connections": []
+    },
+    {
+      "id": "relation-add-aspect",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I still work at Maple Guild. I also donate to it."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "@user",
+              "kind": "person",
+              "aliases": []
+            },
+            {
+              "ref": 1,
+              "name": "Maple Guild",
+              "kind": "organization",
+              "aliases": [
+                "Maple Guild"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "job",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "I still work at Maple Guild.",
+              "mode": "asserted"
+            },
+            {
+              "id": "donation",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "I also donate to it.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "speaker"
+          ],
+          "1": [
+            "guild"
+          ]
+        },
+        "relation_catalog": [
+          {
+            "id": "job_history",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": "speaker",
+          "aliases": []
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "donation",
+          "operation": "create",
+          "target_id": null
+        }
+      ]
+    },
+    {
+      "id": "relation-alias-endpoints",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My rabbit Pip is also called Pippy. Pippy lives with my cousin Leda."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Pip",
+              "kind": "animal",
+              "aliases": [
+                "Pip"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Pippy",
+              "kind": "animal",
+              "aliases": [
+                "Pippy"
+              ]
+            },
+            {
+              "ref": 2,
+              "name": "Leda",
+              "kind": "person",
+              "aliases": [
+                "Leda"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "home",
+              "subject_refs": [
+                1,
+                2
+              ],
+              "source_id": "S1",
+              "quote": "Pippy lives with my cousin Leda.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "rabbit",
+            "name": "Pip",
+            "kind": "animal",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Pip",
+                "quote": "My rabbit is Pip."
+              }
+            ]
+          },
+          {
+            "id": "cousin",
+            "name": "Leda",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Leda",
+                "quote": "Leda is my cousin."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "rabbit"
+          ],
+          "1": [
+            "rabbit"
+          ],
+          "2": [
+            "cousin"
+          ]
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "target": "rabbit",
+          "aliases": [
+            "Pip",
+            "Pippy"
+          ]
+        },
+        {
+          "refs": [
+            2
+          ],
+          "target": "cousin",
+          "aliases": [
+            "Leda"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "home",
+          "operation": "create",
+          "target_id": null
+        }
+      ]
+    },
+    {
+      "id": "relation-desired-mode",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I would like to work at Maple Guild again."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "@user",
+              "kind": "person",
+              "aliases": []
+            },
+            {
+              "ref": 1,
+              "name": "Maple Guild",
+              "kind": "organization",
+              "aliases": [
+                "Maple Guild"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "wish",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "I would like to work at Maple Guild again.",
+              "mode": "desired"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "speaker",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": []
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "I work at Maple Guild."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "speaker"
+          ],
+          "1": [
+            "guild"
+          ]
+        },
+        "relation_catalog": [
+          {
+            "id": "past_job",
+            "endpoint_ids": [
+              "speaker",
+              "guild"
+            ],
+            "content": "I no longer work at Maple Guild.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": "speaker",
+          "aliases": []
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "wish",
+          "operation": "create",
+          "target_id": null
+        }
+      ]
+    },
+    {
+      "id": "relation-ambiguous-person",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Sam works at our Maple Guild."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Sam",
+              "kind": "person",
+              "aliases": [
+                "Sam"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Maple Guild",
+              "kind": "organization",
+              "aliases": [
+                "Maple Guild"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "job",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "Sam works at our Maple Guild.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "neighbor",
+            "name": "Sam",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Sam",
+                "quote": "Sam is my neighbor."
+              }
+            ]
+          },
+          {
+            "id": "cousin",
+            "name": "Sam",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Sam",
+                "quote": "A different Sam is my cousin."
+              }
+            ]
+          },
+          {
+            "id": "guild",
+            "name": "Maple Guild",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Maple Guild",
+                "quote": "Maple Guild is our guild."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "neighbor",
+            "cousin"
+          ],
+          "1": [
+            "guild"
+          ]
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            1
+          ],
+          "target": "guild",
+          "aliases": [
+            "Maple Guild"
+          ]
+        }
+      ],
+      "connections": []
+    },
+    {
+      "id": "relation-direction",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My colleague Una now coaches my colleague Teo."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Una",
+              "kind": "person",
+              "aliases": [
+                "Una"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Teo",
+              "kind": "person",
+              "aliases": [
+                "Teo"
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "id": "reverse_coaching",
+              "subject_refs": [
+                0,
+                1
+              ],
+              "source_id": "S1",
+              "quote": "My colleague Una now coaches my colleague Teo.",
+              "mode": "asserted"
+            }
+          ]
+        },
+        "subject_catalog": [
+          {
+            "id": "una",
+            "name": "Una",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Una",
+                "quote": "Una is my colleague."
+              }
+            ]
+          },
+          {
+            "id": "teo",
+            "name": "Teo",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Teo",
+                "quote": "Teo is my colleague."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "una"
+          ],
+          "1": [
+            "teo"
+          ]
+        },
+        "relation_catalog": [
+          {
+            "id": "old_coaching",
+            "endpoint_ids": [
+              "una",
+              "teo"
+            ],
+            "content": "My colleague Teo coaches my colleague Una.",
+            "mode": "asserted"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "target": "una",
+          "aliases": [
+            "Una"
+          ]
+        },
+        {
+          "refs": [
+            1
+          ],
+          "target": "teo",
+          "aliases": [
+            "Teo"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "candidate_id": "reverse_coaching",
+          "operation": "create",
+          "target_id": null
+        }
+      ]
+    }
+  ]
+}

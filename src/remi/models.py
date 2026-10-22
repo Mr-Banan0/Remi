@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 
@@ -69,38 +69,55 @@ class EvidenceRef(StrictModel):
     quote: str = Field(min_length=1, max_length=200000)
 
 
-RecordType = Literal['relation', 'event']
+SCHEMA_VERSION = 13
+MemoryType = Literal['fact', 'preference', 'experience', 'event']
+RecordType = Literal['relation', 'fact', 'preference', 'experience', 'event']
+SubjectKind = Literal['person', 'animal', 'organization']
 ExpressionMode = Literal['asserted', 'desired', 'requested', 'hypothetical', 'document']
-UserInvolvement = Literal['involved', 'not_involved', 'uncertain']
-ConfirmedUserInvolvement = Literal['involved', 'not_involved']
-
-
-class Mention(StrictModel):
-    name: str = Field(min_length=1, max_length=200)
-
-
-class Candidate(StrictModel):
-    id: str = Field(min_length=1, max_length=100)
-    content: str = Field(min_length=1, max_length=4000)
-    user_involvement: UserInvolvement
-    mentions: list[Mention] = Field(max_length=13)
-    evidence: list[EvidenceRef] = Field(min_length=1, max_length=8)
-
-
-class ProposalPlan(StrictModel):
-    items: list[Candidate] = Field(max_length=24)
-    reason: str
-
-
+EventStatus = Literal['planned', 'occurred', 'cancelled', 'desired', 'unknown']
+SubjectRef = Annotated[int, Field(strict=True, ge=0, le=95)]
 class SourceCitation(StrictModel):
     source_id: str
 
 
+class Subject(StrictModel):
+    kind: SubjectKind
+    ref: int = Field(ge=0, le=95)
+    name: str
+    is_user: bool
+    aliases: list[str]
+    evidence: list[EvidenceRef]
+
+
+class ConnectionDraft(StrictModel):
+    subject_refs: list[int] = Field(min_length=2, max_length=2)
+    source_id: str
+    quote: str = Field(min_length=1, max_length=2000)
+    mode: ExpressionMode
+
+
 class CandidateDraft(StrictModel):
     content: str = Field(min_length=1, max_length=4000)
-    user_involvement: UserInvolvement = Field(description='Current user participates in this proposition; Source separately tracks authorship.')
-    mentions: list[Mention] = Field(max_length=12)
+    record_type: MemoryType
+    subject_refs: list[SubjectRef] = Field(max_length=12)
+    mode: ExpressionMode
+    context: str | None = Field(max_length=300)
+    status: EventStatus | None
+    time_expression: str | None = Field(max_length=300)
     evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
+
+
+class Candidate(StrictModel):
+    id: str
+    content: str
+    subject_refs: list[int]
+    connection: ConnectionDraft | None
+    record_type: MemoryType | None = None
+    mode: ExpressionMode | None = None
+    context: str | None = None
+    status: EventStatus | None = None
+    time_expression: str | None = None
+    evidence: list[EvidenceRef]
 
 
 class ProposalDraft(StrictModel):
@@ -108,64 +125,69 @@ class ProposalDraft(StrictModel):
     reason: str
 
 
-EventStatus = Literal['planned', 'occurred', 'cancelled', 'desired', 'unknown']
+class ProposalPlan(StrictModel):
+    subjects: list[Subject]
+    items: list[Candidate]
+    reason: str
+
+
+class SubjectNameDraft(SourceCitation):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class SubjectNameEvidence(EvidenceRef):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class SubjectDecision(StrictModel):
+    subject_ref: int
+    target_id: str | None
+    alias_additions: list[SubjectNameEvidence] = Field(default_factory=list, max_length=24)
+    kind: SubjectKind | None = None
+    reason: str = Field(max_length=600)
+
+
+class SubjectDraft(StrictModel):
+    ref: SubjectRef
+    operation: Literal['create', 'reuse', 'pending']
+    target_id: str | None
+    name: str = Field(min_length=1, max_length=200)
+    kind: SubjectKind
+    aliases: list[SubjectNameDraft] = Field(max_length=24)
+    evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
+
+
+class ConnectionChangeDraft(StrictModel):
+    ref: SubjectRef
+    operation: Literal['create', 'update', 'keep', 'pending']
+    target_id: str | None
+    subject_refs: list[SubjectRef] = Field(min_length=2, max_length=2)
+    source_id: str
+    quote: str = Field(min_length=1, max_length=2000)
+    mode: ExpressionMode
+    previous_quote: str | None = Field(max_length=4000)
+
+
+class SubjectMaintenanceDraft(StrictModel):
+    subjects: list[SubjectDraft] = Field(max_length=96)
+    connections: list[ConnectionChangeDraft] = Field(max_length=48)
 
 
 class CardDecision(StrictModel):
-    """Canonical internal decision; the provider wire shapes expose each operation's own fields."""
+    """Program write plan; relationship operations come from the subject writer."""
     candidate_id: str
-    operation: Literal['create', 'patch_event', 'keep', 'pending']
+    operation: Literal['create', 'patch_relation', 'keep', 'pending']
     target_id: str | None = None
     record_type: RecordType | None = None
     content: str | None = Field(default=None, max_length=4000)
+    subject_refs: list[int] | None = Field(default=None,max_length=12)
     mode: ExpressionMode | None = None
-    user_involvement: ConfirmedUserInvolvement | None = None
     context: str | None = Field(default=None, max_length=300)
     status: EventStatus | None = None
-    event_change: Literal['reschedule', 'complete', 'cancel'] | None = None
     time_expression: str | None = Field(default=None, max_length=300)
     reason: str = Field(max_length=600)
 
     _null_arguments = field_validator('target_id', 'time_expression', mode='before')(nullable)
-
-
-class CreateDraft(StrictModel):
-    candidate_id: str
-    operation: Literal['create']
-    record_type: RecordType
-    content: str = Field(min_length=1, max_length=4000)
-    mode: ExpressionMode
-    user_involvement: ConfirmedUserInvolvement = Field(description='Reviewed participation in the final proposition, distinct from source authorship.')
-    context: str | None = Field(max_length=300)
-    status: EventStatus | None
-    time_expression: str | None = Field(max_length=300)
-    reason: str = Field(max_length=600)
-
-
-class EventPatchDraft(StrictModel):
-    candidate_id: str
-    operation: Literal['patch_event']
-    target_id: str
-    event_change: Literal['reschedule', 'complete', 'cancel']
-    time_expression: str | None = Field(max_length=300)
-    reason: str = Field(max_length=600)
-
-
-class KeepDraft(StrictModel):
-    candidate_id: str
-    operation: Literal['keep']
-    target_id: str
-    reason: str = Field(max_length=600)
-
-
-class PendingDraft(StrictModel):
-    candidate_id: str
-    operation: Literal['pending']
-    reason: str = Field(max_length=600)
-
-
-class MaintenanceDraft(StrictModel):
-    decisions: list[CreateDraft | EventPatchDraft | KeepDraft | PendingDraft] = Field(max_length=24)
 
 
 class Revision(StrictModel):
@@ -175,7 +197,7 @@ class Revision(StrictModel):
     quote: str
     evidence: list[EvidenceRef]
     entity_ids: list[str]
-    user_involvement: ConfirmedUserInvolvement
+    user_involvement: Literal['involved', 'not_involved']
     mode: ExpressionMode
     context: str
     status: Literal['stated', 'planned', 'occurred', 'cancelled', 'desired', 'unknown']
@@ -185,15 +207,17 @@ class Revision(StrictModel):
     created_at: str
     time_resolution: Literal['rule', 'unknown']
     time_precision: Literal['day', 'instant', 'unknown']
-    operation: Literal['create', 'reschedule', 'complete', 'cancel']
+    operation: Literal['create', 'reschedule', 'complete', 'cancel', 'update']
     replaces_revision_id: str | None = None
 
 
 class Memory(StrictModel):
-    schema_version: Literal[11] = 11
+    schema_version: Literal[13] = SCHEMA_VERSION
     id: str
     owner: str
     record_type: RecordType
+    endpoint_ids: list[str] = Field(default_factory=list, max_length=2)
+    connection_evidence: EvidenceRef | None = None
     revisions: list[Revision] = Field(min_length=1)
     impact: Literal['high', 'low', 'unknown'] = 'unknown'
     pinned: bool = False
@@ -205,8 +229,18 @@ class Memory(StrictModel):
         user_id = stable_id('obj_', self.owner, 'user')
         if any((r.user_involvement == 'involved') != (user_id in r.entity_ids) for r in self.revisions):
             raise ValueError('revision_user_binding_matches_involvement')
-        if self.record_type == 'relation' and (len(self.revisions) != 1 or self.current.status != 'stated'):
-            raise ValueError('relation_cards_are_append_only')
+        if self.record_type == 'relation':
+            if (len(set(self.endpoint_ids)) != 2
+                    or self.connection_evidence is None
+                    or not set(self.endpoint_ids) <= set(self.current.entity_ids)
+                    or self.connection_evidence.source_id not in self.current.source_ids):
+                raise ValueError('connection_requires_two_distinct_supported_subjects')
+        elif self.endpoint_ids or self.connection_evidence is not None:
+            raise ValueError('ordinary_memories_use_participants_and_source_evidence')
+        if self.record_type != 'event' and any(r.status != 'stated' for r in self.revisions):
+            raise ValueError('statements_use_stated_status')
+        if self.record_type in {'fact', 'preference', 'experience'} and len(self.revisions)>1:
+            raise ValueError('ordinary_statements_are_append_only')
         if self.record_type == 'event' and any(r.status == 'stated' for r in self.revisions):
             raise ValueError('events_use_event_status')
         return self
@@ -218,7 +252,7 @@ class Memory(StrictModel):
 
     @property
     def tags(self):
-        return ['event'] if self.record_type == 'event' else ['fact']
+        return [self.record_type]
 
     @property
     def entity_ids(self):
@@ -228,15 +262,16 @@ class Memory(StrictModel):
 class AliasEvidence(StrictModel):
     name: str
     source_id: str
+    quote: str = Field(min_length=1)
     observed_at: str
 
 
 class GraphObject(StrictModel):
-    schema_version: Literal[11] = 11
+    schema_version: Literal[13] = SCHEMA_VERSION
     id: str
     owner: str
     name: str
-    kind: str = 'entity'
+    kind: SubjectKind
     is_user: bool = False
     aliases: list[AliasEvidence] = Field(default_factory=list)
     observed_at: str
@@ -255,7 +290,7 @@ class Edge(StrictModel):
     owner: str
     origin: str
     target: str
-    relation: Literal['mentions', 'supported_by', 'revises']
+    relation: Literal['mentions', 'supported_by', 'revises', 'related']
     revision_id: str
     memory_id: str
     source_id: str

@@ -13,10 +13,11 @@ from typing import Protocol
 import httpx
 from openai import APIConnectionError, APIStatusError, OpenAI
 
-from .models import Decision, ProposalDraft, MaintenanceDraft
-from .add_judgments import PROPOSE_PROMPT, MAINTAIN_PROMPT
+from .models import Decision, ProposalDraft, SubjectMaintenanceDraft
+from .add_judgments import PROPOSE_PROMPT, PROPOSE_EXAMPLES, SUBJECT_PROMPT, SUBJECT_EXAMPLES, PROPOSE_REFERENCES, SUBJECT_REFERENCES
 from .retrieval import validate_vector
 from .settings import private_key
+from .subject_input import render_subject_input
 
 
 class ProviderUnavailable(RuntimeError):
@@ -29,7 +30,7 @@ class OutputInvalid(ValueError):
 
 class TextModel(Protocol):
     def propose(self, state: dict, *, deadline: float) -> dict: ...
-    def maintain(self, state: dict, *, deadline: float) -> dict: ...
+    def maintain_subjects(self, state: dict, *, deadline: float) -> dict: ...
     def decide(self, state: dict, *, deadline: float) -> dict: ...
 
 
@@ -111,31 +112,27 @@ def strict_schema(model):
 
 
 def scoped_schema(model, payload):
-    """Give each model call a bounded catalogue of evidence and selectable history IDs."""
-    schema = strict_schema(model)
-    if 'new_user_source' not in payload:
-        return schema
-    sources = [payload['new_user_source'], *payload.get('context_sources', [])]
-    for record in payload.get('history', []):
-        sources.extend(record.get('sources', []))
-    ids = sorted({source['id'] for source in sources})
-    candidates = [c['id'] for c in payload.get('proposal', {}).get('items', [])]
-    targets = [h['id'] for h in payload.get('history', [])]
-    for name, definition in schema.get('$defs', {}).items():
-        props = definition.get('properties', {})
-        if name == 'SourceCitation':
-            props['source_id']['enum'] = ids
-        if 'candidate_id' in props:
-            props['candidate_id']['enum'] = candidates
-        if 'target_id' in props:
-            props['target_id'] = {'type': 'string', 'enum': targets} if targets else {'type': 'string'}
-    if 'decisions' in schema.get('properties', {}):
-        schema['properties']['decisions'].update(minItems=len(candidates), maxItems=len(candidates))
-        if not targets:
-            schema['properties']['decisions']['items']['anyOf'] = [item for item in schema['properties']['decisions']['items']['anyOf']
-                if item.get('$ref', '').split('/')[-1] in {'CreateDraft', 'PendingDraft'}]
-            for name in ['EventPatchDraft', 'KeepDraft']:
-                schema['$defs'].pop(name, None)
+    """Bound stored targets and sources; subject refs are created by the direct writer."""
+    schema=strict_schema(model)
+    if 'new_user_source' not in payload:return schema
+    sources=[payload['new_user_source'],*payload.get('context_sources',[])]
+    for row in payload.get('history',[]):sources.extend(row.get('sources',[]))
+    source_ids=sorted({source['id'] for source in sources})
+    entities=[o['id'] for o in payload.get('subject_catalog',[])]
+    relations=[r['id'] for r in payload.get('relation_catalog',[])]
+    refs=[s['ref'] for s in payload.get('resolved_subjects',[])]
+    def optional_ids(ids):return {'anyOf':[{'type':'string','enum':ids},{'type':'null'}]} if ids else {'type':'null'}
+    for name,definition in schema.get('$defs',{}).items():
+        props=definition.get('properties',{})
+        if name in {'SourceCitation','EvidenceRef','SubjectNameDraft'}:props['source_id']['enum']=source_ids
+        if name=='SubjectDraft':props['target_id']=optional_ids(entities)
+        elif name=='ConnectionChangeDraft':
+            props['target_id']=optional_ids(relations)
+            props['source_id']['enum']=[payload['new_user_source']['id']]
+        if name=='CandidateDraft':
+            allowed=refs
+            if allowed:props['subject_refs']['items']['enum']=allowed
+            else:props['subject_refs']['maxItems']=0
     return schema
 
 
@@ -164,7 +161,7 @@ def transient(error):
 def semantic_references(payload):
     """Short source/card IDs stay separate from candidate IDs and literal source text."""
     aliases, reverse, counts = {}, {}, {}
-    candidate_ids = {item['id'] for item in payload.get('proposal', {}).get('items', [])}
+    candidate_ids = {item['id'] for key in ['items','connections'] for item in payload.get('proposal', {}).get(key, [])}
     def register(value, kind):
         if value in aliases:
             return
@@ -174,7 +171,11 @@ def semantic_references(payload):
             counts[kind] += 1
             alias = kind + str(counts[kind])
         aliases[value], reverse[alias] = alias, value
-    for card in payload.get('history', []):
+    for entity in payload.get('subject_catalog',[]):
+        register(entity['id'],'E')
+    for subject in payload.get('resolved_subjects',[]):
+        if subject.get('id'):register(subject['id'],'E')
+    for card in [*payload.get('history', []),*payload.get('relation_catalog',[])]:
         register(card['id'], 'M')
     def collect(value):
         if isinstance(value, dict):
@@ -190,12 +191,12 @@ def semantic_references(payload):
     collect(payload)
     def translate(value, mapping, key=None):
         if isinstance(value, dict):
-            candidate = 'mentions' in value and 'evidence' in value and 'content' in value
+            candidate = ('evidence' in value and 'content' in value) or ('subject_refs' in value and 'id' in value)
             return {name: item if candidate and name == 'id' else translate(item, mapping, name)
                     for name, item in value.items()}
         if isinstance(value, list):
             return [translate(item, mapping, key) for item in value]
-        if isinstance(value, str) and key in {'id', 'owner', 'source_id', 'source_ids', 'target_id'}:
+        if isinstance(value, str) and key in {'id', 'owner', 'source_id', 'source_ids', 'target_id','existing_id','entity_ids','endpoint_ids','ordered_subject_ids'}:
             return mapping.get(value, value)
         return value
     return translate(payload, aliases), lambda value: translate(value, reverse)
@@ -212,22 +213,34 @@ class GPTModel:
     def _json(self, prompt, state, schema, kind, deadline):
         def evidence_input(value):
             if isinstance(value, dict):
-                if kind.startswith('add_') and set(value) == {'source_id', 'quote'}:
+                if kind.startswith('add_') and not kind.startswith('add_subjects') and set(value) == {'source_id', 'quote'}:
                     return {'source_id': value['source_id']}
-                return {key: evidence_input(item) for key, item in value.items() if key not in ({"created_at", "owner", "revision_id", "target_revision_id"} if kind.startswith("add_") else {"created_at"})}
+                return {key: evidence_input(item) for key, item in value.items() if key not in ({"created_at", "owner", "revision_id", "target_revision_id", "source_catalog"} if kind.startswith("add_") else {"created_at"})}
             if isinstance(value, list):
                 return [evidence_input(item) for item in value]
             return value
         payload = evidence_input(state)
+        if kind.startswith('add_subjects'):
+            payload={k:payload[k] for k in ['new_user_source','context_sources','subject_catalog','relation_catalog','history',
+                'accepted_subjects','accepted_connections','rejected_subjects','rejected_connections','repair_errors'] if k in payload}
+        elif kind.startswith('add_propose'):
+            payload={k:payload[k] for k in ['new_user_source','context_sources','resolved_subjects','history','repair_errors'] if k in payload}
         if "new_user_source" in state:
             primary = state["new_user_source"]
             payload["source_reference_time"] = primary.get("message_at") or primary.get("created_at")
         restore = lambda value: value
         if kind.startswith("add_"):
             payload, restore = semantic_references(payload)
-            prompt += "\nReference protocol: sources use S, historical cards use M. Candidate IDs keep their supplied IDs. Select target_id only from history[].id, or JSON null for a new card or pending decision. Source names and original text remain evidence data."
+            references = SUBJECT_REFERENCES if kind.startswith('add_subjects') else PROPOSE_REFERENCES
+            prompt += "\nReference protocol: " + references
 
-        body = json.dumps(payload, ensure_ascii=False)
+        body = render_subject_input(payload) if kind.startswith('add_subjects') else json.dumps(payload, ensure_ascii=False)
+        messages=[{'role':'system','content':prompt}]
+        examples=PROPOSE_EXAMPLES if kind.startswith('add_propose') else SUBJECT_EXAMPLES if kind.startswith('add_subjects') else []
+        for example_input,example_output in examples:
+            messages.extend([{'role':'user','content':render_subject_input(example_input) if kind.startswith('add_subjects') else json.dumps(example_input,ensure_ascii=False)},
+                             {'role':'assistant','content':json.dumps(example_output,ensure_ascii=False)}])
+        messages.append({'role':'user','content':body})
         for attempt in range(2):
             started = monotonic()
             trace = {"kind": kind, "model": self.model, "attempt": attempt + 1}
@@ -235,7 +248,7 @@ class GPTModel:
                 response = self.client.chat.completions.create(
                     model=self.model, temperature=0, max_completion_tokens=6000,
                     timeout=remaining(deadline, self.timeout),
-                    messages=[{"role": "system", "content": prompt}, {"role": "user", "content": body}],
+                    messages=messages,
                     response_format={"type": "json_schema", "json_schema": {
                         "name": schema.__name__, "strict": True, "schema": scoped_schema(schema, payload)}})
                 if response.usage:
@@ -266,9 +279,9 @@ class GPTModel:
         return self._json(PROPOSE_PROMPT + ("\nCorrect repair_errors and return the candidate plan with source IDs from this input." if state.get("repair_errors") else ""), state, ProposalDraft,
                           "add_propose_repair" if state.get("repair_errors") else "add_propose", deadline)
 
-    def maintain(self, state, *, deadline):
-        return self._json(MAINTAIN_PROMPT + ("\nCorrect repair_errors for the supplied candidates only. Accepted siblings are already preserved by the program." if state.get("repair_errors") else ""), state, MaintenanceDraft,
-                          "add_maintain_repair" if state.get("repair_errors") else "add_maintain", deadline)
+    def maintain_subjects(self,state,*,deadline):
+        return self._json(SUBJECT_PROMPT,state,SubjectMaintenanceDraft,
+            'add_subjects_repair' if state.get('repair_errors') else 'add_subjects',deadline)
 
     def decide(self, state, *, deadline):
         return self._json(DECISION_PROMPT, state, Decision, "search_decision", deadline)

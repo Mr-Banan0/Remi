@@ -1,4 +1,4 @@
-"""Two model stages, independent candidate outcomes, and narrow event patches."""
+"""Two model stages: subject maintenance, then typed memory extraction and validated append."""
 from __future__ import annotations
 
 from collections import Counter
@@ -12,12 +12,13 @@ from pydantic import ValidationError
 from .clock import absolute_content, message_time, parse_time, resolve_time, utcnow
 from .graph import project_edges
 from .heat import visible_memory
-from .identity import normalized_name, resolve_mentions, source_name_present, stable_id
-from .models import AddResponse, Candidate, CandidateDraft, CardDecision, EvidenceRef, GraphObject, Memory, Mention, ProposalPlan, Revision, Source
+from .identity import normalized_name, source_name_present, stable_id
+from .models import AddResponse, Candidate, CardDecision, ConnectionChangeDraft, ConnectionDraft, EvidenceRef, GraphObject, Memory, ProposalPlan, Revision, Source, SubjectDecision
 from .providers import OutputInvalid, ProviderUnavailable
-from .retrieval import clip_bytes
+from .add_recall import recall_candidates
+from .subjects import decode_subjects, materialize_subjects
 
-PIPELINE = 'G10-user-identity-v8'
+PIPELINE = 'G11-readable-subjects-v32'
 
 
 class HistoryChanged(ProviderUnavailable):
@@ -53,44 +54,22 @@ class AddPipeline:
             sources.update({s['id']: s for s in record['sources']})
         return sources
 
-    def _proposals(self, raw, state, dispositions, user_checks):
-        if not isinstance(raw, dict) or set(raw) != {'items', 'reason'} or not isinstance(raw['items'], list):
-            raise PlanIssue('proposal_requires_items_and_reason')
-        sources = self._sources(state)
-        items = []
-        for position, raw_item in enumerate(raw['items']):
-            if not isinstance(raw_item, dict) or not isinstance(raw_item.get('evidence'), list):
-                raise PlanIssue('candidate_requires_object_and_evidence')
-            item = CandidateDraft.model_validate(raw_item).model_dump()
-            item['id'] = str(position)
-            evidence = []
-            for citation in item.get('evidence', []):
-                if not isinstance(citation, dict) or set(citation) != {'source_id'}:
-                    raise PlanIssue('citation_selects_source_id_only')
-                sid = citation.get('source_id')
-                if sid not in sources:
-                    raise PlanIssue('candidate_source_requires_supplied_original')
-                evidence.append({'source_id': sid, 'quote': sources[sid]['content']})
-            item['evidence'] = evidence
-            candidate = Candidate.model_validate(item)
-            if state['new_user_source']['id'] not in {e.source_id for e in candidate.evidence}:
-                dispositions.append({'candidate_id':candidate.id,'status':'context_only',
-                    'reason':'context_interprets_current_input','source_ids':[e.source_id for e in candidate.evidence]})
-                continue
-            candidate.evidence.sort(key=lambda e: e.source_id != state['new_user_source']['id'])
-            supplied_user = any(normalized_name(m.name) == 'user' for m in candidate.mentions)
-            needs_user = candidate.user_involvement == 'involved'
-            candidate.mentions = [m for m in candidate.mentions if normalized_name(m.name) != 'user']
-            if needs_user:
-                candidate.mentions.append(Mention(name='user'))
-            user_checks.append({'candidate_id': candidate.id, 'user_involvement': candidate.user_involvement,
-                'supplied_user_reference': supplied_user, 'action':
-                'user_reference_added' if needs_user and not supplied_user else
-                'user_reference_removed' if supplied_user and not needs_user else 'consistent'})
-            items.append(candidate)
-        if len({i.id for i in items}) != len(items):
-            raise PlanIssue('candidate_ids_are_unique')
-        return ProposalPlan(items=items, reason=raw['reason'])
+    def _proposals(self, raw, state, dispositions):
+        from .models import ProposalDraft
+        plan=ProposalDraft.model_validate(raw)
+        sources=self._sources(state);primary=state['new_user_source']['id']
+        subjects=state.get('proposal',{}).get('subjects',[])
+        refs={s['ref'] for s in subjects};items=[]
+        for index,item in enumerate(plan.items):
+            ids=[e.source_id for e in item.evidence]
+            if any(sid not in sources for sid in ids):raise PlanIssue('candidate_source_requires_supplied_original')
+            if primary not in ids:
+                dispositions.append({'candidate_id':str(index),'status':'context_only','reason':'context_interprets_current_input'});continue
+            if not set(item.subject_refs)<=refs:raise PlanIssue('memory_candidate_requires_subject_view_refs')
+            items.append(Candidate(id=str(index),content=item.content,subject_refs=list(dict.fromkeys(item.subject_refs)),
+                connection=None,record_type=item.record_type,mode=item.mode,context=item.context,
+                status=item.status,time_expression=item.time_expression,evidence=[EvidenceRef(source_id=sid,quote=sources[sid]['content']) for sid in dict.fromkeys(ids)]))
+        return ProposalPlan(subjects=subjects,items=items,reason=plan.reason)
 
     def _proposal_stage(self, state, cache, save, deadline):
         if 'propose' in cache:
@@ -109,10 +88,9 @@ class AddPipeline:
                 save()
                 raise
         try:
-            dispositions, user_checks = [], []
-            result = self._proposals(cache['outputs'][key], state, dispositions, user_checks)
+            dispositions = []
+            result = self._proposals(cache['outputs'][key], state, dispositions)
             cache['source_dispositions'] = dispositions
-            cache['user_reference_checks'] = user_checks
         except (ValidationError, ValueError, OutputInvalid) as error:
             reason = self._error(error)
             cache.setdefault('validation', []).append({'stage': key, 'error': reason})
@@ -123,77 +101,18 @@ class AddPipeline:
             cache['last_failure'] = {'stage': key, 'reason': 'proposal_output_invalid'}
             save()
             raise ProviderUnavailable('proposal_output_invalid') from error
-        sources = self._sources(state)
-        gaps = [{'candidate_id': c.id, 'name': m.name, 'error': 'mention_requires_exact_source_name'}
-                for c in result.items for m in c.mentions if normalized_name(m.name) != 'user'
-                and not any(source_name_present(normalized_name(m.name), normalized_name(sources[e.source_id]['content']))
-                            for e in c.evidence)]
-        cache.setdefault('proposal_name_checks', []).append({'stage': key, 'gaps': gaps})
-        if gaps and not cache.get('repair_used'):
-            cache.update(repair_used=True, repair_stage='propose', proposal_errors=gaps)
-            save()
-            return self._proposal_stage(state, cache, save, deadline)
         cache['propose'] = result.model_dump()
         cache.pop('last_failure', None)
         save()
         return result
 
-    def _recall(self, state, proposal, deadline):
-        owner = state['owner']
-        clock = state['new_user_source']['message_at'] or state['new_user_source']['created_at']
-        sources = self._sources(state)
-        identities, entity_rows, identity_dispositions = {}, {}, []
-        for item in proposal.items:
-            supporting = [sources[e.source_id] for e in item.evidence]
-            ids, objects, dispositions = resolve_mentions(self.store, owner, item.mentions, supporting, clock)
-            identities[item.id] = ids
-            entity_rows.update({obj.id: obj.model_dump() for obj in objects})
-            identity_dispositions.extend({'candidate_id': item.id, **entry} for entry in dispositions)
-        memories = {m.id: m for original in self.store.memories(owner) if (m := visible_memory(original, clock))}
-        docs = self.engine._visible_documents(owner, clock)
-        vectors = self.engine._embed([c.content for c in proposal.items], deadline) if docs and self.engine.embedder else [None] * len(proposal.items)
-        selected, trace = [], []
-        user_ids = {obj['id'] for obj in entity_rows.values() if obj['is_user']}
-        # A bounded round-robin union gives every candidate access to the shared budget.
-        lists = []
-        for item, vector in zip(proposal.items, vectors):
-            entity_ids = set(identities[item.id]) - user_ids
-            local = {m.id for m in memories.values() if entity_ids.intersection(m.entity_ids)}
-            local_hits = self.engine._hybrid(owner, item.content, [d for d in docs if d.memory_id in local], vector, limit=6)
-            global_hits = self.engine._hybrid(owner, item.content, [d for d in docs if d.memory_id], vector, limit=2)
-            ids = list(dict.fromkeys(d.memory_id for d, _ in [*local_hits, *global_hits]))
-            lists.append(ids)
-            trace.append({'candidate_id': item.id, 'local': [d.memory_id for d, _ in local_hits],
-                          'global': [d.memory_id for d, _ in global_hits]})
-        for position in range(max((len(ids) for ids in lists), default=0)):
-            for ids in lists:
-                if position < len(ids) and ids[position] not in selected:
-                    selected.append(ids[position])
-        cards = []
-        for mid in selected[:8]:
-            memory = memories[mid]
-            revision = memory.current
-            names = [self.store.get('objects', owner, eid)['name'] for eid in revision.entity_ids
-                     if self.store.get('objects', owner, eid)]
-            cards.append({'id': mid, 'revision_id':revision.id, 'record_type': memory.record_type, 'content': revision.content,
-                          'status': revision.status, 'planned_at': revision.planned_at, 'event_at': revision.event_at,
-                          'mode': revision.mode, 'context': revision.context,
-                          'user_involvement': revision.user_involvement, 'subjects': names,
-                          'patchable': memory.record_type == 'event' and revision.status == 'planned' and revision.mode == 'asserted',
-                          'sources': [s.model_dump() for s in self.store.sources(owner, revision.source_ids)]})
-        # Keep complete user evidence; drop least-ranked cards to fit the existing context budget.
-        context = {**state, 'proposal': proposal.model_dump(), 'history': cards,
-                   'identity_issues': identity_dispositions,
-                   'resolved_subjects': {cid: [entity_rows[eid]['name'] for eid in ids] for cid, ids in identities.items()}}
-        def prompt_bytes():
-            compact = deepcopy(context)
-            for item in compact['proposal']['items']:
-                item['evidence'] = [{'source_id':e['source_id']} for e in item['evidence']]
-            return len(json.dumps(compact, ensure_ascii=False).encode())
-        while prompt_bytes() > 32000 and context['history']:
-            context['history'].pop()
-        return context, {'candidate_entity_ids': identities, 'entity_rows': list(entity_rows.values()),
-                         'identity_dispositions': identity_dispositions, 'recall_trace': trace}
+    def _shared_recall(self, state, deadline):
+        return recall_candidates(self.engine, state, deadline)
+
+    @staticmethod
+    def _write_context(state, bindings):
+        """Attach program validation results to the same recalled source snapshot."""
+        return {**state, 'identity_issues': bindings['identity_dispositions']}
 
     @staticmethod
     def _error(error):
@@ -214,135 +133,141 @@ class AddPipeline:
                 return stamp
         return None
 
-    def _validate_decision(self, raw, candidate, state):
-        decision = CardDecision.model_validate(raw)
-        if any(d['candidate_id'] == candidate.id for d in state.get('identity_issues', [])) and decision.operation != 'pending':
-            raise PlanIssue('candidate_identity_requires_clarification')
-        if decision.candidate_id != candidate.id:
-            raise PlanIssue('decision_selects_supplied_candidate')
-        history = {h['id']: h for h in state['history']}
-        target = history.get(decision.target_id)
-        new_fields = [decision.record_type, decision.content, decision.mode, decision.context, decision.status, decision.user_involvement]
-        if decision.operation == 'create':
-            if decision.target_id is not None or decision.event_change is not None:
-                raise PlanIssue('creation_has_new_identity')
-            if not all([decision.record_type, decision.content, decision.mode, decision.user_involvement]):
-                raise PlanIssue('creation_requires_complete_card')
-            if candidate.user_involvement != 'uncertain' and candidate.user_involvement != decision.user_involvement:
-                raise PlanIssue('user_involvement_conflict_requires_clarification')
-            if decision.record_type == 'relation':
-                if decision.status is not None or decision.time_expression is not None:
-                    raise PlanIssue('relation_creation_uses_statement_and_source_time')
-            elif decision.status is None:
-                raise PlanIssue('event_creation_requires_status')
-            if decision.time_expression and not self._date(decision.time_expression, candidate, state):
-                raise PlanIssue('event_date_requires_source_support')
-        elif decision.operation == 'patch_event':
-            if target is None or not target['patchable']:
-                raise PlanIssue('patch_selects_recalled_asserted_plan')
-            if any(v is not None for v in new_fields) or decision.event_change is None:
-                raise PlanIssue('event_patch_changes_only_date_or_status')
-            if decision.event_change == 'cancel' and decision.time_expression is not None:
-                raise PlanIssue('cancel_changes_status_with_no_time_argument')
-            if decision.event_change == 'reschedule' and not decision.time_expression:
-                raise PlanIssue('reschedule_requires_date')
-            if decision.time_expression and not self._date(decision.time_expression, candidate, state):
-                raise PlanIssue('event_date_requires_source_support')
-        else:
-            if any(v is not None for v in new_fields) or decision.event_change or decision.time_expression:
-                raise PlanIssue('keep_and_pending_preserve_card_fields')
-            if decision.operation == 'keep' and target is None:
-                raise PlanIssue('keep_selects_recalled_card')
-            if (decision.operation == 'keep' and candidate.user_involvement != 'uncertain'
-                    and candidate.user_involvement != target['user_involvement']):
-                raise PlanIssue('keep_preserves_user_attribution')
-            if decision.operation == 'pending' and decision.target_id is not None:
-                raise PlanIssue('pending_preserves_previous_records')
-        return decision
-
-    def _decode_decisions(self, raw, state):
-        candidates = {c['id']: Candidate.model_validate(c) for c in state['proposal']['items']}
-        items = raw.get('decisions') if isinstance(raw, dict) and set(raw) == {'decisions'} else None
-        if not isinstance(items, list):
-            return {}, {cid: 'maintenance_requires_decisions' for cid in candidates}
-        counts = Counter(i.get('candidate_id') for i in items if isinstance(i, dict) and isinstance(i.get('candidate_id'), str))
-        good, errors = {}, {}
-        for cid, candidate in candidates.items():
-            if counts[cid] != 1:
-                errors[cid] = 'exactly_one_decision_per_candidate'
-                continue
-            raw_item = next(i for i in items if isinstance(i, dict) and i.get('candidate_id') == cid)
-            try:
-                good[cid] = self._validate_decision(raw_item, candidate, state)
-            except (ValidationError, ValueError) as error:
-                errors[cid] = self._error(error)
-        return good, errors
-
-    def _maintenance_stage(self, state, cache, save, deadline):
-        if 'maintain' in cache:
-            return [CardDecision.model_validate(x) for x in cache['maintain']['decisions']]
-        outputs = cache.setdefault('outputs', {})
-        if 'maintain' not in outputs:
-            try:
-                outputs['maintain'] = self.engine.model.maintain(state, deadline=deadline)
-                save()
-            except OutputInvalid:
-                outputs['maintain'] = {'output_error': 'model_output_invalid'}
-                save()
+    def _stage_call(self, name, payload, cache, save, deadline):
+        outputs=cache.setdefault('outputs',{})
+        if name not in outputs:
+            method=self.engine.model.maintain_subjects
+            try: outputs[name]=method(payload,deadline=deadline)
+            except OutputInvalid: outputs[name]={'output_error':'model_output_invalid'}
             except ProviderUnavailable:
-                cache['last_failure'] = {'stage': 'maintain', 'reason': 'provider_unavailable'}
-                save()
-                raise
-        good, errors = self._decode_decisions(outputs['maintain'], state)
-        cache['validation'] = [{'candidate_id': cid, 'error': reason} for cid, reason in errors.items()]
-        if errors and (not cache.get('repair_used') or cache.get('repair_stage') == 'maintain'):
-            if not cache.get('repair_used'):
-                cache.update(repair_used=True, repair_stage='maintain', repair_candidate_ids=list(errors))
-                save()
-            ids = set(cache['repair_candidate_ids'])
-            partial = {**state, 'proposal': {**state['proposal'], 'items': [c for c in state['proposal']['items'] if c['id'] in ids]},
-                       'repair_errors': [{'candidate_id': cid, 'error': reason} for cid, reason in errors.items() if cid in ids]}
-            if 'maintain_repair' not in outputs:
-                try:
-                    outputs['maintain_repair'] = self.engine.model.maintain(partial, deadline=deadline)
-                    save()
-                except OutputInvalid:
-                    outputs['maintain_repair'] = {'output_error': 'model_output_invalid'}
-                    save()
-                except ProviderUnavailable:
-                    cache['last_failure'] = {'stage': 'maintain_repair', 'reason': 'provider_unavailable'}
-                    save()
-                    raise
-            fixed, remaining = self._decode_decisions(outputs['maintain_repair'], partial)
-            good.update(fixed)
-            errors = {**{cid: reason for cid, reason in errors.items() if cid not in ids}, **remaining}
-        for cid, reason in errors.items():
-            good[cid] = CardDecision(candidate_id=cid, operation='pending', target_id=None, record_type=None,
-                content=None, mode=None, context=None, status=None, event_change=None, time_expression=None, reason=reason)
-        # Conflicting edits share a dependency group; independent candidates retain their decisions.
-        by_target = {}
-        for decision in good.values():
-            if decision.operation == 'patch_event':
-                by_target.setdefault(decision.target_id, []).append(decision)
-        for target, decisions in by_target.items():
-            signatures = {(d.event_change, d.time_expression) for d in decisions}
-            if len(signatures) > 1:
-                for d in decisions:
-                    good[d.candidate_id] = d.model_copy(update={'operation': 'pending', 'target_id': None,
-                        'event_change': None, 'time_expression': None, 'reason': 'conflicting_event_patches_require_clarification'})
-        ordered = [good[item['id']] for item in state['proposal']['items']]
-        cache['maintain'] = {'decisions': [d.model_dump() for d in ordered]}
-        cache['candidate_dispositions'] = [{'candidate_id': d.candidate_id,
-            'status': 'pending' if d.operation == 'pending' else 'accepted', 'operation': d.operation, 'reason': d.reason} for d in ordered]
-        initial = outputs['maintain'].get('decisions', []) if isinstance(outputs['maintain'], dict) else []
-        reviews = {d.get('candidate_id'): d.get('user_involvement') for d in initial if isinstance(d, dict)
-                   and isinstance(d.get('candidate_id'), str)} if isinstance(initial, list) else {}
-        cache['user_involvement_reviews'] = [{'candidate_id': c['id'], 'proposed': c['user_involvement'],
-            'initial_review': reviews.get(c['id']), 'reviewed': d.user_involvement, 'operation': d.operation,
-            'changed': reviews.get(c['id']) is not None and c['user_involvement'] != reviews[c['id']]}
-            for c, d in zip(state['proposal']['items'], ordered)]
-        cache.pop('last_failure', None)
-        save()
+                cache['last_failure']={'stage':name,'reason':'provider_unavailable'};save();raise
+            save()
+        return outputs[name]
+
+    def _connections(self, raw, state, bindings):
+        good,errors={},{}
+        rows=raw.get('connections',[]) if isinstance(raw,dict) and isinstance(raw.get('connections'),list) else []
+        catalog={r['id']:r for r in state.get('relation_catalog',[])}
+        subjects={s['ref'] for s in state['proposal']['subjects']}
+        counts=Counter(r.get('ref') for r in rows if isinstance(r,dict) and type(r.get('ref')) is int)
+        candidates=[]
+        for index,row in enumerate(rows):
+            try:
+                change=ConnectionChangeDraft.model_validate(row)
+                if counts[change.ref]!=1:raise PlanIssue('contact_ref_selected_more_than_once')
+                if not set(change.subject_refs)<=subjects:raise PlanIssue('contact_requires_declared_subject_refs')
+                if change.source_id!=state['new_user_source']['id'] or change.quote not in state['new_user_source']['content']:
+                    raise PlanIssue('contact_requires_current_original_excerpt')
+                cid='c'+str(change.ref)
+                link=ConnectionDraft(subject_refs=change.subject_refs,source_id=change.source_id,quote=change.quote,mode=change.mode)
+                candidates.append(Candidate(id=cid,content=change.quote,subject_refs=change.subject_refs,connection=link,
+                    evidence=[EvidenceRef(source_id=change.source_id,quote=change.quote)]).model_dump())
+                ids=[bindings['subject_ids'].get(str(r)) for r in change.subject_refs]
+                if change.operation!='pending' and (None in ids or len(set(ids))!=2):
+                    raise PlanIssue('contact_requires_two_distinct_resolved_subjects')
+                if change.operation in {'create','pending'}:
+                    if change.target_id is not None or change.previous_quote is not None:raise PlanIssue('new_or_pending_contact_has_no_old_target')
+                else:
+                    target=catalog.get(change.target_id)
+                    if target is None or sorted(ids)!=target['endpoint_ids'] or change.mode!=target['mode']:
+                        raise PlanIssue('contact_update_requires_same_owned_endpoints_and_mode')
+                    if ids!=target['ordered_subject_ids']:raise PlanIssue('contact_update_preserves_participant_direction')
+                    if change.previous_quote!=target['content']:raise PlanIssue('contact_change_anchors_previous_proposition')
+                good[cid]={'candidate_id':cid,'operation':change.operation,'target_id':change.target_id}
+            except ValueError as error:errors[str(index)]=self._error(error)
+        state['proposal']['items']=candidates
+        return good,errors
+
+    def _identity_stage(self, state, cache, save, deadline):
+        if 'identity_plan' in cache:return cache['identity_context'],cache['bindings']
+        raw=self._stage_call('subjects',state,cache,save,deadline)
+        def review(output):
+            reviewed=deepcopy(state)
+            subjects,errors=decode_subjects(output,reviewed,self.store)
+            bindings=materialize_subjects(reviewed,subjects,self.store)
+            links,link_errors=self._connections(output,reviewed,bindings)
+            return reviewed,subjects,bindings,links,errors,link_errors
+        reviewed,subjects,bindings,links,errors,link_errors=review(raw)
+        validation=[{'stage':'subjects','ref':r,'error':e} for r,e in errors.items()]+[
+            {'stage':'connections','ref':r,'error':e} for r,e in link_errors.items()]
+        cache['validation']=validation
+        if validation and (not cache.get('repair_used') or cache.get('repair_stage')=='subjects'):
+            cache.update(repair_used=True,repair_stage='subjects');save()
+            accepted={r for r,d in subjects.items() if r not in errors and d.target_id is not None}
+            def rows(key):
+                value=raw.get(key,[]) if isinstance(raw,dict) else []
+                return value if isinstance(value,list) else []
+            def selected(row,refs):
+                return isinstance(row,dict) and type(row.get('ref')) is int and row['ref'] in refs
+            accepted_links={int(cid[1:]) for cid in links}
+            frozen={'subjects':[row for row in rows('subjects') if selected(row,accepted)],
+                'connections':[row for row in rows('connections') if selected(row,accepted_links)]}
+            repair={**state,'accepted_subjects':frozen['subjects'],'accepted_connections':frozen['connections'],
+                'rejected_subjects':[row for row in rows('subjects') if not selected(row,accepted)],
+                'rejected_connections':[row for row in rows('connections') if not selected(row,accepted_links)],
+                'repair_errors':validation}
+            fixed=self._stage_call('subjects_repair',repair,cache,save,deadline)
+            if isinstance(fixed,dict) and set(fixed)==set(frozen) and all(isinstance(fixed.get(k),list) for k in frozen):
+                merged={key:frozen[key]+[row for row in fixed[key] if not (isinstance(row,dict) and
+                    type(row.get('ref')) is int and row['ref'] in (accepted_links if key=='connections' else accepted))] for key in frozen}
+                reviewed,subjects,bindings,links,errors,link_errors=review(merged)
+        if errors and not subjects and any(type(ref) is not int or ref<0 for ref in errors):
+            cache['last_failure']={'stage':'subjects','reason':'subject_output_invalid'};save()
+            raise ProviderUnavailable('subject_output_invalid')
+        for candidate in reviewed['proposal']['items']:
+            links.setdefault(candidate['id'],{'candidate_id':candidate['id'],'operation':'pending','target_id':None})
+        cache.update(identity_plan=True,identity_context=reviewed,bindings=bindings,subject_alias_issues=reviewed['subject_alias_issues'],
+            connection_changes=list(links.values()),
+            subject_dispositions=[d.model_dump() for d in subjects.values()],
+            connection_dispositions=[{'candidate_id':cid,'status':change['operation']} for cid,change in links.items()],
+            identity_errors=[{'ref':r,'error':e} for r,e in errors.items()]+[{'connection':r,'error':e} for r,e in link_errors.items()])
+        cache.pop('last_failure',None);save()
+        return reviewed,bindings
+
+    def _write_plan(self, state, cache, save):
+        """Validate extracted records and compile writes without a model review."""
+        if 'write_plan' in cache:
+            return [CardDecision.model_validate(x) for x in cache['write_plan']['decisions']]
+        good={}
+        unresolved={d['candidate_id'] for d in state.get('identity_issues',[])}
+        for raw in state['proposal']['items']:
+            c=Candidate.model_validate(raw)
+            if c.connection is not None:
+                continue
+            reason=None
+            if c.id in unresolved:
+                reason='candidate_identity_unresolved'
+            elif c.record_type=='event' and c.status is None:
+                reason='event_creation_requires_status'
+            elif c.record_type!='event' and (c.status is not None or c.time_expression is not None):
+                reason='statements_preserve_time_scope_in_content'
+            elif c.time_expression and not self._date(c.time_expression,c,state):
+                reason='event_date_requires_source_support'
+            if reason:
+                good[c.id]=CardDecision(candidate_id=c.id,operation='pending',reason=reason)
+                cache.setdefault('validation',[]).append({'stage':'write_validation','candidate_id':c.id,'error':reason})
+            else:
+                good[c.id]=CardDecision(candidate_id=c.id,operation='create',record_type=c.record_type,
+                    content=c.content,subject_refs=c.subject_refs,mode=c.mode,context=c.context,
+                    status=c.status,time_expression=c.time_expression,reason='validated_extracted_memory')
+        by_id={c['id']:c for c in state['proposal']['items']}
+        for change in cache.get('connection_changes',[]):
+            c=by_id[change['candidate_id']];link=c['connection']
+            if change['operation'] in {'keep','pending'}:
+                good[c['id']]=CardDecision(candidate_id=c['id'],operation=change['operation'],target_id=change['target_id'],reason='explicit_contact_disposition')
+                continue
+            good[c['id']]=CardDecision(candidate_id=c['id'],operation='create' if change['operation']=='create' else 'patch_relation',
+                target_id=change['target_id'],record_type='relation',content=link['quote'],
+                subject_refs=link['subject_refs'],mode=link['mode'],context='source_reported',reason='explicit_candidate_contact_patch')
+        relation_targets=Counter(d.target_id for d in good.values() if d.operation=='patch_relation')
+        for cid,d in list(good.items()):
+            if d.operation=='patch_relation' and relation_targets[d.target_id]>1:
+                good[cid]=CardDecision(candidate_id=cid,operation='pending',reason='conflicting_contact_updates_require_clarification')
+        ordered=[good[c['id']] for c in state['proposal']['items']]
+        cache['write_plan']={'decisions':[d.model_dump() for d in ordered]}
+        cache['candidate_dispositions']=[{'candidate_id':d.candidate_id,'status':'pending' if d.operation=='pending' else 'accepted',
+            'operation':d.operation,'reason':d.reason} for d in ordered]
+        cache.pop('last_failure',None);save()
         return ordered
 
     def _materialize(self, state, bindings, decisions):
@@ -350,68 +275,56 @@ class AddPipeline:
         primary = state['new_user_source']
         observed = primary['message_at'] or primary['created_at']
         candidates = {c['id']: Candidate.model_validate(c) for c in state['proposal']['items']}
-        memories, edges, expected, used_entities = {}, [], {}, set()
+        memories, edges, expected = {}, [], {}
         entity_rows = {obj['id']: obj for obj in bindings['entity_rows']}
         user_id = stable_id('obj_', owner, 'user')
-        patch_groups = {}
+        relation_groups = {}
         for decision in decisions:
             candidate = candidates[decision.candidate_id]
             if decision.operation in {'keep', 'pending'}:
                 continue
             evidence = list(candidate.evidence)
-            if decision.operation == 'patch_event':
-                patch_groups.setdefault(decision.target_id, []).append(decision)
+            if decision.operation == 'patch_relation':
+                relation_groups.setdefault(decision.target_id, []).append(decision)
                 continue
             mid = stable_id('mem_', owner, primary['id'], state.get('source_window'), candidate.id)
-            entity_ids = [eid for eid in bindings['candidate_entity_ids'][candidate.id] if eid != user_id]
-            if decision.user_involvement == 'involved':
-                ids, objects, issues = resolve_mentions(self.store, owner, [Mention(name='user')],
-                    [self._sources(state)[e.source_id] for e in evidence], observed)
-                if issues or ids != [user_id]:
-                    raise ProviderUnavailable('reviewed_user_identity_unresolved')
-                entity_rows.update({obj.id: obj.model_dump() for obj in objects})
-                entity_ids.append(user_id)
+            entity_ids = list(dict.fromkeys(bindings['subject_ids'][str(r)] for r in decision.subject_refs))
             stamp = self._date(decision.time_expression, candidate, state)
             status = decision.status if decision.record_type == 'event' else 'stated'
             revision = Revision(id=stable_id('rev_', mid, 'create'),
                 content=absolute_content(decision.content, '\n'.join(e.quote for e in evidence), primary['message_at'] or primary['created_at']),
                 source_ids=[e.source_id for e in evidence], quote=evidence[0].quote, evidence=evidence, entity_ids=entity_ids,
-                user_involvement=decision.user_involvement,
+                user_involvement='involved' if user_id in entity_ids else 'not_involved',
                 mode=decision.mode, context=decision.context or "source_reported", status=status,
                 event_at=stamp if status == 'occurred' else None,
                 planned_at=stamp if status in {'planned', 'desired', 'cancelled'} else None,
                 observed_at=observed, created_at=utcnow(), time_resolution='rule' if stamp else 'unknown',
                 time_precision='day' if stamp else 'unknown', operation='create')
-            memory = Memory(id=mid, owner=owner, record_type=decision.record_type, revisions=[revision])
+            connection = candidate.connection if decision.record_type=='relation' else None
+            if connection:revision.quote=connection.quote
+            endpoints = sorted(bindings['subject_ids'][str(ref)] for ref in connection.subject_refs) if connection else []
+            memory = Memory(id=mid, owner=owner, record_type=decision.record_type, revisions=[revision],
+                endpoint_ids=endpoints,connection_evidence=EvidenceRef(source_id=connection.source_id,quote=connection.quote) if connection else None)
             memories[mid] = memory
-            used_entities.update(entity_ids)
             expected[mid] = None
             edges.extend(project_edges(memory, revision))
-        for mid, group in patch_groups.items():
-            original = Memory.model_validate(self.store.get('memories', owner, mid))
-            view = visible_memory(original, observed)
-            previous = view.current
-            recalled = next(h for h in state['history'] if h['id'] == mid)
-            if previous.id != recalled['revision_id']:
-                raise HistoryChanged('maintenance_history_changed_retry')
-            expected[mid] = original.model_dump()
-            decision = group[0]
-            evidence = [e for patch in group for e in candidates[patch.candidate_id].evidence]
-            combined = list({e.source_id: e for e in [*evidence, *previous.evidence]}.values())
-            stamp = self._date(decision.time_expression, candidates[decision.candidate_id], state)
-            changes = {'reschedule': {'planned_at': stamp}, 'complete': {'status': 'occurred', 'event_at': stamp},
-                       'cancel': {'status': 'cancelled'}}[decision.event_change]
-            revision = previous.model_copy(update={**changes,
-                'id': stable_id('rev_', mid, primary['id'], state.get('source_window'), decision.event_change),
-                'source_ids': [e.source_id for e in combined], 'quote': combined[0].quote, 'evidence': combined,
-                'observed_at': observed, 'created_at': utcnow(), 'operation': decision.event_change,
-                'replaces_revision_id': previous.id,
-                'time_resolution': previous.time_resolution if decision.event_change == 'cancel' else ('rule' if stamp else 'unknown'),
-                'time_precision': previous.time_precision if decision.event_change == 'cancel' else ('day' if stamp else 'unknown')})
+        for mid,group in relation_groups.items():
+            original=Memory.model_validate(self.store.get('memories',owner,mid))
+            previous=visible_memory(original,observed).current
+            recalled=next(r for r in state['relation_catalog'] if r['id']==mid)
+            if previous.id!=recalled['revision_id']:raise HistoryChanged('contact_history_changed_retry')
+            if len(group)!=1:raise PlanIssue('one_contact_update_per_target')
+            decision=group[0];candidate=candidates[decision.candidate_id];link=candidate.connection
+            evidence=list({e.source_id:e for e in [*candidate.evidence,*previous.evidence]}.values())
+            revision=previous.model_copy(update={'id':stable_id('rev_',mid,primary['id'],state.get('source_window'),'contact_update'),
+                'content':link.quote,'source_ids':[e.source_id for e in evidence], 'evidence':evidence,'quote':link.quote,
+                'observed_at':observed,'created_at':utcnow(),'operation':'update', 'replaces_revision_id':previous.id})
             original.revisions.append(revision)
-            memories[mid] = Memory.model_validate(original.model_dump())
-            edges.extend(project_edges(original, revision, previous.id))
-        objects = [raw for raw in entity_rows.values() if raw['id'] in used_entities]
+            current=original.current
+            original.connection_evidence=EvidenceRef(source_id=current.source_ids[0],quote=current.quote)
+            memories[mid]=Memory.model_validate(original.model_dump());expected[mid]=self.store.get('memories',owner,mid)
+            edges.extend(project_edges(original,revision,previous.id))
+        objects = list(entity_rows.values())
         return objects, list(memories.values()), edges, expected
 
     def _user_binding_checks(self, state, objects, memories, edges):
@@ -420,6 +333,13 @@ class AddPipeline:
         user_id = stable_id('obj_', owner, 'user')
         rows = {obj['id']: obj for obj in objects}
         checks = []
+        for raw in objects:
+            obj=GraphObject.model_validate(raw)
+            valid=obj.owner==owner
+            for alias in obj.aliases:
+                source=self.store.get('sources',owner,alias.source_id)
+                valid=valid and source is not None and alias.quote in source['content'] and source_name_present(normalized_name(alias.name),normalized_name(alias.quote))
+            checks.append({'subject_id':obj.id,'aliases_valid':bool(valid),'passed':bool(valid)})
         for memory in memories:
             try:
                 Memory.model_validate(memory.model_dump())
@@ -443,19 +363,24 @@ class AddPipeline:
                         valid = valid and obj.id == eid and obj.owner == owner and obj.is_user == (eid == user_id)
                     except ValidationError:
                         valid = False
+                connections=[e for e in edges if e.revision_id==revision.id and e.relation=='related']
+                valid = valid and (len(connections)==(1 if memory.endpoint_ids else 0))
+                if connections:
+                    e=connections[0]
+                    valid = valid and sorted([e.origin,e.target])==sorted(memory.endpoint_ids) and e.owner==owner and e.memory_id==memory.id and e.source_id==revision.source_ids[0] and revision.quote in self.store.get('sources',owner,e.source_id)['content']
                 checks.append({'memory_id': memory.id, 'revision_id': revision.id,
                     'user_involvement': revision.user_involvement, 'user_bound': user_id in targets, 'passed': bool(valid)})
         return checks
 
     @staticmethod
-    def _invalidate_maintenance(cache):
+    def _invalidate_plan(cache):
         cache.setdefault('history_conflicts', []).append({
             'candidate_dispositions':cache.get('candidate_dispositions', []),
-            'recalled_versions':{h['id']:h['revision_id'] for h in cache.get('maintenance_context', {}).get('history', [])}})
-        for name in ['maintenance_context','bindings','maintain','repair_candidate_ids','repair_stage',
-                     'user_binding_checks','user_involvement_reviews']:
+            'recalled_versions':{h['id']:h['revision_id'] for h in cache.get('write_context', {}).get('history', [])}})
+        for name in ['propose','write_context','shared_recall','recall_trace','identity_plan','identity_context','bindings','write_plan','repair_stage',
+                     'user_binding_checks','subject_dispositions','subject_alias_issues','connection_changes']:
             cache.pop(name, None)
-        for name in ['maintain','maintain_repair']:
+        for name in ['propose','propose_repair','subjects','subjects_repair']:
             cache.get('outputs', {}).pop(name, None)
 
     def add(self, request):
@@ -498,28 +423,38 @@ class AddPipeline:
                     if user and self.engine.model:
                         state = self.engine._add_state(user, unit, sources, deadline)
                         state['new_user_source']['content'] = text
+                        state['pipeline']=PIPELINE
                         state['source_window'] = {'start': start, 'stop': stop}
-                        proposal = self._proposal_stage(state, cache, save, deadline)
-                        if proposal.items:
-                            if 'maintenance_context' not in cache:
-                                context, bindings = self._recall(state, proposal, deadline)
-                                cache.update(maintenance_context=context, bindings=bindings)
-                                save()
-                            context, bindings = cache['maintenance_context'], cache['bindings']
-                            decisions = self._maintenance_stage(context, cache, save, deadline)
-                            try:
-                                objects, memories, edges, expected = self._materialize(context, bindings, decisions)
-                            except HistoryChanged:
-                                self._invalidate_maintenance(cache)
-                                save()
-                                raise
-                            checks = self._user_binding_checks(context, objects, memories, edges)
-                            cache['user_binding_checks'] = checks
+                        if 'shared_recall' not in cache:
+                            context,trace=self._shared_recall(state,deadline)
+                            cache.update(shared_recall=context,recall_trace=trace);save()
+                        identity_context,bindings=self._identity_stage(cache['shared_recall'],cache,save,deadline)
+                        candidate_state={**identity_context,'resolved_subjects':[{'ref':sub['ref'],'name':sub['name'],
+                            'aliases':sub['aliases'],'kind':sub['kind'],'id':bindings['subject_ids'].get(str(sub['ref'])),'status':'resolved' if str(sub['ref']) in bindings['subject_ids'] else 'pending'}
+                            for sub in identity_context['proposal']['subjects']]}
+                        proposal=self._proposal_stage(candidate_state,cache,save,deadline)
+                        identity_context=deepcopy(identity_context)
+                        identity_context['proposal']['items']=[c for c in identity_context['proposal']['items'] if c['connection']] + [c.model_dump() for c in proposal.items]
+                        bindings=materialize_subjects(identity_context,{d['subject_ref']:SubjectDecision.model_validate(d)
+                            for d in cache['subject_dispositions']},self.store)
+                        cache.update(identity_context=identity_context,bindings=bindings)
+                        if 'write_context' not in cache:
+                            cache['write_context']=self._write_context(identity_context,bindings);save()
+                        context=cache['write_context']
+                        decisions=self._write_plan(context,cache,save)
+                        try:
+                            objects, memories, edges, expected = self._materialize(context, bindings, decisions)
+                        except HistoryChanged:
+                            self._invalidate_plan(cache)
                             save()
-                            if not all(check['passed'] for check in checks):
-                                raise ProviderUnavailable('user_binding_integrity_failed')
-                            pending_ids = {d.candidate_id for d in decisions if d.operation == 'pending'}
-                            pending_candidates = [c for c in proposal.items if c.id in pending_ids]
+                            raise
+                        checks = self._user_binding_checks(context, objects, memories, edges)
+                        cache['user_binding_checks'] = checks
+                        save()
+                        if not all(check['passed'] for check in checks):
+                            raise ProviderUnavailable('user_binding_integrity_failed')
+                        pending_ids = {d.candidate_id for d in decisions if d.operation == 'pending'}
+                        pending_candidates = [Candidate.model_validate(c) for c in context['proposal']['items'] if c['id'] in pending_ids]
                     documents = self.engine._documents(unit if part == 0 else [], memories, objects,
                                                        pending_candidates=pending_candidates, owner=request.user_id)
                     pending_docs = []
@@ -534,10 +469,14 @@ class AddPipeline:
                             doc.vector = vector
                     try:
                         with self.store.transaction():
+                            for target, original_record in cache.get('bindings',{}).get('expected_objects',{}).items():
+                                if self.store.get('objects',request.user_id,target)!=original_record:
+                                    self._invalidate_plan(cache)
+                                    raise HistoryChanged('subject_changed_retry')
                             for target, original_record in expected.items():
                                 if self.store.get('memories', request.user_id, target) != original_record:
-                                    self._invalidate_maintenance(cache)
-                                    raise HistoryChanged('maintenance_history_changed_retry')
+                                    self._invalidate_plan(cache)
+                                    raise HistoryChanged('write_history_changed_retry')
                             for raw in objects:
                                 current = self.store.get('objects', request.user_id, raw['id'])
                                 if current:

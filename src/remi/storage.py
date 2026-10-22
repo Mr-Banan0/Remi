@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
 
-from .models import Document, Edge, GraphObject, Memory, Source
+from .models import Document, Edge, GraphObject, Memory, Source, SCHEMA_VERSION
 
 
 SCHEMA = """
@@ -107,11 +107,11 @@ class SQLiteStore(MemoryStore):
         if not TABLES <= actual:
             self.connection.close()
             raise RuntimeError("database_schema_missing_use_explicit_approved_init")
-        old_memory = self.connection.execute("SELECT 1 FROM memories WHERE COALESCE(json_extract(record_json,'$.schema_version'),0) != 11 LIMIT 1").fetchone()
-        old_entity = self.connection.execute("SELECT 1 FROM objects WHERE COALESCE(json_extract(record_json,'$.schema_version'),0) != 11 LIMIT 1").fetchone()
+        old_memory = self.connection.execute("SELECT 1 FROM memories WHERE COALESCE(json_extract(record_json,'$.schema_version'),0) != ? LIMIT 1", (SCHEMA_VERSION,)).fetchone()
+        old_entity = self.connection.execute("SELECT 1 FROM objects WHERE (COALESCE(json_extract(record_json,'$.schema_version'),0) != ? OR COALESCE(json_extract(record_json,'$.kind'),'') NOT IN ('person','animal','organization')) LIMIT 1", (SCHEMA_VERSION,)).fetchone()
         if old_memory or old_entity:
             self.connection.close()
-            raise RuntimeError("database_records_require_user_identity_source_replay")
+            raise RuntimeError("database_records_require_subject_memory_source_replay")
         import sqlite_vec
         self.connection.enable_load_extension(True)
         try:

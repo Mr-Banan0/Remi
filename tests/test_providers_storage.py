@@ -156,25 +156,34 @@ def test_short_refs_preserve_candidate_namespace_collisions():
     assert restore({'decisions':[{'target_id':'M2','candidate_id':'M1'}]})['decisions'][0] == {'target_id':'mem_actual','candidate_id':'M1'}
 
 
-def test_add_model_exposes_only_supplied_candidate_and_target_catalogues():
+def test_extraction_provider_exposes_fixed_refs_and_original_sources():
     from openai import OpenAI
     from remi.providers import GPTModel
     calls=[]
     def handler(request):
         calls.append(json.loads(request.content))
-        content=json.dumps({'decisions':[{'candidate_id':'C1','target_id':'M1'}]})
+        content=json.dumps({'items':[],'reason':'empty'})
         return httpx.Response(200,json={'id':'test','object':'chat.completion','created':1,'model':'gpt-4o-mini',
             'choices':[{'index':0,'message':{'role':'assistant','content':content},'finish_reason':'stop'}]})
     sdk=OpenAI(api_key='dummy-test',base_url='https://test.invalid/v1',max_retries=0,
         http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     model=GPTModel('dummy-test','https://test.invalid/v1',client=sdk)
-    state={'owner':'private-scope','new_user_source':{'id':'src_actual','role':'user','content':'Original','message_at':'2024-06-02T10:00:00Z'},
-        'proposal':{'items':[{'id':'C1','content':'One claim','mentions':[],'evidence':[{'source_id':'src_actual'}]}]},
+    state={'new_user_source':{'id':'src_actual','role':'user','content':'Original','message_at':'2024-06-02T10:00:00Z'},
+        'resolved_subjects':[{'ref':3,'status':'resolved'},{'ref':8,'status':'pending'}],
         'history':[{'id':'mem_actual','sources':[]}]}
-    result=model.maintain(state,deadline=monotonic()+5)
-    body=json.loads(calls[0]['messages'][1]['content'])
-    props=calls[0]['response_format']['json_schema']['schema']['$defs']['EventPatchDraft']['properties']
-    assert 'owner' not in body and body['history'][0]['id']=='M1'
-    assert props['candidate_id']['enum']==['C1'] and props['target_id']['enum']==['M1']
-    assert result['decisions'][0]['target_id']=='mem_actual'
+    model.propose(state,deadline=monotonic()+5)
+    body=json.loads(calls[0]['messages'][-1]['content'])
+    props=calls[0]['response_format']['json_schema']['schema']['$defs']['CandidateDraft']['properties']
+    assert body['history'][0]['id']=='M1' and props['subject_refs']['items']['enum']==[3,8]
+    assert 'operation' not in props and 'target_id' not in props
+    assert not hasattr(model,'maintain')
     model.close()
+
+
+def test_identity_and_extraction_contracts_have_separate_write_authority():
+    from remi.models import SubjectMaintenanceDraft, ProposalDraft
+    from remi.providers import strict_schema
+    identity=strict_schema(SubjectMaintenanceDraft);memory=strict_schema(ProposalDraft)
+    assert set(identity['properties'])=={'subjects','connections'}
+    assert set(memory['properties'])=={'items','reason'}
+    assert 'SubjectDraft' in identity['$defs'] and 'SubjectDraft' not in memory['$defs']

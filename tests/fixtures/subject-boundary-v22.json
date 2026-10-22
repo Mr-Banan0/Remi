@@ -1,0 +1,860 @@
+{
+  "contract": "particular people, animals, organizations/teams; other things in memory content",
+  "historical_change": "other-person-alias step 1: project node/contact replaced by fact content expectation",
+  "cases": [
+    {
+      "id": "identity-and-company",
+      "steps": [
+        {
+          "text": "My name is Irene Shaw. People also call me Iri.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "Iri",
+              "is_user": true,
+              "aliases": [
+                "Irene Shaw"
+              ]
+            }
+          ],
+          "object_count": 1
+        },
+        {
+          "text": "I work at Meridian Analytics, also called Meridian.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "user",
+              "is_user": true
+            },
+            {
+              "key": "company",
+              "lookup": "Meridian",
+              "is_user": false,
+              "aliases": [
+                "Meridian Analytics"
+              ]
+            }
+          ],
+          "distinct": [
+            [
+              "me",
+              "company"
+            ]
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "company",
+              "contains": "work"
+            }
+          ]
+        },
+        {
+          "text": "I no longer work at Meridian.",
+          "subjects": [
+            {
+              "key": "company",
+              "lookup": "Meridian"
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "company",
+              "contains": "no longer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other-person-alias",
+      "steps": [
+        {
+          "text": "My coworker Dorothea Vale is also called Dory.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Dory",
+              "is_user": false,
+              "aliases": [
+                "Dorothea Vale"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Dory leads the Copper project.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Dory"
+            }
+          ],
+          "excluded_subjects": [
+            "Copper"
+          ],
+          "memory_contains": [
+            "Copper"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pet-descriptions",
+      "steps": [
+        {
+          "text": "My pet dog is Miso. Her nickname is Mimi.",
+          "subjects": [
+            {
+              "key": "dog",
+              "lookup": "Mimi",
+              "is_user": false,
+              "aliases": [
+                "Miso"
+              ],
+              "searches": [
+                "dog",
+                "pet"
+              ]
+            },
+            {
+              "key": "me",
+              "lookup": "user",
+              "is_user": true
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "dog",
+              "contains": "dog"
+            }
+          ]
+        },
+        {
+          "text": "Mimi is looked after by my sister Nell.",
+          "subjects": [
+            {
+              "key": "dog",
+              "lookup": "Mimi"
+            },
+            {
+              "key": "sister",
+              "lookup": "Nell",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "dog",
+              "b": "sister",
+              "contains": "looked after"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "same-name-people",
+      "steps": [
+        {
+          "text": "Noel is a nurse at Elm Clinic.",
+          "subjects": [
+            {
+              "key": "nurse",
+              "lookup": "Noel",
+              "evidence": "nurse",
+              "is_user": false
+            }
+          ]
+        },
+        {
+          "text": "I met a different Noel, a carpenter at Birch Workshop.",
+          "subjects": [
+            {
+              "key": "carpenter",
+              "lookup": "Noel",
+              "evidence": "carpenter",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "nurse",
+              "carpenter"
+            ]
+          ]
+        },
+        {
+          "text": "The nurse Noel is also called N.",
+          "subjects": [
+            {
+              "key": "nurse",
+              "lookup": "N",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "nurse",
+              "carpenter"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quoted-identity",
+      "steps": [
+        {
+          "text": "A note by Rina says: 'I am also called Riri.' The speaker of the note is Rina.",
+          "subjects": [
+            {
+              "key": "author",
+              "lookup": "Riri",
+              "is_user": false,
+              "aliases": [
+                "Rina"
+              ]
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "Riri manages Seabright Studio.",
+          "subjects": [
+            {
+              "key": "author",
+              "lookup": "Riri"
+            },
+            {
+              "key": "studio",
+              "lookup": "Seabright Studio",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "author",
+              "b": "studio",
+              "contains": "manages"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "two-pets-one-label",
+      "steps": [
+        {
+          "text": "I have two pets: the dog Pogo and the dog Leto. Pogo is also called Pog; Leto is also called Let.",
+          "subjects": [
+            {
+              "key": "one",
+              "lookup": "Pog",
+              "is_user": false
+            },
+            {
+              "key": "two",
+              "lookup": "Let",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "one",
+              "two"
+            ]
+          ]
+        },
+        {
+          "text": "Let lives with my brother Alden.",
+          "subjects": [
+            {
+              "key": "two",
+              "lookup": "Let"
+            },
+            {
+              "key": "brother",
+              "lookup": "Alden",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "two",
+              "b": "brother",
+              "contains": "lives"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chinese-names",
+      "steps": [
+        {
+          "text": "我叫顾清，大家也叫我小顾。我在澄川工作室工作，简称澄川。",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "小顾",
+              "is_user": true,
+              "aliases": [
+                "顾清"
+              ]
+            },
+            {
+              "key": "org",
+              "lookup": "澄川",
+              "is_user": false,
+              "aliases": [
+                "澄川工作室"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "org",
+              "contains": "工作"
+            }
+          ]
+        },
+        {
+          "text": "我的宠物狗叫豆包，也叫包包。",
+          "subjects": [
+            {
+              "key": "pet",
+              "lookup": "包包",
+              "is_user": false,
+              "aliases": [
+                "豆包"
+              ],
+              "searches": [
+                "狗",
+                "宠物"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "pet",
+              "contains": "狗"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "source-attribution",
+      "steps": [
+        {
+          "text": "The manual uses the word 'user' for a device operator. In a fictional tale, Tomas is also called Tom.",
+          "subjects": [
+            {
+              "key": "character",
+              "lookup": "Tom",
+              "is_user": false,
+              "aliases": [
+                "Tomas"
+              ]
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "In that tale, Tom belongs to the Lantern Guild.",
+          "subjects": [
+            {
+              "key": "character",
+              "lookup": "Tom"
+            },
+            {
+              "key": "guild",
+              "lookup": "Lantern Guild",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "character",
+              "b": "guild",
+              "contains": "belongs"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "holdout-person-work",
+      "steps": [
+        {
+          "text": "My name is Mara Holt; I also go by MH.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "MH",
+              "is_user": true,
+              "aliases": [
+                "Mara Holt"
+              ]
+            }
+          ],
+          "object_count": 1
+        },
+        {
+          "text": "I work for Lattice Printworks, shortened to LP.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "user",
+              "is_user": true
+            },
+            {
+              "key": "org",
+              "lookup": "LP",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "me",
+              "b": "org",
+              "contains": "work"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "holdout-rabbit-owner",
+      "steps": [
+        {
+          "text": "Juniper's pet rabbit is Bramble, also called Bram.",
+          "subjects": [
+            {
+              "key": "owner",
+              "lookup": "Juniper",
+              "is_user": false
+            },
+            {
+              "key": "pet",
+              "lookup": "Bram",
+              "is_user": false,
+              "aliases": [
+                "Bramble"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "owner",
+              "b": "pet",
+              "contains": "rabbit"
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "Bram lives with Oona.",
+          "subjects": [
+            {
+              "key": "pet",
+              "lookup": "Bram"
+            },
+            {
+              "key": "keeper",
+              "lookup": "Oona",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "pet",
+              "b": "keeper",
+              "contains": "lives"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "holdout-group-abbreviation",
+      "steps": [
+        {
+          "text": "Nacre Research Cooperative is referred to as NRC.",
+          "subjects": [
+            {
+              "key": "org",
+              "lookup": "NRC",
+              "is_user": false,
+              "aliases": [
+                "Nacre Research Cooperative"
+              ]
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "Leena is a member of NRC.",
+          "subjects": [
+            {
+              "key": "org",
+              "lookup": "NRC"
+            },
+            {
+              "key": "person",
+              "lookup": "Leena",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "person",
+              "b": "org",
+              "contains": "member"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "holdout-homonymous-orgs",
+      "steps": [
+        {
+          "text": "Aurora is a gallery in our neighborhood.",
+          "subjects": [
+            {
+              "key": "gallery",
+              "lookup": "Aurora",
+              "evidence": "gallery",
+              "is_user": false
+            }
+          ]
+        },
+        {
+          "text": "Another Aurora is a bakery across town.",
+          "subjects": [
+            {
+              "key": "bakery",
+              "lookup": "Aurora",
+              "evidence": "bakery",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "gallery",
+              "bakery"
+            ]
+          ]
+        },
+        {
+          "text": "The gallery Aurora is also called AG.",
+          "subjects": [
+            {
+              "key": "gallery",
+              "lookup": "AG",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "gallery",
+              "bakery"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "holdout-quoted-firm",
+      "steps": [
+        {
+          "text": "Bela wrote: 'My firm is EmberGlass.' The firm's short name is EG.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Bela",
+              "is_user": false
+            },
+            {
+              "key": "org",
+              "lookup": "EG",
+              "is_user": false,
+              "aliases": [
+                "EmberGlass"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "person",
+              "b": "org",
+              "contains": "firm"
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "EG supplies CanvasWorks.",
+          "subjects": [
+            {
+              "key": "org",
+              "lookup": "EG"
+            },
+            {
+              "key": "client",
+              "lookup": "CanvasWorks",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "org",
+              "b": "client",
+              "contains": "supplies"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "holdout-chinese-pet",
+      "steps": [
+        {
+          "text": "程安的猫叫麦芽，小名芽芽。",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "程安",
+              "is_user": false
+            },
+            {
+              "key": "cat",
+              "lookup": "芽芽",
+              "is_user": false,
+              "aliases": [
+                "麦芽"
+              ]
+            }
+          ],
+          "links": [
+            {
+              "a": "person",
+              "b": "cat",
+              "contains": "猫"
+            }
+          ],
+          "no_user": true
+        },
+        {
+          "text": "芽芽现在由林蔚照顾。",
+          "subjects": [
+            {
+              "key": "cat",
+              "lookup": "芽芽"
+            },
+            {
+              "key": "keeper",
+              "lookup": "林蔚",
+              "is_user": false
+            }
+          ],
+          "links": [
+            {
+              "a": "cat",
+              "b": "keeper",
+              "contains": "照顾"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "boundary-device-owner",
+      "steps": [
+        {
+          "text": "My name is Selene. My camera is called Quartz, also QZ. I use it for bird photography.",
+          "subjects": [
+            {
+              "key": "me",
+              "lookup": "Selene",
+              "kind": "person",
+              "is_user": true
+            }
+          ],
+          "object_count": 1,
+          "excluded_subjects": [
+            "Quartz",
+            "QZ"
+          ],
+          "memory_contains": [
+            "Quartz",
+            "QZ"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "boundary-subjectless-device",
+      "steps": [
+        {
+          "text": "The printer Cobalt, also called CB, supports duplex printing.",
+          "object_count": 0,
+          "excluded_subjects": [
+            "Cobalt",
+            "CB"
+          ],
+          "memory_contains": [
+            "Cobalt",
+            "CB"
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "boundary-team-project",
+      "steps": [
+        {
+          "text": "Inez belongs to the Cedar volunteer team. The team runs Project Kite.",
+          "subjects": [
+            {
+              "key": "member",
+              "lookup": "Inez",
+              "kind": "person",
+              "is_user": false
+            },
+            {
+              "key": "team",
+              "lookup": "Cedar",
+              "kind": "organization",
+              "is_user": false
+            }
+          ],
+          "object_count": 2,
+          "excluded_subjects": [
+            "Project Kite",
+            "Kite"
+          ],
+          "memory_contains": [
+            "Kite"
+          ],
+          "links": [
+            {
+              "a": "member",
+              "b": "team",
+              "contains": "belongs"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "boundary-institution-place",
+      "steps": [
+        {
+          "text": "Amina works for Harbor Hospital, a medical institution. Its main entrance is on Willow Avenue.",
+          "subjects": [
+            {
+              "key": "person",
+              "lookup": "Amina",
+              "kind": "person",
+              "is_user": false
+            },
+            {
+              "key": "org",
+              "lookup": "Harbor Hospital",
+              "kind": "organization",
+              "is_user": false
+            }
+          ],
+          "object_count": 2,
+          "excluded_subjects": [
+            "Willow Avenue",
+            "main entrance"
+          ],
+          "memory_contains": [
+            "Willow Avenue"
+          ],
+          "links": [
+            {
+              "a": "person",
+              "b": "org",
+              "contains": "works"
+            }
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "boundary-generic-categories",
+      "steps": [
+        {
+          "text": "Dogs benefit from daily exercise. Engineers often use notebooks.",
+          "object_count": 0,
+          "excluded_subjects": [
+            "Dogs",
+            "Engineers"
+          ],
+          "memory_contains": [
+            "exercise",
+            "notebooks"
+          ],
+          "no_user": true
+        }
+      ]
+    },
+    {
+      "id": "boundary-unnamed-subjects",
+      "steps": [
+        {
+          "text": "My sister cares for the stray cat behind our building.",
+          "subjects": [
+            {
+              "key": "sister",
+              "lookup": "sister",
+              "kind": "person",
+              "is_user": false
+            },
+            {
+              "key": "cat",
+              "lookup": "stray cat",
+              "kind": "animal",
+              "is_user": false
+            }
+          ],
+          "distinct": [
+            [
+              "sister",
+              "cat"
+            ]
+          ],
+          "excluded_subjects": [
+            "building"
+          ],
+          "links": [
+            {
+              "a": "sister",
+              "b": "cat",
+              "contains": "cares"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

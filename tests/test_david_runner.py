@@ -274,6 +274,8 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
     class Model:
         def __init__(self):
             self.calls = deque()
+        def maintain_subjects(self, state, *, deadline):
+            return {'subjects': [], 'connections': []}
         def propose(self, state, *, deadline):
             counters["extract"] += 1
             self.calls.append({"kind": "add", "model": "offline", "seconds": 0})

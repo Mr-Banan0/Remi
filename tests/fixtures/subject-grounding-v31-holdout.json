@@ -1,0 +1,384 @@
+{
+  "scope": "Independent synthetic identity and relationship generalization inputs; names are separate from prompt demonstrations.",
+  "cases": [
+    {
+      "id": "holdout-user-names",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My name is Zadie, and my nickname is Zee."
+        },
+        "context_sources": [],
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Zadie",
+            "Zee"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": true
+        }
+      ],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-known-alias",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Opi visited today."
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Opal",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Opal",
+                "quote": "Opal is also called Opal."
+              },
+              {
+                "name": "Opi",
+                "quote": "Opal is also called Opi."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Opal",
+            "Opi"
+          ],
+          "target": "E1",
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-existing-user-new-name",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Friends call me Skye."
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "user",
+            "kind": "person",
+            "is_user": true,
+            "aliases": [
+              {
+                "name": "Hana",
+                "quote": "user is also called Hana."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Skye"
+          ],
+          "target": "E1",
+          "kind": "person",
+          "is_user": true
+        }
+      ],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-animal-alias-relation",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My rabbit Fable is also called Fay. Fay lives with Rafi."
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Fable",
+            "kind": "animal",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Fable",
+                "quote": "Fable is also called Fable."
+              }
+            ]
+          },
+          {
+            "id": "E2",
+            "name": "Rafi",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Rafi",
+                "quote": "Rafi is also called Rafi."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Fable",
+            "Fay"
+          ],
+          "target": "E1",
+          "kind": "animal",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "Rafi"
+          ],
+          "target": "E2",
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "Fay lives with Rafi.",
+          "operation": "create",
+          "mode": "asserted",
+          "target_id": null,
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "holdout-different-namesake",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I met a different Ada, who is a pilot."
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Ada",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Ada",
+                "quote": "Ada is also called Ada."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Ada"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-quoted-owner",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Dalia wrote: 'My name is Dalia, and I own Aurora Guild.'"
+        },
+        "context_sources": [],
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "Dalia"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        },
+        {
+          "aliases": [
+            "Aurora Guild"
+          ],
+          "target": null,
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "relations": [
+        {
+          "quote": "I own Aurora Guild.",
+          "operation": "create",
+          "mode": "document",
+          "target_id": null,
+          "endpoints": [
+            0,
+            1
+          ]
+        }
+      ],
+      "no_user": true
+    },
+    {
+      "id": "holdout-one-ambiguous-ref",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Hamid sent a note."
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Hamid",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Hamid",
+                "quote": "Hamid is also called Hamid."
+              }
+            ]
+          },
+          {
+            "id": "E2",
+            "name": "Hamid",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Hamid",
+                "quote": "Hamid is also called Hamid."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-outside-subject-scope",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The new router arrived today."
+        },
+        "context_sources": [],
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [],
+      "expected_subject_rows": 0,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-chinese-names",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "顾川也叫小川，两个称呼指的是同一个人。"
+        },
+        "context_sources": [],
+        "subject_catalog": [],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "顾川",
+            "小川"
+          ],
+          "target": null,
+          "kind": "person",
+          "is_user": false
+        }
+      ],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    },
+    {
+      "id": "holdout-organization-rename",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "桑榆工作室现在也叫榆影工作室，仍是原来的那家机构。"
+        },
+        "context_sources": [],
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "桑榆工作室",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "桑榆工作室",
+                "quote": "桑榆工作室 is also called 桑榆工作室."
+              }
+            ]
+          }
+        ],
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "aliases": [
+            "桑榆工作室",
+            "榆影工作室"
+          ],
+          "target": "E1",
+          "kind": "organization",
+          "is_user": false
+        }
+      ],
+      "expected_subject_rows": 1,
+      "expected_connection_count": 0
+    }
+  ]
+}

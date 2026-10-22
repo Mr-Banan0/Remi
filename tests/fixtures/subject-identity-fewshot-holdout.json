@@ -1,0 +1,1316 @@
+{
+  "scope": "fixed subject-stage inputs; unrelated to benchmark answers",
+  "cases": [
+    {
+      "id": "new-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Emilia is also known as Em."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Emilia",
+              "kind": "person",
+              "aliases": [
+                "Emilia"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Em",
+              "kind": "person",
+              "aliases": [
+                "Em"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "Emilia",
+            "Em"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "new-person-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "陆青还有个昵称青子，这两个名字说的是同一个人。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "陆青",
+              "kind": "person",
+              "aliases": [
+                "陆青"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "青子",
+              "kind": "person",
+              "aliases": [
+                "青子"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "陆青",
+            "青子"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "existing-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The same Idris I mentioned earlier also goes by Id."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Idris",
+              "kind": "person",
+              "aliases": [
+                "Idris"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Id",
+              "kind": "person",
+              "aliases": [
+                "Id"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Idris",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Idris",
+                "quote": "Idris is the librarian."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ],
+          "1": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Idris is the librarian."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "Idris",
+            "Id"
+          ],
+          "target": "E1"
+        }
+      ]
+    },
+    {
+      "id": "changed-role-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "之前那位宋言改做画家了，他也叫阿言。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "宋言",
+              "kind": "person",
+              "aliases": [
+                "宋言",
+                "画家"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "阿言",
+              "kind": "person",
+              "aliases": [
+                "阿言"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "宋言",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "宋言",
+                "quote": "宋言是工程师。"
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ],
+          "1": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "宋言是工程师。"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "宋言",
+            "阿言",
+            "画家"
+          ],
+          "target": "E1"
+        }
+      ]
+    },
+    {
+      "id": "different-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "I met another person named Rory today."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Rory",
+              "kind": "person",
+              "aliases": [
+                "Rory"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Rory",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Rory",
+                "quote": "Rory is my neighbor."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Rory is my neighbor."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "Rory"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "different-person-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "今天我认识了另一个周淼。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "周淼",
+              "kind": "person",
+              "aliases": [
+                "周淼"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "周淼",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "周淼",
+                "quote": "周淼是我以前的老师。"
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "周淼是我以前的老师。"
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "周淼"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "shared-description-people",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The first volunteer and the second volunteer are two different people."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "the first volunteer",
+              "kind": "person",
+              "aliases": [
+                "the first volunteer",
+                "volunteer"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "the second volunteer",
+              "kind": "person",
+              "aliases": [
+                "the second volunteer",
+                "volunteer"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "volunteer"
+          ],
+          "target": null
+        },
+        {
+          "refs": [
+            1
+          ],
+          "aliases": [
+            "volunteer"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "new-animal-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My cat Nutmeg is also called Meg."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Nutmeg",
+              "kind": "animal",
+              "aliases": [
+                "Nutmeg",
+                "cat"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Meg",
+              "kind": "animal",
+              "aliases": [
+                "Meg"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "Nutmeg",
+            "Meg",
+            "cat"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "new-animal-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "这只狗的名字是芝麻，小名麻麻。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "芝麻",
+              "kind": "animal",
+              "aliases": [
+                "芝麻",
+                "狗"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "麻麻",
+              "kind": "animal",
+              "aliases": [
+                "麻麻"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "芝麻",
+            "麻麻",
+            "狗"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "existing-animal-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "That same bird Lark is also called LK."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Lark",
+              "kind": "animal",
+              "aliases": [
+                "Lark"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "LK",
+              "kind": "animal",
+              "aliases": [
+                "LK"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Lark",
+            "kind": "animal",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Lark",
+                "quote": "Lark is my pet bird."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ],
+          "1": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Lark is my pet bird."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "Lark",
+            "LK"
+          ],
+          "target": "E1"
+        }
+      ]
+    },
+    {
+      "id": "same-name-animals-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "左边的猫叫圆圆，右边的猫也叫圆圆，它们是两只不同的猫。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "左边的猫",
+              "kind": "animal",
+              "aliases": [
+                "左边的猫",
+                "圆圆",
+                "猫"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "右边的猫",
+              "kind": "animal",
+              "aliases": [
+                "右边的猫",
+                "圆圆",
+                "猫"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "圆圆",
+            "猫"
+          ],
+          "target": null
+        },
+        {
+          "refs": [
+            1
+          ],
+          "aliases": [
+            "圆圆",
+            "猫"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "same-name-animals-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "The older dog and the younger dog are two different dogs, both named Spark."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "The older dog",
+              "kind": "animal",
+              "aliases": [
+                "The older dog",
+                "Spark",
+                "dog"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "the younger dog",
+              "kind": "animal",
+              "aliases": [
+                "the younger dog",
+                "Spark",
+                "dog"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "Spark"
+          ],
+          "target": null
+        },
+        {
+          "refs": [
+            1
+          ],
+          "aliases": [
+            "Spark"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "renamed-organization-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Hillside Circle is now called Daybreak Circle. It is the same organization."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Hillside Circle",
+              "kind": "organization",
+              "aliases": [
+                "Hillside Circle"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Daybreak Circle",
+              "kind": "organization",
+              "aliases": [
+                "Daybreak Circle"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Hillside Circle",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Hillside Circle",
+                "quote": "Hillside Circle is a volunteer organization."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ],
+          "1": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Hillside Circle is a volunteer organization."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "Hillside Circle",
+            "Daybreak Circle"
+          ],
+          "target": "E1"
+        }
+      ]
+    },
+    {
+      "id": "organization-alias-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "白鹭合作社简称白鹭。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "白鹭合作社",
+              "kind": "organization",
+              "aliases": [
+                "白鹭合作社"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "白鹭",
+              "kind": "organization",
+              "aliases": [
+                "白鹭"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "白鹭合作社",
+            "白鹭"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "shared-short-name-orgs-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "溪谷读书会与溪谷运动社是两个独立团体，均简称溪谷。"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "溪谷读书会",
+              "kind": "organization",
+              "aliases": [
+                "溪谷读书会",
+                "溪谷"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "溪谷运动社",
+              "kind": "organization",
+              "aliases": [
+                "溪谷运动社",
+                "溪谷"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "溪谷"
+          ],
+          "target": null
+        },
+        {
+          "refs": [
+            1
+          ],
+          "aliases": [
+            "溪谷"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "different-organization-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Another Beacon Assembly was founded independently of the one I mentioned earlier."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Beacon Assembly",
+              "kind": "organization",
+              "aliases": [
+                "Beacon Assembly"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Beacon Assembly",
+            "kind": "organization",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Beacon Assembly",
+                "quote": "Beacon Assembly is a choir."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Beacon Assembly is a choir."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "Beacon Assembly"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-same-name-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "Jules sent an email."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Jules",
+              "kind": "person",
+              "aliases": [
+                "Jules"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Jules",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Jules",
+                "quote": "Jules is a teacher."
+              }
+            ]
+          },
+          {
+            "id": "E2",
+            "name": "Jules",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Jules",
+                "quote": "A different Jules is a neighbor."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1",
+            "E2"
+          ]
+        },
+        "relation_catalog": []
+      },
+      "groups": []
+    },
+    {
+      "id": "quoted-person-alias-zh",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "韩舒在信中写道：“我也叫舒舒。”"
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "韩舒",
+              "kind": "person",
+              "aliases": [
+                "韩舒"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "舒舒",
+              "kind": "person",
+              "aliases": [
+                "舒舒"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1
+          ],
+          "aliases": [
+            "韩舒",
+            "舒舒"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "actual-user-alias-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "My name is Nessa and friends call me Ness."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "@user",
+              "kind": "person",
+              "aliases": [],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 1,
+              "name": "Nessa",
+              "kind": "person",
+              "aliases": [
+                "Nessa"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            },
+            {
+              "ref": 2,
+              "name": "Ness",
+              "kind": "person",
+              "aliases": [
+                "Ness"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [],
+        "subject_choices": {
+          "0": [],
+          "1": [],
+          "2": []
+        },
+        "relation_catalog": []
+      },
+      "groups": [
+        {
+          "refs": [
+            0,
+            1,
+            2
+          ],
+          "aliases": [
+            "Nessa",
+            "Ness"
+          ],
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "unchanged-existing-person-en",
+      "payload": {
+        "new_user_source": {
+          "id": "S1",
+          "role": "user",
+          "content": "That same Dante sent a letter."
+        },
+        "proposal": {
+          "subjects": [
+            {
+              "ref": 0,
+              "name": "Dante",
+              "kind": "person",
+              "aliases": [
+                "Dante"
+              ],
+              "source_ids": [
+                "S1"
+              ]
+            }
+          ],
+          "connections": []
+        },
+        "subject_catalog": [
+          {
+            "id": "E1",
+            "name": "Dante",
+            "kind": "person",
+            "is_user": false,
+            "aliases": [
+              {
+                "name": "Dante",
+                "quote": "Dante is my uncle."
+              }
+            ]
+          }
+        ],
+        "subject_choices": {
+          "0": [
+            "E1"
+          ]
+        },
+        "relation_catalog": [],
+        "context_sources": [
+          {
+            "id": "S0",
+            "role": "user",
+            "content": "Dante is my uncle."
+          }
+        ]
+      },
+      "groups": [
+        {
+          "refs": [
+            0
+          ],
+          "aliases": [
+            "Dante"
+          ],
+          "target": "E1"
+        }
+      ]
+    }
+  ]
+}

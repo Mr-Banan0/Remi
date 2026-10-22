@@ -1,0 +1,20 @@
+{"cases":[
+{"id":"holdout-person-work","steps":[
+{"text":"My name is Mara Holt; I also go by MH.","subjects":[{"key":"me","lookup":"MH","is_user":true,"aliases":["Mara Holt"]}],"object_count":1},
+{"text":"I work for Lattice Printworks, shortened to LP.","subjects":[{"key":"me","lookup":"user","is_user":true},{"key":"org","lookup":"LP","is_user":false}],"links":[{"a":"me","b":"org","contains":"work"}]}]},
+{"id":"holdout-rabbit-owner","steps":[
+{"text":"Juniper's pet rabbit is Bramble, also called Bram.","subjects":[{"key":"owner","lookup":"Juniper","is_user":false},{"key":"pet","lookup":"Bram","is_user":false,"aliases":["Bramble"]}],"links":[{"a":"owner","b":"pet","contains":"rabbit"}],"no_user":true},
+{"text":"Bram lives with Oona.","subjects":[{"key":"pet","lookup":"Bram"},{"key":"keeper","lookup":"Oona","is_user":false}],"links":[{"a":"pet","b":"keeper","contains":"lives"}],"no_user":true}]},
+{"id":"holdout-group-abbreviation","steps":[
+{"text":"Nacre Research Cooperative is referred to as NRC.","subjects":[{"key":"org","lookup":"NRC","is_user":false,"aliases":["Nacre Research Cooperative"]}],"no_user":true},
+{"text":"Leena is a member of NRC.","subjects":[{"key":"org","lookup":"NRC"},{"key":"person","lookup":"Leena","is_user":false}],"links":[{"a":"person","b":"org","contains":"member"}],"no_user":true}]},
+{"id":"holdout-homonymous-orgs","steps":[
+{"text":"Aurora is a gallery in our neighborhood.","subjects":[{"key":"gallery","lookup":"Aurora","evidence":"gallery","is_user":false}]},
+{"text":"Another Aurora is a bakery across town.","subjects":[{"key":"bakery","lookup":"Aurora","evidence":"bakery","is_user":false}],"distinct":[["gallery","bakery"]]},
+{"text":"The gallery Aurora is also called AG.","subjects":[{"key":"gallery","lookup":"AG","is_user":false}],"distinct":[["gallery","bakery"]]}]},
+{"id":"holdout-quoted-firm","steps":[
+{"text":"Bela wrote: 'My firm is EmberGlass.' The firm's short name is EG.","subjects":[{"key":"person","lookup":"Bela","is_user":false},{"key":"org","lookup":"EG","is_user":false,"aliases":["EmberGlass"]}],"links":[{"a":"person","b":"org","contains":"firm"}],"no_user":true},
+{"text":"EG supplies CanvasWorks.","subjects":[{"key":"org","lookup":"EG"},{"key":"client","lookup":"CanvasWorks","is_user":false}],"links":[{"a":"org","b":"client","contains":"supplies"}],"no_user":true}]},
+{"id":"holdout-chinese-pet","steps":[
+{"text":"程安的猫叫麦芽，小名芽芽。","subjects":[{"key":"person","lookup":"程安","is_user":false},{"key":"cat","lookup":"芽芽","is_user":false,"aliases":["麦芽"]}],"links":[{"a":"person","b":"cat","contains":"猫"}],"no_user":true},
+{"text":"芽芽现在由林蔚照顾。","subjects":[{"key":"cat","lookup":"芽芽"},{"key":"keeper","lookup":"林蔚","is_user":false}],"links":[{"a":"cat","b":"keeper","contains":"照顾"}],"no_user":true}]}]}

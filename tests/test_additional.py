@@ -28,15 +28,16 @@ def test_time_bounded_statement_keeps_its_scope_in_content_and_evidence():
     assert '2024-06-09' in memory.current.content
 
 
-def test_relation_withdrawal_is_pending_and_keeps_original_statement():
+def test_preference_withdrawal_is_a_new_statement_and_preserves_its_original():
     model = ScriptedModel(lambda state, errors: {'commands': [command(state, kind='preference')]})
     engine = MemoryEngine(model=model)
     engine.add(request('I prefer watermelon.'))
     memory = engine.store.memories('u1')[0]
-    model.extractor = lambda state, errors: {'commands': [command(state, kind='preference', operation='retract', target=memory.id)]}
+    model.extractor = lambda state, errors: {'commands': [command(state, kind='preference', )]}
     engine.add(request('I withdraw my preference for watermelon.', request_id='r2', when='2024-06-03T10:00:00Z'))
     assert engine.store.memories('u1')[0] == memory
-    assert engine.store.get('requests','u1','r2')['units']['0']['candidate_dispositions'][0]['status'] == 'pending'
+    assert engine.store.get('requests','u1','r2')['units']['0']['candidate_dispositions'][0]['status'] == 'accepted'
+    assert len(engine.store.memories('u1')) == 2
 
 
 def test_current_revision_uses_source_clock_for_out_of_order_archive():

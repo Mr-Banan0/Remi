@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 import re
 from datetime import datetime, timezone
 
@@ -17,22 +18,56 @@ def request(text, *, owner="u1", request_id="r1", when="2024-06-02T10:00:00+00:0
     return AddRequest(user_id=owner, request_id=request_id, session_id="s1", messages=messages)
 
 
-def command(state, content=None, *, kind="event", operation="create", target=None, quote=None, objects=None, time=None, status=None):
+def command(state, content=None, *, kind="event", quote=None, objects=None, time=None, status=None):
     source = state["new_user_source"]
-    return {"operation": operation, "target_id": target, "kind": kind, "content": content or source["content"],
+    return {"kind": kind, "content": content or source["content"],
             "source_id": source["id"], "context_source_ids": [], "quote": quote or source["content"],
             "objects": objects if objects is not None else ([{"kind": "user", "name": "user"}] if re.search(r"\b(I|me|my)\b|我", source["content"], re.I) else []),
             "time_expression": time, "end_expression": None, "status": status or ("occurred" if kind == "event" else "stated"),
             "impact": "unknown"}
 
 
+def direct_subjects_fixture(state,names,*,aliases=None,kinds=None,force_new=False,pending=()):
+    from remi.identity import normalized_name
+    aliases=aliases or {};kinds=kinds or {};source=state['new_user_source']
+    evidence=[{'source_id':source['id']}]
+    subjects=[]
+    for ref,name in enumerate(names):
+        user=name in {'user','@user'};name='@user' if user else name
+        kind=kinds.get(name,'person');added=aliases.get(name,[])
+        matches=[o for o in state['subject_catalog'] if o['kind']==kind and
+            (o['is_user'] if user else normalized_name(name) in {normalized_name(o['name']),*[normalized_name(a['name']) for a in o['aliases']]})]
+        if force_new:matches=[]
+        uncertain=ref in pending or len(matches)>1
+        target=matches[0]['id'] if len(matches)==1 and not uncertain else None
+        subjects.append(dict(ref=ref,operation='pending' if uncertain else 'reuse' if target else 'create',target_id=target,
+            name=name,kind=kind,aliases=[dict(name=a,source_id=source['id']) for a in added],evidence=deepcopy(evidence)))
+    return dict(subjects=subjects,connections=[])
+
+
+
+def proposal_fixture(rows,state):
+    subjects=state.get('proposal',{}).get('subjects',[])
+    def refs(names):
+        return [s['ref'] for s in subjects if s['name'] in names or s['name']=='@user' and 'user' in names or set(s['aliases']).intersection(names)]
+    return {'items':[{'content':r['content'],'subject_refs':refs(r['names']),'evidence':r['evidence'],
+        'record_type':r.get('record_type','fact'),'mode':r.get('mode','asserted'),'context':r.get('context'),
+        'status':r.get('status'),'time_expression':r.get('time_expression')} for r in rows],
+        'reason':'offline source fixture'}
+
+
+def subject_decisions_fixture(state):
+    return direct_subjects_fixture(state,['user'] if any(word in state['new_user_source']['content'] for word in ['I ','My ','my ','我']) else [])
+
+
 class ScriptedModel:
-    """Test-only intent fixtures expressed through the current local-maintenance contract."""
+    """Test-only source extraction fixtures for the two-call append contract."""
     def __init__(self, extract=None, decide=None):
         self.extractor = extract or (lambda state, errors: {'commands': [command(state)]})
         self.decider = decide or (lambda state: {'steps': [], 'relevant_memory_ids': []})
-        self.extractions, self.decisions, self.maintenances = [], [], []
+        self.extractions, self.decisions = [], []
         self.oracle_candidates, self.raw_commands = [], []
+        self.subject_calls=[]
         self.base_state = None
 
     def propose(self, state, *, deadline):
@@ -40,41 +75,18 @@ class ScriptedModel:
         self.extractions.append((self.base_state, state.get('repair_errors')))
         result = self.extractor(self.base_state, state.get('repair_errors'))
         self.raw_commands = result.get('commands', [])
-        return {'items': [{'content': raw['content'],
-            'mentions': [{'name': obj['name']} for obj in raw.get('objects', [])],
-            'user_involvement': 'involved' if any(o['name']=='user' for o in raw.get('objects',[])) else 'not_involved',
-            'evidence': [{'source_id': sid} for sid in [raw['source_id'], *raw.get('context_source_ids', [])]]}
-            for i, raw in enumerate(self.raw_commands)], 'reason': 'offline intent fixture'}
+        return proposal_fixture([{'record_type':r['kind'],'mode':r.get('mode','asserted'),'context':r.get('context','personal'),
+            'status':r['status'] if r['kind']=='event' else None,'time_expression':r.get('time_expression') if r['kind']=='event' else None,
+            'content':r['content'],'names':[o['name'] for o in r.get('objects',[]) if o['kind'] in {'user','person','animal','organization','team'}],
+            'evidence':[{'source_id':sid} for sid in [r['source_id'],*r.get('context_source_ids',[])]]} for r in self.raw_commands],state)
 
-    def maintain(self, state, *, deadline):
-        self.maintenances.append(state)
-        if state.get('repair_errors'):
-            self.extractions.append((self.base_state, state['repair_errors']))
-            result = self.extractor(self.base_state, state['repair_errors'])
-            self.raw_commands = result.get('commands', self.raw_commands)
-        decisions = []
-        for candidate in state['proposal']['items']:
-            i = int(candidate['id'])
-            raw = self.raw_commands[i]
-            operation = raw['operation']
-            kind = 'relation' if raw['kind'] in {'fact','preference','experience'} else 'event'
-            target = raw['target_id']
-            change = None
-            if operation == 'update':
-                operation = 'patch_event'
-                change = {'planned': 'reschedule', 'occurred': 'complete', 'cancelled': 'cancel'}.get(raw['status'], 'complete')
-            decision = {'candidate_id': candidate['id'], 'operation': operation, 'target_id': target,
-                'record_type': kind if operation == 'create' else None,
-                'content': raw['content'] if operation == 'create' else None,
-                'mode': raw.get('mode', 'asserted') if operation == 'create' else None,
-                'user_involvement': candidate['user_involvement'] if operation == 'create' else None,
-                'context': raw.get('context', 'personal') if operation == 'create' else None,
-                'status': raw['status'] if kind == 'event' and operation == 'create' else None,
-                'event_change': change,
-                'time_expression': raw.get('time_expression') if kind == 'event' else None,
-                'reason': 'offline intent fixture'}
-            decisions.append(decision)
-        return {'decisions': decisions}
+    def maintain_subjects(self,state,*,deadline):
+        self.subject_calls.append(deepcopy(state))
+        self.base_state={**state,'candidates':self.oracle_candidates}
+        result=self.extractor(self.base_state,None)
+        commands=result.get('commands',[])
+        names=list(dict.fromkeys(o['name'] for row in commands for o in row.get('objects',[]) if o['kind'] in {'user','person','animal','organization','team'}))
+        return direct_subjects_fixture(state,names)
 
     def decide(self, state, *, deadline):
         self.decisions.append(state)
