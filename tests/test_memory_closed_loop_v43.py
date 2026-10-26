@@ -15,7 +15,7 @@ from tests.test_individual_subjects_experiment import plan
 
 class FlowModel(Model):
     def __init__(self):
-        super().__init__();self.people=[];self.pending=False;self.recall=False
+        super().__init__();self.people=[];self.pending=False
     def maintain_subjects(self,state,*,deadline):
         self.calls.append('subjects');self.packets.append(('subjects',deepcopy(state)))
         result=dict(subjects=[],connections=[])
@@ -27,13 +27,6 @@ class FlowModel(Model):
                 basis=basis,sid=state['new_user_source']['id'])['subjects'][0]
             value['ref']=ref;result['subjects'].append(value)
         return result
-    def propose(self,state,*,deadline):
-        if self.recall and not state.get('supplement_used'):
-            self.calls.append('memory');self.packets.append(('memory',deepcopy(state)))
-            return dict(items=[],recall_query='workshop',reason='Earlier occurrence is missing')
-        return super().propose(state,deadline=deadline)
-
-
 def test_unbound_event_gains_subject_without_changing_id():
     model=FlowModel();e=SubjectGraphEngine(model=model)
     model.writer=lambda s:[row(s,subject_refs=[])]
@@ -69,19 +62,20 @@ def test_both_recall_lanes_have_budget_and_foreign_memories_are_excluded():
     assert any(h['entity_ids'] for h in history)
 
 
-def test_supplement_finds_event_with_different_subject_and_add_preserves_old_actor():
+def test_program_supplement_excludes_memories_owned_only_by_other_subjects():
     model=FlowModel();model.people=['Aster'];e=SubjectGraphEngine(model=model)
     e.add(req('Aster planned a workshop.','first'));old=e.store.memories(OWNER)[0]
-    old_person=old.current.entity_ids[0]
-    model.people=['Beryl'];model.recall=True
-    model.writer=lambda s:[update(s,content='Aster and Beryl will attend the workshop.',participant_mode='add')|
-        {'changed_fields':['content','participants']}]
+    old_revision=deepcopy(old.current)
+    model.people=['Beryl']
+    model.writer=lambda s:[row(s,content='Beryl joined a workshop.')]
     e.add(req('Beryl joined the workshop.','new-person',1))
-    assert unit(e,'new-person')['memory_recall_trace']['selected_memory_ids']==[]
-    assert unit(e,'new-person')['supplement_trace']['selected_memory_ids']==[old.id]
-    current=e.store.memories(OWNER)[0].current
-    assert old_person in current.entity_ids and len(current.entity_ids)==2
-    assert model.calls==['subjects','memory','subjects','memory','memory']
+    trace=unit(e,'new-person')['memory_recall_trace']
+    assert trace['selected_memory_ids']==[]
+    assert old.id not in trace['allowed_memory_ids']
+    assert trace['supplement_triggered']
+    assert len(e.store.memories(OWNER))==2
+    assert e.store.get('memories',OWNER,old.id)['revisions'][-1]==old_revision.model_dump()
+    assert model.calls==['subjects','memory','subjects','memory']
 
 
 def test_two_dates_and_participant_remove_are_expressible():
@@ -212,15 +206,19 @@ def test_unresolved_recovery_stays_searchable_and_gets_no_false_resolution():
     assert not any(r.get('status')=='resolved' for r in e.store.list('requests',OWNER))
 
 
-def test_supplement_is_bounded_and_checkpoint_reuses_its_reply():
-    model=FlowModel();model.people=['Aster'];model.recall=True;e=SubjectGraphEngine(model=model)
-    model.writer=lambda s:[row(s,operation='pending')]
+def test_program_supplement_is_bounded_and_checkpoint_reuses_one_memory_reply():
+    model=FlowModel();e=SubjectGraphEngine(model=model)
+    model.writer=lambda s:[row(s,subject_refs=[],content='A workshop needs a projector.')]
+    e.add(req('A workshop needs a projector.','unbound'))
+    model.people=['Aster']
+    model.writer=lambda s:[row(s,operation='pending',target_id=s['history'][0]['id'])]
     e.add(req('Aster refers to that earlier workshop.','missing'))
     cache=unit(e,'missing')
     assert cache['candidate_dispositions'][0]['status']=='pending'
-    assert model.calls==['subjects','memory','memory']
+    assert cache['memory_recall_trace']['supplemented_unbound_memory_ids']
+    assert model.calls==['subjects','memory','subjects','memory']
     snapshot=e.store.snapshot();e.add(req('Aster refers to that earlier workshop.','missing'))
-    assert e.store.snapshot()==snapshot and model.calls==['subjects','memory','memory']
+    assert e.store.snapshot()==snapshot and model.calls==['subjects','memory','subjects','memory']
 
 
 def test_graph_traversal_reaches_two_hops_but_stops_before_third():
@@ -256,19 +254,17 @@ def test_recovery_related_candidates_include_preceding_claim_without_keyword_ove
     assert len(pending_jobs(e.store,OWNER,clarification))==1
 
 
-def test_supplement_preserves_original_snapshot_for_concurrent_future_revision():
+def test_program_recall_preserves_original_snapshot_for_concurrent_future_revision():
     model=FlowModel();model.people=['Aster'];e=SubjectGraphEngine(model=model)
     e.add(req('Aster planned a workshop.','first'));mid=e.store.memories(OWNER)[0].id
-    original_propose=model.propose;mutated=[]
+    mutated=[]
     def propose(state,*,deadline):
-        if not state.get('supplement_used'):
-            if not mutated:
-                stored=e.store.get('memories',OWNER,mid)
-                later=deepcopy(stored['revisions'][0]);later.update(id='concurrent-future',
-                    observed_at='2030-01-10T00:00:00Z',created_at='2030-01-10T00:00:00Z',maintenance_patch=None)
-                stored['revisions'].append(later);e.store.put('memories',OWNER,mid,stored);mutated.append(True)
-            return dict(items=[],recall_query='workshop',reason='Additional context')
-        return dict(items=[update(state)],recall_query=None,reason='Supplement result')
+        if not mutated:
+            stored=e.store.get('memories',OWNER,mid)
+            later=deepcopy(stored['revisions'][0]);later.update(id='concurrent-future',
+                observed_at='2030-01-10T00:00:00Z',created_at='2030-01-10T00:00:00Z',maintenance_patch=None)
+            stored['revisions'].append(later);e.store.put('memories',OWNER,mid,stored);mutated.append(True)
+        return dict(items=[update(state)],reason='Use the program-selected candidate.')
     model.propose=propose
     with pytest.raises(ProviderUnavailable,match='event_history_changed_retry'):
         e.add(req('Aster added refreshments to the workshop.','concurrent',2))

@@ -24,7 +24,7 @@ from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-memory-closed-loop-v43'
+PIPELINE='G11-programmatic-unbound-recall-v44'
 
 
 class SubjectMemoryStore(MemoryStore):
@@ -154,26 +154,14 @@ class SubjectGraphEngine(MemoryEngine):
                 protocol_issues[key]=getattr(error,'issues',[])
             save()
         if 'propose' not in outputs:call('propose',payload)
-        active='propose'
-        initial=outputs['propose']
-        query=initial.get('recall_query') if isinstance(initial,dict) else None
-        if isinstance(query,str) and 0<len(query.strip())<=300 and initial.get('items')==[]:
-            if 'supplement_recall' not in cache:
-                recalled,trace=recall_memories(self,state,bindings,view,query_override=query)
-                recalled['supplement_used']=True
-                cache.update(supplement_recall=recalled,supplement_trace=trace);save()
-            state=cache['supplement_recall'];cache['memory_recall']=state;result['state']=state
-            payload={**state,'resolved_subjects':view}
-            if 'propose_supplement' not in outputs:call('propose_supplement',payload)
-            active='propose_supplement'
-        accepted,errors=validate_plan(outputs[active],state,view)
-        errors=protocol_issues.get(active) or errors
+        accepted,errors=validate_plan(outputs['propose'],state,view)
+        errors=protocol_issues.get('propose') or errors
         cache['memory_initial_issues']=deepcopy(errors)
         if errors and not cache.get('repair_used'):
             cache.update(repair_used=True,repair_stage='propose');save()
         if errors and cache.get('repair_stage')=='propose':
             if 'propose_repair' not in outputs:
-                call('propose_repair',{**payload,'repair_errors':errors,'previous_output':outputs[active]})
+                call('propose_repair',{**payload,'repair_errors':errors,'previous_output':outputs['propose']})
             fixed,remaining=validate_plan(outputs['propose_repair'],state,view,protected=accepted)
             # Accepted slots own their event targets throughout repair.
             protected_targets={row['target_id'] for row in accepted.values() if row['operation']=='update'}

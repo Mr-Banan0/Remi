@@ -54,7 +54,6 @@ class EventWire(StrictModel):
 
 class EventPlan(StrictModel):
     items: list[EventWire] = Field(max_length=24)
-    recall_query: str | None = Field(max_length=300)
     reason: str
 
 
@@ -93,14 +92,13 @@ A null expression clears a field with explicit withdrawal evidence. Missing time
 The original message time anchors relative dates; absent anchors preserve unresolved expressions.
 Preserve time-of-day wording and precision. Use absolute dates only when supported by source evidence.
 
-# Links, evidence and additional recall
+# Links and evidence
 related_memory_ids adds explicit event connections; removed_related_memory_ids retracts existing connections.
 Select other supplied event M targets and copy supporting current words into change_quote for link changes.
 An empty list retains existing links. Similar topics alone support no connection.
 Every item cites CURRENT SOURCE; add supplied sources that establish retained details or clarification.
-If CURRENT SOURCE refers to an earlier memory missing from candidates, return recall_query with a short
-content search query and items=[]. The program permits one bounded supplemental recall, then use the
-expanded candidates or preserve an unresolved claim as pending. Otherwise recall_query=null.
+The program has already completed subject-scoped recall and any unbound-memory supplement. Decide from
+the supplied candidates. Preserve an unresolved association as pending when evidence remains insufficient.
 An input marked PENDING CLAIM REVIEW selects exactly one earlier claim. Return exactly one item for it,
 use CURRENT SOURCE for its original dates and cite the later clarification as additional evidence.
 
@@ -119,8 +117,6 @@ def render_event(packet):
                       'Return EventPlan JSON with operations, changed fields, current P participants, M targets and S evidence.')
     if packet.get('recovery'):
         body+='\n# PENDING CLAIM REVIEW\nResolve exactly this prior claim: '+packet['recovery']['content']
-    if packet.get('supplement_used'):
-        body+='\nSupplemental recall has completed. Return recall_query=null and a final decision.'
     return body
 
 
@@ -171,7 +167,7 @@ def memory_fingerprint(record):
 
 def provider_plan(model, state, *, deadline):
     packet, ctx = prepare(state)
-    packet.update({k:deepcopy(state[k]) for k in ('recovery','supplement_used') if k in state})
+    packet.update({k:deepcopy(state[k]) for k in ('recovery',) if k in state})
     schema = strict_schema(EventPlan)
     props = schema['$defs']['EventWire']['properties']
     handles = list(ctx['handle_refs']); mids = list(ctx['memory_aliases'].values())
@@ -196,7 +192,7 @@ def provider_plan(model, state, *, deadline):
         response_format=dict(type='json_schema',json_schema=dict(name='EventPlan',strict=True,schema=schema)))
     for attempt in range(2):
         started=monotonic(); trace=dict(kind='add_propose_repair' if state.get('repair_errors') else 'add_propose',model=model.model,attempt=attempt+1,
-            pending_recovery=bool(state.get('recovery')),supplement=bool(state.get('supplement_used')))
+            pending_recovery=bool(state.get('recovery')))
         try:
             response=model.client.chat.completions.create(**request,timeout=remaining(deadline,model.timeout))
             if response.usage: trace.update(input_tokens=response.usage.prompt_tokens,output_tokens=response.usage.completion_tokens)
@@ -258,7 +254,7 @@ def examples():
     for packet,updates in values:
         row=dict(content='',record_type='event',participant_handles=['P0'],mode='asserted',context=None,status='unknown',evidence=[dict(source_id='S1')],operation='create',target_id=None,changed_fields=[],time_updates=[],participant_mode='retain',change_quote=None,related_memory_ids=[],removed_related_memory_ids=[])
         row.update(updates)
-        yield packet,dict(items=[EventWire.model_validate(row).model_dump()],recall_query=None,reason='Current evidence identifies the occurrence and supported changes.')
+        yield packet,dict(items=[EventWire.model_validate(row).model_dump()],reason='Current evidence identifies the occurrence and supported changes.')
 
 
 def original_time_expression(expression,primary):
@@ -288,8 +284,6 @@ def validate_plan(raw,state,view,*,protected=None):
         return {},[dict(path=['items'],code='event_plan_requires_at_most_24_items')]
     if state.get('recovery') and len(rows)!=1:
         return {},[dict(path=['items'],code='recovery_requires_exactly_one_claim')]
-    if raw.get('recall_query') is not None:
-        return {},[dict(path=['recall_query'],code='finish_after_bounded_supplement_or_preserve_pending')]
     refs={p['ref'] for p in view}; history={m['id']:m for m in state.get('history',[])}
     primary=state['new_user_source']; sources=state['source_catalog']
     targets=Counter(row.get('target_id') for index,row in enumerate(rows) if str(index) not in protected and isinstance(row,dict) and row.get('operation')=='update' and isinstance(row.get('target_id'),str))

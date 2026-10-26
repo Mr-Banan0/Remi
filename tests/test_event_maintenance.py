@@ -213,13 +213,14 @@ def test_repair_checkpoint_resume_reuses_saved_model_reply():
     assert model.calls==['subjects','memory','memory'] and len(engine.store.memories(OWNER))==1
 
 
-def test_pending_subject_scopes_history_to_its_name_candidates_but_cannot_update_them():
+def test_pending_subject_does_not_open_a_stored_subject_scope():
     engine,model=lifecycle();state=deepcopy(unit(engine,'start')['identity']['state'])
     subject=engine.store.list('objects',OWNER)[0];state['subject_catalog']=[subject]
     view=[dict(ref=0,name='Aster',status='pending')]
     recalled,trace=recall_memories(engine,state,dict(subject_ids={},entity_rows=[]),view)
-    assert trace['uncertain_subject_ids']==[subject['id']] and len(recalled['history'])==1
-    data=update(recalled);accepted,issues=validate_plan(dict(items=[data]),recalled,view)
+    assert trace['confirmed_subject_ids']==[] and recalled['history']==[]
+    assert trace['supplement_triggered'] and trace['allowed_memory_ids']==[]
+    data=row(recalled,operation='pending',target_id=None);accepted,issues=validate_plan(dict(items=[data]),recalled,view)
     assert not issues
     _,memories,_,_,pending,_=materialize(engine.store,recalled,dict(subject_ids={},entity_rows=[]),accepted)
     assert not memories and len(pending)==1
@@ -235,7 +236,7 @@ def test_subject_union_retains_single_participant_event_and_excludes_other_peopl
     bindings=dict(subject_ids={'0':aster['id'],'1':other['id']},entity_rows=[aster,other])
     recalled,trace=recall_memories(engine,state,bindings,[dict(ref=0,name='Aster',status='resolved'),dict(ref=1,name='Beryl',status='resolved')])
     assert [m['id'] for m in recalled['history']]==[memory.id]
-    assert trace['eligible_memory_ids']==[memory.id]
+    assert trace['allowed_memory_ids']==[memory.id]
 
 
 def test_same_name_candidates_keep_subject_first_order_and_pending_identity():
