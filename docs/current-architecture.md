@@ -1,14 +1,14 @@
-# 当前实验架构：V49 主体名字与三类主体
+# 当前实验架构：V50 候选提取与记忆维护闭环
 
-实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-subject-kinds-v49`。
+实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-memory-maintenance-v50`。
 
-原文 → 主体候选 → 主体身份维护 → 固定身份 → 主体范围内召回 → 置信度不足时补入无主体记忆并统一排序 → 四类记忆维护 → 校验、修订回放与原子提交。持续关系作为 Fact 维护，关系的开始、变化或结束作为 Event 维护。只绑定其他主体的记忆保持在本轮 Add scope 外。
+当前写入顺序为：保存原文 → 主体维护并固定 scope → 候选记忆提取 → scope 内记忆召回与程序化无主体补搜 → 记忆维护定稿 → 程序差异计算、校验、修订回放和原子提交。正常链路调用主体、候选、维护三个模型阶段。
 
-事实、偏好、经验和事件支持创建、更新、保持、待定。同一记录更新保留 ID 和来源修订；事件支持计划／实际两项时间、参与者增减和关联撤销。程序在记忆模型调用前完成召回与补搜，正常保持两个模型调用，共享一次协议修正。每次 Add 最多重审两条待定，共用请求截止时间。
+记忆模型操作统一为 create／update／pending。update 返回完整最终视图；程序比较旧视图并生成 updated 或 supported 结果。时间字段使用 retain／set／clear，参与者使用 retain／add／remove／replace。同轮事件通过 C 引用连接，程序分配正式 ID 后统一落库。每个返回项记录 created／updated／supported／pending／validation_failed 处置结果。
 
-历史补录重建结构字段与图投影。原始正文保存在变更记录；发生历史分支时，用带来源日期的叙述保存完整文本依据。Search 沿有效事件边扩展最多两跳、24 个事件节点。全局混合检索和重排继续保留。
+召回范围由主体固定：与确认主体相连的记忆进入主通道，相关性不足时补充无主体记忆，只属于其他主体的记忆保持在 scope 外。模型输入保留每条记忆的当前有效视图，并压缩历史证据；存储层继续保留全部修订和来源。
 
-V49 的主体持久结构为稳定 ID、首次确认的本名、后续名字别名及 person／animal／organization 三选一类型。职业、社会身份、狗／猫等具体动物类别和主体联系进入 Fact／Event。具体边界见 [V49 主体名字与三类主体](architecture-changes/g11-subject-kinds-v49.md)，离线结果见 [V49 主体验证](subject-v49-results.md)。V48 的对照结果见 [V48 主体验证](subject-v48-results.md)，召回边界见 [V44 程序化无主体补搜](architecture-changes/g11-programmatic-unbound-recall-v44.md)。生产 API 仍使用下方 V32，实验推广单独验收。
+V50 沿用 sources、memories、objects、edges、requests、search_documents 六个逻辑集合，没有增加数据库表。完整协议、完成标准与验证见 [V50 候选提取与记忆维护闭环](architecture-changes/g11-memory-maintenance-v50.md)。V49 主体边界见 [V49 主体名字与三类主体](architecture-changes/g11-subject-kinds-v49.md)。
 
 ---
 

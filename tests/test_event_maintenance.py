@@ -3,6 +3,7 @@ from copy import deepcopy
 from time import monotonic
 from types import SimpleNamespace
 import json
+import zlib
 import pytest
 from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore
 from experiments.event_maintenance import validate_plan, materialize, provider_plan, examples, EventWire
@@ -20,10 +21,29 @@ def req(text,key,day=0,timestamp=True):
 
 
 def row(state,**kwargs):
-    value=dict(content=state['new_user_source']['content'],record_type='event',subject_refs=[0],mode='asserted',context=None,status='planned',time_expression=None,evidence=[dict(source_id=state['new_user_source']['id'])],operation='create',target_id=None,changed_fields=[],time_field=None,change_quote=None,related_memory_ids=[])
+    operation='update' if kwargs.get('operation')=='keep' else kwargs.get('operation','create')
+    content=kwargs.get('content',state['new_user_source']['content'])
+    ref=kwargs.pop('ref','C'+str(zlib.crc32(content.encode())+1))
+    value=dict(ref=ref,content=content,record_type='event',subject_refs=[0] if operation=='create' else [],mode='asserted',context=None,status='planned',
+        evidence=[dict(source_id=state['new_user_source']['id'])],operation=operation,target_id=None,
+        planned_at=dict(action='retain',expression=None),event_at=dict(action='retain',expression=None),
+        participant_action='replace' if operation=='create' else 'retain',
+        links=dict(add_existing=[],add_current=[],remove_existing=[]),pending_reason='association_unresolved' if operation=='pending' else None)
+    time_field=kwargs.pop('time_field',None);expression=kwargs.pop('time_expression',None)
+    time_updates=kwargs.pop('time_updates',[])
+    participant_mode=kwargs.pop('participant_mode',None)
+    related=kwargs.pop('related_memory_ids',[]);removed=kwargs.pop('removed_related_memory_ids',[])
+    kwargs.pop('changed_fields',None);kwargs.pop('change_quote',None)
     value.update(kwargs)
-    field=value.pop('time_field');expression=value.pop('time_expression')
-    if field or expression:value.setdefault('time_updates',[dict(field=field or 'planned_at',expression=expression)])
+    if participant_mode:
+        value['participant_action']=participant_mode
+        if participant_mode in {'add','remove'} and 'subject_refs' not in kwargs:value['subject_refs']=[0]
+    value['links']=dict(add_existing=related,add_current=[],remove_existing=removed)
+    if time_field or expression is not None:
+        field=time_field or 'planned_at';value[field]=dict(action='set' if expression is not None else 'clear',expression=expression)
+    for update in time_updates:
+        field=update['field'];expression=update.get('expression')
+        value[field]=dict(action='set' if expression is not None else 'clear',expression=expression)
     return value
 
 
@@ -36,6 +56,12 @@ class Model:
             basis=next(b for b in state['identity_bases'] if b['target_id']==existing['id'])
             return plan(name='Aster',operation='reuse',target=existing['id'],sid=state['new_user_source']['id'],basis=basis['id'])
         return plan(name='Aster',sid=state['new_user_source']['id'])
+    def extract_memories(self,state,*,deadline):
+        self.calls.append('extract')
+        refs=[row['ref'] for row in state.get('resolved_subjects',[]) if row.get('current_evidence_id')]
+        return dict(items=[dict(content=state['new_user_source']['content'],record_type='event',subject_refs=refs,
+            mode='asserted',context=None,status='unknown',time_expression=None,
+            evidence=[dict(source_id=state['new_user_source']['id'])])],reason='test candidate')
     def propose(self,state,*,deadline):
         self.calls.append('memory');self.packets.append(('memory',deepcopy(state)))
         return dict(items=self.writer(state) if self.writer else [row(state)],reason='test fixture')
@@ -53,20 +79,20 @@ def lifecycle():
 
 
 def update(state,**kwargs):
-    return row(state,operation='update',target_id=state['history'][0]['id'],changed_fields=['content'],change_quote=state['new_user_source']['content'],**kwargs)
+    return row(state,operation='update',target_id=state['history'][0]['id'],**kwargs)
 
 
 def test_same_event_reschedule_complete_and_replay_keep_versions_and_planned_time():
     engine,model=lifecycle();old=engine.store.memories(OWNER)[0];mid=old.id;pid=old.current.entity_ids
     def moved(s):
-        r=update(s,content='Aster plans the workshop on 2030-01-05.',time_expression='January 5',time_field='planned_at');r['changed_fields']=['content','planned_at'];return [r]
+        r=update(s,content='Aster plans the workshop on 2030-01-05.',time_expression='January 5',time_field='planned_at');return [r]
     model.writer=moved;engine.add(req('Aster moved that workshop to January 5.','move',1))
     second=engine.store.memories(OWNER)[0]
     assert second.id==mid and len(second.revisions)==2 and second.current.entity_ids==pid
     assert second.current.planned_at.startswith('2030-01-05')
     assert old.current.planned_at.startswith('2030-01-03')
     def completed(s):
-        r=update(s,content='Aster completed the workshop today.',status='occurred',time_expression='today',time_field='event_at');r['changed_fields']=['content','status','event_at'];return [r]
+        r=update(s,content='Aster completed the workshop today.',status='occurred',time_expression='today',time_field='event_at');return [r]
     model.writer=completed;final=req('Aster completed the workshop today.','finish',5);engine.add(final)
     memory=engine.store.memories(OWNER)[0]
     assert len(memory.revisions)==3 and memory.current.planned_at.startswith('2030-01-05')
@@ -76,7 +102,7 @@ def test_same_event_reschedule_complete_and_replay_keep_versions_and_planned_tim
     assert len([e for e in engine.store.edges_for(OWNER) if e.relation=='revises'])==2
     calls=list(model.calls);snapshot=engine.store.snapshot();engine.add(final)
     assert model.calls==calls and engine.store.snapshot()==snapshot
-    assert model.calls==['subjects','memory']*3
+    assert model.calls==['subjects','extract','memory']*3
     assert all(not p['history'] for k,p in model.packets if k=='subjects')
     assert len(unit(engine,'move')['memory_recall']['history'])==1
 
@@ -100,11 +126,11 @@ def test_unknown_source_clock_preserves_relative_expression_without_server_date(
 def test_cancel_preserves_date_and_explicit_withdrawal_clears_it():
     engine,model=lifecycle()
     def cancelled(s):
-        r=update(s,content='Aster cancelled the workshop.',status='cancelled');r['changed_fields']=['content','status'];return [r]
+        r=update(s,content='Aster cancelled the workshop.',status='cancelled');return [r]
     model.writer=cancelled;engine.add(req('Aster cancelled the workshop.','cancel',1))
     assert engine.store.memories(OWNER)[0].current.planned_at.startswith('2030-01-03')
     def cleared(s):
-        r=update(s,content='Aster withdrew the workshop date.',status='cancelled',time_field='planned_at');r['changed_fields']=['content','planned_at'];return [r]
+        r=update(s,content='Aster withdrew the workshop date.',status='cancelled',time_field='planned_at');return [r]
     model.writer=cleared;engine.add(req('Aster withdrew the workshop date.','clear',2))
     assert engine.store.memories(OWNER)[0].current.planned_at is None
 
@@ -118,7 +144,7 @@ def test_partial_repair_preserves_accepted_sibling_even_when_model_rewrites_it()
     model.writer=writer;engine.add(req('Aster prefers tea and planned a walk.','partial'))
     contents=[m.current.content for m in engine.store.memories(OWNER)]
     assert 'Aster prefers tea.' in contents and 'WRONG replacement' not in contents
-    assert len(contents)==2 and model.calls==['subjects','memory','memory']
+    assert len(contents)==2 and model.calls==['subjects','extract','memory','memory']
 
 
 def test_pending_event_is_searchable_without_mutating_existing_event():
@@ -159,7 +185,7 @@ def test_embedding_failure_resumes_without_repeating_models():
     model=Model();engine=SubjectGraphEngine(model=model,embedder=FlakyEmbedder());request=req('Aster plans a picnic.','retry')
     with pytest.raises(ProviderUnavailable):engine.add(request)
     assert not engine.store.memories(OWNER) and not engine.store.list('objects',OWNER)
-    engine.add(request);assert model.calls==['subjects','memory']
+    engine.add(request);assert model.calls==['subjects','extract','memory']
     assert len(engine.store.memories(OWNER))==1
 
 
@@ -194,7 +220,7 @@ def test_repair_network_interruption_reuses_identity_and_initial_memory_reply():
     with pytest.raises(ProviderUnavailable,match='repair_network_outage'):engine.add(request)
     assert not engine.store.memories(OWNER)
     engine.add(request)
-    assert model.calls==['subjects','memory','memory','memory']
+    assert model.calls==['subjects','extract','memory','memory','memory']
     assert len(engine.store.memories(OWNER))==1
 
 
@@ -210,7 +236,7 @@ def test_repair_checkpoint_resume_reuses_saved_model_reply():
     request=req('Aster plans a picnic.','saved-repair')
     with pytest.raises(ProviderUnavailable,match='saved_reply_interrupt'):engine.add(request)
     engine.add(request)
-    assert model.calls==['subjects','memory','memory'] and len(engine.store.memories(OWNER))==1
+    assert model.calls==['subjects','extract','memory','memory'] and len(engine.store.memories(OWNER))==1
 
 
 def test_pending_subject_does_not_open_a_stored_subject_scope():
@@ -248,7 +274,7 @@ def test_same_name_candidates_keep_subject_first_order_and_pending_identity():
         return plan(name='Aster',operation='pending',sid=state['new_user_source']['id'])
     model.maintain_subjects=subjects
     engine.add(req('Aster plans a picnic.','namesake'))
-    assert model.calls==['subjects','memory']
+    assert model.calls==['subjects','extract','memory']
     assert not engine.store.memories(OWNER)
     assert unit(engine,'namesake')['shared_recall']['maintenance_route']['order']=='subject_first'
 
@@ -294,7 +320,7 @@ def test_concurrent_event_change_invalidates_cached_target_and_recomputes_on_ret
     engine.add(request)
     assert len(engine.store.memories(OWNER)[0].revisions)==3
     assert engine.store.memories(OWNER)[0].current.replaces_revision_id=='external-revision'
-    assert model.calls==['subjects','memory']*3
+    assert model.calls==['subjects','extract','memory']*3
 
 
 def test_parts_of_day_remain_readable_after_absolute_date_conversion():
@@ -322,6 +348,6 @@ def test_unsupported_date_in_readable_content_is_rejected_before_commit():
 
 def test_changed_status_requires_changed_readable_content():
     engine,model=lifecycle();u=unit(engine,'start');state,_=recall_memories(engine,u['memory_recall'],u['identity']['bindings'],u['current_participants'])
-    r=update(state,content=state['history'][0]['content'],status='cancelled');r['changed_fields']=['content','status']
+    r=update(state,content=state['history'][0]['content'],status='cancelled')
     accepted,issues=validate_plan(dict(items=[r]),state,u['current_participants'])
     assert not accepted and any(i['code']=='reflect_changed_status_or_date_in_readable_event_content' for i in issues)

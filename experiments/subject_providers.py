@@ -6,6 +6,7 @@ from openai import OpenAI
 from remi.providers import GPTModel,providers_from_environment
 from remi.settings import private_key
 from experiments.subject_maintenance import maintain
+from experiments.subject_extraction import propose as extract_memories
 from experiments.event_maintenance import provider_plan
 
 
@@ -27,6 +28,7 @@ class SubjectTextModel(GPTModel):
         client=OpenAI(api_key=api_key,base_url=base_url,max_retries=0,timeout=timeout)
         self.client=JsonTransport(client) if model=='deepseek-flash' else client
     def maintain_subjects(self,state,*,deadline):return maintain(self,state,deadline=deadline)[0]
+    def extract_memories(self,state,*,deadline):return extract_memories(self,state,deadline=deadline)
     def propose(self,state,*,deadline):
         return provider_plan(self,state,deadline=deadline)
 

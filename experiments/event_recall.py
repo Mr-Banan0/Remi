@@ -13,6 +13,7 @@ from remi.retrieval import bm25
 
 
 MEMORY_LIMIT = 6
+MEMORY_EVIDENCE_LIMIT = 3
 # A subject-scoped result is sufficient when its best lexical score is close to the
 # best score in the complete allowed pool. Golden calibration can tune this value.
 SUBJECT_RECALL_CONFIDENCE = 0.80
@@ -32,6 +33,9 @@ def recall_memories(engine, state, bindings, view):
     }
     objects.update({row['id']: row for row in bindings['entity_rows']})
 
+    candidate_text='\n'.join(item['content'] for item in state.get('memory_candidates',[]))
+    query = '\n'.join(part for part in [candidate_text,primary['content'],
+        '\n'.join(source['content'] for source in state.get('context_sources', []))] if part)
     pools = {'subjects': [], 'unbound': []}
     originals = {}
     snapshot_hashes = {}
@@ -51,10 +55,22 @@ def recall_memories(engine, state, bindings, view):
         lane = 'subjects' if ids else 'unbound'
         pools[lane].append(memory)
         lanes[memory.id] = lane
-        originals[memory.id] = [source.model_dump() for source in sources]
+        source_rows={source.id:source.model_dump() for source in sources}
+        preferred=[]
+        for revision in reversed(memory.revisions):
+            patch=revision.maintenance_patch or {}
+            if patch.get('fields'):
+                preferred.append(patch.get('source_id'));break
+        if memory.current.source_ids:preferred.append(memory.current.source_ids[0])
+        source_scores=bm25(query,[SimpleNamespace(id=source.id,text=source.content) for source in sources])
+        preferred.extend(source.id for source in sorted(sources,key=lambda source:(-source_scores.get(source.id,0.0),source.id)))
+        chosen=[]
+        for source_id in preferred:
+            if source_id in source_rows and source_id not in chosen:chosen.append(source_id)
+            if len(chosen)==MEMORY_EVIDENCE_LIMIT:break
+        originals[memory.id] = [source_rows[source_id] for source_id in chosen]
         snapshot_hashes[memory.id] = memory_fingerprint(raw)
 
-    query = primary['content'] + '\n' + '\n'.join(source['content'] for source in state.get('context_sources', []))
     allowed = [*pools['subjects'], *pools['unbound']]
     scores = bm25(query, [SimpleNamespace(id=memory.id, text=memory.current.content) for memory in allowed])
     subject_top = max((scores.get(memory.id, 0.0) for memory in pools['subjects']), default=0.0)

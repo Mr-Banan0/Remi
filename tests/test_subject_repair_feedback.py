@@ -137,7 +137,7 @@ class RepairModel(Model):
 
 def test_full_engine_uses_one_detailed_subject_repair_and_shared_budget():
     model=RepairModel();engine=SubjectGraphEngine(model=model);engine.add(request())
-    assert model.calls==['subject','subject_repair','memory']
+    assert model.calls==['subject','subject_repair','extract','memory']
     repair=model.payloads[-1]
     assert repair['previous_output']['subjects'][0]['name']=='absent'
     assert any(row['path']==['subjects',0,'name'] for row in repair['repair_errors'])
@@ -148,7 +148,7 @@ def test_failed_repair_resumes_same_saved_request_without_repeating_initial_mode
     model=RepairModel(fail_repair=True);engine=SubjectGraphEngine(model=model)
     with pytest.raises(ProviderUnavailable):engine.add(request())
     engine.add(request())
-    assert model.calls==['subject','subject_repair','subject_repair','memory']
+    assert model.calls==['subject','subject_repair','subject_repair','extract','memory']
     assert model.payloads[1]==model.payloads[2]
 
 
@@ -160,14 +160,14 @@ def test_alias_only_failure_uses_same_repair_budget_with_identity_retained():
             if not state.get('repair_errors'):row['subjects'][0]['aliases']=[dict(name='invented',source_id=state['new_user_source']['id'])]
             return row
     model=AliasModel();engine=SubjectGraphEngine(model=model);engine.add(request())
-    assert model.calls==['subject','repair','memory'] and len(engine.store.memories('reference-owner'))==1
+    assert model.calls==['subject','repair','extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
 
 def test_subject_and_memory_failures_share_one_repair_without_a_second_budget():
     class BothInvalid(RepairModel):
         def propose(self,state,*,deadline):self.calls.append('memory');return dict(items=[dict(invalid=True)],reason='fixture')
     model=BothInvalid();engine=SubjectGraphEngine(model=model);engine.add(request())
-    assert model.calls==['subject','subject_repair','memory']
+    assert model.calls==['subject','subject_repair','extract','memory']
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
     assert unit['memory_rejections'] and unit['phase']=='indexed' and not engine.store.memories('reference-owner')
 
@@ -176,7 +176,7 @@ def test_invalid_subject_json_is_repaired_once_and_then_remains_rejected():
     class Invalid(Model):
         def maintain_subjects(self,state,*,deadline):self.calls.append('subject');raise OutputInvalid('invalid_json')
     model=Invalid();engine=SubjectGraphEngine(model=model);engine.add(request())
-    assert model.calls==['subject','subject','memory'] and not engine.store.list('objects','reference-owner')
+    assert model.calls==['subject','subject','extract','memory'] and not engine.store.list('objects','reference-owner')
 
 
 @pytest.mark.parametrize('initial_output',[None,[],{},dict(subjects=[],connections=None),dict(subjects='invalid',connections=[]),dict(subjects=[None],connections=[])])

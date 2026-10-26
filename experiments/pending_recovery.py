@@ -25,7 +25,8 @@ def pending_jobs(store,owner,clarification):
             if parse_time(source.get('message_at') or source['created_at'])>parse_time(clarification.message_at or clarification.created_at):continue
             for disposition in unit.get('candidate_dispositions',[]):
                 if disposition['status']!='pending':continue
-                index=disposition['candidate_id']; item=unit.get('memory_plan',{}).get(index)
+                index=disposition['candidate_id']; plan=unit.get('memory_plan',{})
+                item=plan.get(index) or next((row for row in plan.values() if row.get('ref')==index),None)
                 if not item:continue
                 key=stable_id('pending_',request['request_id'],unit_key,index)
                 if key in resolved:continue

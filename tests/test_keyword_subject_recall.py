@@ -236,7 +236,7 @@ def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_vie
     monkeypatch.setattr(module,'shared_recall',recall)
     model=Capture();engine=SubjectGraphEngine(model=model)
     engine.add(request());engine.add(request('The teammate likes jasmine tea.','r2'))
-    assert len(calls)==2 and model.calls==['subject','memory','subject','memory']
+    assert len(calls)==2 and model.calls==['subject','extract','memory','subject','extract','memory']
     assert not model.subject_states[-1]['history'] and model.memory_states[-1]['history']
     assert {s['id'] for s in model.subject_states[-1]['subject_catalog']} <= {s['id'] for s in model.memory_states[-1]['subject_catalog']}
 

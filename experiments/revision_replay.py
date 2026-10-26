@@ -53,11 +53,11 @@ def replay_revisions(store, memories, edges):
                     values['time_precision']=selected['precision']
                 for field in ('planned_at','event_at'):
                     if field in fields:values[field]=patch['values'][field]
-                branched=branched or patch['base_revision_id']!=latest.id
-            # Retain each original narrative. A branch has no safe generic textual diff.
+                branched=branched or (original.operation!='support' and patch['base_revision_id']!=latest.id)
+            # Evidence-only support advances provenance without duplicating the narrative timeline.
             narrative=patch['values']['content']
-            timeline.append('['+original.observed_at+'] '+narrative)
-            values['content']='Source-time history:\n'+'\n'.join(timeline) if branched else narrative
+            if original.operation!='support':timeline.append('['+original.observed_at+'] '+narrative)
+            values['content']='Source-time history:\n'+'\n'.join(timeline) if branched else (latest.content if original.operation=='support' and latest else narrative)
             for ev in patch['evidence']:
                 ev=ev.model_dump() if hasattr(ev,'model_dump') else ev
                 evidence[ev['source_id']]=ev

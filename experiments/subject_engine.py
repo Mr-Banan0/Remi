@@ -24,7 +24,7 @@ from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-subject-kinds-v49'
+PIPELINE='G11-memory-maintenance-v50'
 
 
 class SubjectMemoryStore(MemoryStore):
@@ -129,12 +129,31 @@ class SubjectGraphEngine(MemoryEngine):
             status='resolved' if str(s['ref']) in bindings['subject_ids'] else 'pending')
             for s in state['proposal']['subjects'] if s.get('current_reference_valid')]
         cache['current_participants']=deepcopy(view)
+        outputs=cache.setdefault('outputs',{})
+        extraction_issues=cache.setdefault('candidate_extraction_issues',{})
+        extraction_payload={**state,'resolved_subjects':view,'history':[]}
+        def extract(key,packet):
+            try:outputs[key]=self.model.extract_memories(packet,deadline=deadline)
+            except OutputInvalid as error:
+                outputs[key]=getattr(error,'raw_output',None) or {'output_error':str(error)}
+                extraction_issues[key]=getattr(error,'issues',[])
+            save()
+        if 'extract' not in outputs:extract('extract',extraction_payload)
+        candidate_plan=outputs['extract'];candidate_errors=extraction_issues.get('extract',[])
+        if candidate_errors and 'extract_repair' not in outputs:
+            extract('extract_repair',{**extraction_payload,'repair_errors':candidate_errors,'previous_output':candidate_plan})
+        if candidate_errors:candidate_plan=outputs.get('extract_repair',candidate_plan)
+        try:candidate_plan=ProposalDraft.model_validate(candidate_plan).model_dump()
+        except ValidationError:candidate_plan=dict(items=[],reason='candidate_extraction_unresolved')
+        state={**state,'memory_candidates':[dict(ref='C'+str(index+1),**item)
+            for index,item in enumerate(candidate_plan['items'])],'candidate_reason':candidate_plan['reason']}
+        cache['memory_candidates']=deepcopy(state['memory_candidates'])
         if 'memory_recall' not in cache:
             recalled, trace = recall_memories(self, state, bindings, view)
             cache.update(memory_recall=recalled, memory_recall_trace=trace)
             save()
         state=cache['memory_recall'];result['state']=state
-        payload={**state,'resolved_subjects':view};outputs=cache.setdefault('outputs',{})
+        payload={**state,'resolved_subjects':view}
         protocol_issues=cache.setdefault('extraction_protocol_issues',{})
         def call(key,packet):
             try:outputs[key]=self.model.propose(packet,deadline=deadline)
@@ -157,11 +176,18 @@ class SubjectGraphEngine(MemoryEngine):
             errors=list(remaining)
             for index,row in fixed.items():
                 if row['operation']=='update' and row['target_id'] in protected_targets:
-                    row={**row,'operation':'pending'}
+                    row={**row,'operation':'pending','pending_reason':'repair_conflicts_with_accepted_event_update'}
                     errors.append(dict(path=['items',int(index),'target_id'],code='repair_conflicts_with_accepted_event_update'))
                 accepted[index]=row
         cache.update(memory_plan=accepted,items=candidates(accepted,state))
+        final_output=outputs.get('propose_repair') if cache.get('repair_used') else outputs.get('propose')
+        rows=final_output.get('items',[]) if isinstance(final_output,dict) and isinstance(final_output.get('items'),list) else []
+        cache['memory_validation_dispositions']=[dict(candidate_id=row.get('ref') if isinstance(row,dict) and isinstance(row.get('ref'),str) else 'index:'+str(index),
+            item_index=index,status='validation_failed',operation='validation_failed',
+            reason_codes=[issue['code'] for issue in errors if issue.get('path',[])[:2]==['items',index]])
+            for index,row in enumerate(rows) if str(index) not in accepted]
         if errors:cache['memory_rejections']=errors
+        else:cache.pop('memory_rejections',None)
         save()
 
     def add(self,request):
@@ -221,7 +247,7 @@ class SubjectGraphEngine(MemoryEngine):
                                 retries=cache.get('concurrent_recomputations',0)+1
                                 cache.clear();cache.update(phase='pending',source_start=start,source_stop=stop,concurrent_recomputations=retries);save()
                             raise
-                        cache['candidate_dispositions']=dispositions
+                        cache['candidate_dispositions']=[*dispositions,*cache.get('memory_validation_dispositions',[])]
                         cache['expected_memories']=expected
                         for obj in objects:SubjectRecord.model_validate(obj)
                         visible_ids={*bindings['subject_ids'].values(),*[row['id'] for row in state.get('subject_catalog',[])]}

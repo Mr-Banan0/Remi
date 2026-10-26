@@ -15,6 +15,8 @@ RECALL_BYTES = 24000
 HISTORY_LIMIT = 8
 NAME_LIMIT = 12
 IDENTITY_EXCERPT_BYTES = 800
+MEMORY_SOURCE_LIMIT = 3
+MEMORY_SOURCE_BYTES = 1600
 
 
 def compact_subject(obj, texts):
@@ -139,8 +141,8 @@ def prepare_candidates(store, state):
 
 
 def pack_history(store, state, cards):
-    """Fill remaining space with complete memory evidence while preserving the fixed subject set."""
-    selected = []; skipped = []; prepared = state; owner = state['owner']
+    """Pack current memory views with bounded evidence; full revisions remain in storage."""
+    selected = []; skipped = []; compacted = []; prepared = state; owner = state['owner']
     primary = state['new_user_source']; clock = maintenance_clock(state)
     seen = set()
     for card in cards:
@@ -149,14 +151,26 @@ def pack_history(store, state, cards):
         if card['id'] in seen:
             continue
         seen.add(card['id'])
-        originals = card.get('sources', [])
+        card=deepcopy(card); originals=card.get('sources', [])
         if any(row.get('owner', owner) != owner or parse_time(row.get('message_at') or row['created_at']) > parse_time(clock)
                for row in originals):
             skipped.append(card['id']); continue
-        sources = dict(prepared['source_catalog']); sources.update({row['id']: row for row in originals})
-        trial = {**state, 'history': [*selected, deepcopy(card)], 'source_catalog': sources}
+        bounded=[]
+        for row in originals[:MEMORY_SOURCE_LIMIT]:
+            value=deepcopy(row);content=value.get('content','')
+            if len(content.encode())>MEMORY_SOURCE_BYTES:
+                value['content']=clip_bytes(content,MEMORY_SOURCE_BYTES);compacted.append(card['id'])
+            bounded.append(value)
+        if len(originals)>len(bounded):compacted.append(card['id'])
+        card['sources']=bounded
+        sources = dict(prepared['source_catalog']); sources.update({row['id']: row for row in bounded})
+        trial = {**state, 'history': [*selected, card], 'source_catalog': sources}
+        # Evidence is optional presentation material; preserve the current view before dropping a card.
+        while recall_bytes(trial)>RECALL_BYTES and card['sources']:
+            removed=card['sources'].pop();sources.pop(removed['id'],None);compacted.append(card['id'])
+            trial={**state,'history':[*selected,card],'source_catalog':sources}
         if recall_bytes(trial) > RECALL_BYTES:
             skipped.append(card['id']); continue
-        selected.append(deepcopy(card)); prepared = trial
+        selected.append(card); prepared = trial
     return prepared, dict(selected_memory_ids=[row['id'] for row in selected], budget_skipped_memory_ids=skipped,
-                          recall_bytes=recall_bytes(prepared), recall_byte_limit=RECALL_BYTES)
+                          compacted_memory_ids=sorted(set(compacted)),recall_bytes=recall_bytes(prepared), recall_byte_limit=RECALL_BYTES)

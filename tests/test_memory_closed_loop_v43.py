@@ -37,7 +37,7 @@ def test_unbound_event_gains_subject_without_changing_id():
     def enrich(s):
         assert original.id in {h['id'] for h in s['history']}
         return [update(s,content='Aster will host the workshop.',participant_mode='add',
-            **{})|{'changed_fields':['content','participants']}]
+            **{})]
     model.writer=enrich;e.add(req('Aster will host that workshop.','bound',1))
     memory=e.store.memories(OWNER)[0]
     assert len(e.store.memories(OWNER))==1 and memory.id==original.id
@@ -92,7 +92,7 @@ def test_program_supplement_excludes_memories_owned_only_by_other_subjects():
     assert trace['supplement_triggered']
     assert len(e.store.memories(OWNER))==2
     assert e.store.get('memories',OWNER,old.id)['revisions'][-1]==old_revision.model_dump()
-    assert model.calls==['subjects','memory','subjects','memory']
+    assert model.calls==['subjects','extract','memory','subjects','extract','memory']
 
 
 def test_two_dates_and_participant_remove_are_expressible():
@@ -101,10 +101,9 @@ def test_two_dates_and_participant_remove_are_expressible():
     e.add(req('Aster and Beryl planned a workshop.','start'))
     model.people=['Beryl']
     def change(s):
-        return [update(s,content='The workshop was planned for 2030-01-03 and happened on 2030-01-05; Beryl withdrew.',
+            return [update(s,content='The workshop was planned for 2030-01-03 and happened on 2030-01-05; Beryl withdrew.',
             status='occurred',participant_mode='remove',time_updates=[dict(field='planned_at',expression='January 3'),
-                dict(field='event_at',expression='January 5')])|
-            {'changed_fields':['content','participants','planned_at','event_at','status']}]
+                    dict(field='event_at',expression='January 5')])]
     model.writer=change;e.add(req('Beryl withdrew. The workshop was planned for January 3 and happened on January 5.','finish',5))
     current=e.store.memories(OWNER)[0].current
     assert current.planned_at.startswith('2030-01-03') and current.event_at.startswith('2030-01-05')
@@ -155,7 +154,7 @@ def test_pending_recovery_uses_later_identity_but_original_date_anchor_once():
 
 def test_backfill_replays_dates_membership_evidence_and_keeps_narrative_history():
     e,m=lifecycle()
-    def moved(s):return [update(s,time_updates=[dict(field='planned_at',expression='January 9')])|{'changed_fields':['content','planned_at']}]
+    def moved(s):return [update(s,time_updates=[dict(field='planned_at',expression='January 9')])]
     m.writer=moved;e.add(req('Aster moved the workshop to January 9.','moved',5))
     m.writer=lambda s:[update(s,content='The workshop is in room Amber with Aster.')]
     e.add(req('Aster added room Amber to the workshop.','room',2))
@@ -233,9 +232,9 @@ def test_program_supplement_is_bounded_and_checkpoint_reuses_one_memory_reply():
     cache=unit(e,'missing')
     assert cache['candidate_dispositions'][0]['status']=='pending'
     assert cache['memory_recall_trace']['supplemented_unbound_memory_ids']
-    assert model.calls==['subjects','memory','subjects','memory']
+    assert model.calls==['subjects','extract','memory','subjects','extract','memory']
     snapshot=e.store.snapshot();e.add(req('Aster refers to that earlier workshop.','missing'))
-    assert e.store.snapshot()==snapshot and model.calls==['subjects','memory','subjects','memory']
+    assert e.store.snapshot()==snapshot and model.calls==['subjects','extract','memory','subjects','extract','memory']
 
 
 def test_graph_traversal_reaches_two_hops_but_stops_before_third():
@@ -252,15 +251,15 @@ def test_graph_traversal_reaches_two_hops_but_stops_before_third():
     assert ids[2] in result and ids[3] not in result
 
 
-def test_bad_date_membership_and_statement_fields_produce_repair_feedback():
+def test_bad_date_and_participant_actions_produce_repair_feedback():
     e,m=lifecycle();state=unit(e,'start')['memory_recall'];view=unit(e,'start')['current_participants']
     memory=e.store.memories(OWNER)[0]
     state['history']=[dict(id=memory.id,record_type='event',content=memory.current.content,
         status='planned',sources=[],related_memory_ids=[])]
-    r=update(state,time_updates=[dict(field='planned_at',expression='January 3'),dict(field='planned_at',expression='January 3')],participant_mode='add')
+    r=update(state,subject_refs=[0]);r['planned_at']={'action':'retain','expression':'January 3'}
     accepted,issues=validate_plan(dict(items=[r]),state,view)
     assert not accepted
-    assert {'one_edit_per_time_field','list_participants_when_editing_membership'} <= {i['code'] for i in issues}
+    assert {'retain_uses_null_expression','retain_participants_uses_empty_selection'} <= {i['code'] for i in issues}
 
 
 def test_recovery_related_candidates_include_preceding_claim_without_keyword_overlap():

@@ -70,10 +70,14 @@ class Model:
             subject=next(o for o in existing if o['name']=='Nolan');basis=next(b for b in state['identity_bases'] if b['target_id']==subject['id'] and b['text']=='Nole')
             return plan(name='Nolan',operation='reuse',target=subject['id'],sid=source['id'],mention='Nole',basis=basis['id'])
         return plan(name='Nolan',aliases=['Nole'],sid=source['id'])
+    def extract_memories(self,state,*,deadline):
+        self.calls.append('extract')
+        return dict(items=[dict(content=state['new_user_source']['content'],record_type='fact',subject_refs=[0],mode='asserted',
+            context=None,status=None,time_expression=None,evidence=[dict(source_id=state['new_user_source']['id'])])],reason='test candidate')
     def propose(self,state,*,deadline):
         self.calls.append('memory')
-        return dict(items=[dict(content=state['new_user_source']['content'],record_type='fact',subject_refs=[0],mode='asserted',
-            context=None,status=None,time_expression=None,evidence=[dict(source_id=state['new_user_source']['id'])])],reason='source-grounded fixture')
+        from tests.test_event_maintenance import row
+        return dict(items=[row(state,record_type='fact',status=None)],reason='source-grounded fixture')
     def decide(self,state,*,deadline):return dict(steps=[],relevant_memory_ids=[])
     def close(self):pass
 
@@ -85,7 +89,7 @@ def request(text='Nolan is also called Nole.',key='r1'):
 def test_complete_add_reuses_context_reference_and_search_returns_actual_original():
     model=Model();engine=SubjectGraphEngine(model=model)
     engine.add(request());engine.add(request('Nole likes jasmine tea.','r2'))
-    assert model.calls==['subject','memory','subject','memory']
+    assert model.calls==['subject','extract','memory','subject','extract','memory']
     objects=engine.store.list('objects','reference-owner');memories=engine.store.memories('reference-owner')
     assert len(objects)==1 and len(memories)==2
     assert all(m.current.entity_ids==[objects[0]['id']] for m in memories)
@@ -106,9 +110,9 @@ def test_embedding_failure_preserves_model_checkpoint_and_atomic_records_then_re
     model=Model();embedder=FlakyEmbedder();engine=SubjectGraphEngine(model=model,embedder=embedder)
     with pytest.raises(ProviderUnavailable):engine.add(request())
     assert not engine.store.list('objects','reference-owner') and not engine.store.memories('reference-owner')
-    assert not engine.store.documents('reference-owner') and model.calls==['subject','memory']
+    assert not engine.store.documents('reference-owner') and model.calls==['subject','extract','memory']
     engine.add(request())
-    assert model.calls==['subject','memory'] and len(engine.store.memories('reference-owner'))==1
+    assert model.calls==['subject','extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
 
 def test_snapshot_restore_keeps_idempotence_and_conflict_checks():
@@ -135,7 +139,7 @@ def test_invalid_memory_output_has_one_repair_then_preserves_original_without_ba
             return {'items':[{'unrecognized':'field'}],'reason':'invalid model fixture'}
     model=InvalidMemory();engine=SubjectGraphEngine(model=model)
     engine.add(request())
-    assert model.calls==['subject','memory','memory']
+    assert model.calls==['subject','extract','memory','memory']
     assert not engine.store.memories('reference-owner')
     assert engine.store.documents('reference-owner')
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']

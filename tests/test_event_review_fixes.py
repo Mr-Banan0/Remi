@@ -17,7 +17,7 @@ def test_backdated_update_uses_recalled_revision_and_preserves_later_current_vie
     engine,model=lifecycle();first=engine.store.memories(OWNER)[0].current.model_dump()
     def complete(s):
         r=update(s,content='Aster completed the workshop today.',status='occurred',time_expression='today',time_field='event_at')
-        r['changed_fields']=['content','status','event_at'];return [r]
+        return [r]
     model.writer=complete;engine.add(req('Aster completed the workshop today.','later',5))
     latest=engine.store.memories(OWNER)[0].current.model_dump()
     model.writer=lambda s:[update(s,content='Aster plans the workshop with an extra demonstration.')]
@@ -32,7 +32,7 @@ def test_backdated_update_uses_recalled_revision_and_preserves_later_current_vie
     assert latest['source_ids'][0] not in historical.source_ids
     assert unit(engine,'backfill').get('concurrent_recomputations',0)==0
     assert engine.store.get('requests',OWNER,'backfill')['status']=='complete'
-    assert model.calls==['subjects','memory']*3
+    assert model.calls==['subjects','extract','memory']*3
     assert any(e.revision_id==historical.id for e in active_edges(engine.store,OWNER,'2030-01-02T23:59:59Z'))
     snapshot=engine.store.snapshot();engine.add(request);assert engine.store.snapshot()==snapshot
 
@@ -42,7 +42,7 @@ def test_repaired_conflicting_item_preserves_previously_accepted_update(protecte
     engine,model=lifecycle()
     def writer(s):
         good=update(s,content='Aster added refreshments to the workshop.')
-        bad=row(s,subject_refs=None)
+        bad=row(s,subject_refs=None,ref='C999')
         values=[bad,bad];values[protected_index]=good
         if s.get('repair_errors'):
             # Even if the repair changes the protected position, its original is authoritative.
@@ -56,14 +56,14 @@ def test_repaired_conflicting_item_preserves_previously_accepted_update(protecte
     assert cache['memory_plan'][str(protected_index)]['operation']=='update'
     assert cache['memory_plan'][str(1-protected_index)]['operation']=='pending'
     assert any(i['code']=='repair_conflicts_with_accepted_event_update' for i in cache['memory_rejections'])
-    assert model.calls==['subjects','memory','subjects','memory','memory']
+    assert model.calls==['subjects','extract','memory','subjects','extract','memory','memory']
 
 
 def test_repair_with_duplicate_target_in_protected_slot_still_keeps_original_update():
     engine,model=lifecycle()
     def writer(s):
         good=update(s,content='Aster added refreshments to the workshop.')
-        return [good,update(s,content='Aster also changed the workshop.') if s.get('repair_errors') else row(s,subject_refs=None)]
+        return [good,update(s,content='Aster also changed the workshop.') if s.get('repair_errors') else row(s,subject_refs=None,ref='C999')]
     model.writer=writer;engine.add(req('Aster added refreshments to the workshop.','same-target',1))
     assert len(engine.store.memories(OWNER)[0].revisions)==2
     assert unit(engine,'same-target')['memory_plan']['1']['operation']=='pending'
@@ -113,7 +113,7 @@ def test_null_subject_refs_checkpoint_can_resume_into_one_successful_repair():
     engine.add(request)
     assert engine.store.get('requests',OWNER,'null-ref')['status']=='complete'
     assert len(engine.store.memories(OWNER))==1
-    assert model.calls==['subjects','memory','memory','memory']
+    assert model.calls==['subjects','extract','memory','memory','memory']
 
 
 def test_backfill_validates_new_revision_participants_separately_from_later_participants():
@@ -163,7 +163,7 @@ def test_repair_cannot_change_protected_update_into_a_new_competing_target():
         good=update(s,content='Aster added refreshments to the workshop.')
         if s.get('repair_errors'):
             return [dict(good,subject_refs=None,target_id=[]),row(s,content='Aster prefers tea.',record_type='preference',status=None)]
-        return [good,row(s,subject_refs=None)]
+        return [good,row(s,subject_refs=None,ref='C999')]
     model.writer=writer;engine.add(req('Aster added refreshments to the workshop and prefers tea.','protected-malformed',1))
     assert len(engine.store.memories(OWNER))==2
     event=next(m for m in engine.store.memories(OWNER) if m.record_type=='event')

@@ -217,7 +217,7 @@ class Revision(StrictModel):
     created_at: str
     time_resolution: Literal['rule', 'unknown']
     time_precision: Literal['day', 'instant', 'unknown']
-    operation: Literal['create', 'reschedule', 'complete', 'cancel', 'update']
+    operation: Literal['create', 'reschedule', 'complete', 'cancel', 'update', 'support']
     replaces_revision_id: str | None = None
     time_evidence: list[EventTimeEvidence] = Field(default_factory=list)
     maintenance_patch: dict | None = None

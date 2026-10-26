@@ -20,13 +20,17 @@ def reviewed():
 
 
 def proposal():
-    return dict(items=[dict(content='I called the courier.',record_type='event',subject_refs=[0,7],
-                           mode='asserted',context=None,status='occurred',time_expression=None,
-                           evidence=[dict(source_id='source-now')])],reason='Current participants only.')
+    from tests.test_event_maintenance import row
+    state=dict(new_user_source=dict(id='source-now',content='I called the courier.'))
+    return dict(items=[row(state,content='I called the courier.',record_type='event',subject_refs=[0,7],
+                           status='occurred')],reason='Current participants only.')
 
 
 class Capture:
     def __init__(self):self.inputs=[]
+    def extract_memories(self,state,*,deadline):
+        return dict(items=[dict(content=state['new_user_source']['content'],record_type='event',subject_refs=[0,7],mode='asserted',
+            context=None,status='occurred',time_expression=None,evidence=[dict(source_id=state['new_user_source']['id'])])],reason='test candidate')
     def propose(self,state,*,deadline):self.inputs.append(deepcopy(state));return proposal()
     def close(self):pass
 
