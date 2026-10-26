@@ -18,7 +18,7 @@ class FlowModel(Model):
         super().__init__();self.people=[];self.pending=False
     def maintain_subjects(self,state,*,deadline):
         self.calls.append('subjects');self.packets.append(('subjects',deepcopy(state)))
-        result=dict(subjects=[],connections=[])
+        result=dict(subjects=[])
         for ref,name in enumerate(self.people):
             old=next((r for r in state['subject_catalog'] if r['name']==name),None)
             basis=next((b['id'] for b in state['identity_bases'] if old and b['target_id']==old['id']),None)
@@ -45,24 +45,21 @@ def test_unbound_event_gains_subject_without_changing_id():
     assert unit(e,'bound')['memory_recall_trace']['lanes'][memory.id]=='unbound'
 
 
-def test_untyped_subject_link_and_relationship_fact_are_saved_independently():
+def test_relationship_fact_is_saved_without_a_subject_navigation_link():
     model=FlowModel();model.people=['Mara','Cedar Lab'];engine=SubjectGraphEngine(model=model)
     base_maintain=model.maintain_subjects
     def subjects(state,*,deadline):
         result=base_maintain(state,deadline=deadline)
         result['subjects'][1]['kind']='organization'
-        result['connections']=[dict(subject_refs=[0,1],evidence=[dict(source_id=state['new_user_source']['id'])])]
         return result
     model.maintain_subjects=subjects
     model.writer=lambda state:[row(state,record_type='fact',status=None,subject_refs=[0,1],
         content='Mara works at Cedar Lab.')]
     engine.add(req('Mara works at Cedar Lab.','relationship'))
-    link=next(row for row in engine.store.list('edges',OWNER) if 'endpoint_ids' in row)
     memory=engine.store.memories(OWNER)[0]
-    assert set(link)=={'id','owner','endpoint_ids','source_ids'}
-    assert len(link['endpoint_ids'])==2
     assert memory.record_type=='fact' and len(memory.current.entity_ids)==2
     assert memory.current.content=='Mara works at Cedar Lab.'
+    assert not any('endpoint_ids' in row for row in engine.store.list('edges',OWNER))
 
 
 def test_both_recall_lanes_have_budget_and_foreign_memories_are_excluded():
@@ -292,32 +289,6 @@ def test_program_recall_preserves_original_snapshot_for_concurrent_future_revisi
     assert unit(e,'concurrent')['concurrent_recomputations']==1
 
 
-def test_recovery_connection_requires_later_clarification_for_historical_visibility():
-    from experiments.subject_connections import review
-    from experiments.subject_engine import visible_links
-    e,m=lifecycle()
-    # A second known identity makes an old connection potentially visible before clarification.
-    from tests.test_subject_routing import add_subject
-    other=add_subject(e.store,'Beryl',owner=OWNER,when='2030-01-01T00:00:00+00:00')
-    source=Source(id='old-pair',owner=OWNER,session_id='session',request_id='pair',ordinal=0,
-        role='user',content='Aster met Beryl.',message_at='2030-01-02T00:00:00Z',created_at='2030-01-02T00:00:00Z')
-    clarification=source.model_copy(update=dict(id='new-proof',content='Those were Aster and Beryl from the workshop.',
-        message_at='2030-01-05T00:00:00Z',created_at='2030-01-05T00:00:00Z'))
-    for original in (source,clarification):e.store.put('sources',OWNER,original.id,original.model_dump())
-    from experiments.subject_recall import prepare_candidates
-    state,_=prepare_candidates(e.store,dict(owner=OWNER,new_user_source=source.model_dump(),context_sources=[clarification.model_dump()],
-        recovery_clock=clarification.message_at,recovery=dict(key='pending-pair',content=source.content)))
-    model=FlowModel();model.people=['Aster','Beryl']
-    raw=model.maintain_subjects(state,deadline=0)
-    raw['connections']=[dict(subject_refs=[0,1],evidence=[dict(source_id=source.id)])]
-    result=review(raw,state,e.store)
-    assert result['connections']
-    for link in result['connections']:e.store.put('edges',OWNER,link['id'],link)
-    objects={r['id']:r for r in e.store.list('objects',OWNER)}
-    assert not visible_links(e.store,OWNER,'2030-01-03T00:00:00Z',objects)
-    assert len(visible_links(e.store,OWNER,'2030-01-06T00:00:00Z',objects))==1
-
-
 def test_recovering_second_claim_preserves_accepted_first_claim_from_same_source():
     model=FlowModel();model.people=['Aster'];model.pending=True;e=SubjectGraphEngine(model=model)
     def writer(s):
@@ -338,7 +309,7 @@ def test_recovering_second_claim_preserves_accepted_first_claim_from_same_source
 
 def test_recovery_new_subject_ref_can_differ_from_original_ref_allocation():
     from experiments.subject_recall import prepare_candidates
-    from experiments.subject_connections import review,commit
+    from experiments.subject_maintenance import review,commit
     source=Source(id='pair-source',owner=OWNER,session_id='session',request_id='pair',ordinal=0,
         role='user',content='Aster and Beryl planned a workshop.',message_at='2030-01-01T00:00:00Z',created_at='2030-01-01T00:00:00Z')
     e=SubjectGraphEngine();e.store.put('sources',OWNER,source.id,source.model_dump())

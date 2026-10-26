@@ -5,7 +5,7 @@ from time import monotonic
 import argparse,json
 from remi.settings import load_environment
 from experiments.subject_engine import SubjectMemoryStore
-from experiments.subject_connections import review,maintain
+from experiments.subject_maintenance import review,maintain
 from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.subject_providers import experimental_providers
 from remi.providers import OutputInvalid

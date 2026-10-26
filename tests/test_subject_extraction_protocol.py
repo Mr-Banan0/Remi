@@ -31,8 +31,8 @@ def capture(state,reply,*,errors=()):
 def user_and_dog():
     state=deepcopy(examples()[1][0])
     state['new_user_source']['content']='My dog Cedar needs me to book a vet visit.'
-    state['resolved_subjects'].insert(0,dict(ref=2,id='stored-current-user',name='@user',kind='individual',
-                                          aliases=[],descriptions=[],status='resolved',is_user=True))
+    state['resolved_subjects'].insert(0,dict(ref=2,id='stored-current-user',name='@user',kind='person',
+                                          aliases=[],status='resolved',is_user=True))
     return state
 
 
@@ -74,8 +74,8 @@ def test_stored_ids_and_integer_refs_stay_out_of_the_rendered_current_and_histor
 
 def test_pending_current_participant_remains_selectable_and_is_not_replaced_by_historical_namesakes():
     state,reply=deepcopy(examples()[3]);packet,context=prepare(state);body=render(packet)
-    assert 'P14 | name: Norah | kind: individual | status: pending' in body
-    assert 'P2 | name: @user | kind: individual | status: resolved' in body
+    assert 'P14 | name: Norah | kind: person | status: pending' in body
+    assert 'P2 | name: @user | kind: person | status: resolved' in body
     assert [row['current_handle'] for row in packet['historical_participants']]==[None,None]
     assert decode(reply,context)['items'][0]['subject_refs']==[14,2]
     assert schema(packet)['$defs']['ExtractionItem']['properties']['participant_handles']['items']['enum']==['P2','P14']

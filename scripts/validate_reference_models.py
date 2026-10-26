@@ -2,7 +2,7 @@
 import argparse,sys
 from remi.settings import load_environment
 from experiments.subject_providers import experimental_providers
-from scripts import validate_subject_connections as benchmark
+from scripts import validate_subject_identities as benchmark
 
 def main():
     parser=argparse.ArgumentParser(add_help=False,allow_abbrev=False)

@@ -1,14 +1,14 @@
-# 当前实验架构：V45 无类型主体连线与关系记忆
+# 当前实验架构：V49 主体名字与三类主体
 
-实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-untyped-subject-links-v45`。
+实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-subject-kinds-v49`。
 
-原文 → 主体候选 → 主体身份与无类型连通边维护 → 固定身份 → 主体范围内召回 → 置信度不足时补入无主体记忆并统一排序 → 四类记忆维护 → 校验、修订回放与原子提交。持续关系作为 Fact 维护，关系的开始、变化或结束作为 Event 维护。只绑定其他主体的记忆保持在本轮 Add scope 外。
+原文 → 主体候选 → 主体身份维护 → 固定身份 → 主体范围内召回 → 置信度不足时补入无主体记忆并统一排序 → 四类记忆维护 → 校验、修订回放与原子提交。持续关系作为 Fact 维护，关系的开始、变化或结束作为 Event 维护。只绑定其他主体的记忆保持在本轮 Add scope 外。
 
 事实、偏好、经验和事件支持创建、更新、保持、待定。同一记录更新保留 ID 和来源修订；事件支持计划／实际两项时间、参与者增减和关联撤销。程序在记忆模型调用前完成召回与补搜，正常保持两个模型调用，共享一次协议修正。每次 Add 最多重审两条待定，共用请求截止时间。
 
-历史补录重建结构字段与图投影。原始正文保存在变更记录；发生历史分支时，用带来源日期的叙述保存完整文本依据。Search 沿有效事件边扩展最多两跳、24 个事件节点。主体导航、全局混合检索和重排继续保留。
+历史补录重建结构字段与图投影。原始正文保存在变更记录；发生历史分支时，用带来源日期的叙述保存完整文本依据。Search 沿有效事件边扩展最多两跳、24 个事件节点。全局混合检索和重排继续保留。
 
-V45 的职责边界见 [无类型主体连线与关系记忆](architecture-changes/g11-untyped-subject-links-v45.md)，召回边界见 [V44 程序化无主体补搜](architecture-changes/g11-programmatic-unbound-recall-v44.md)。V43 的闭环设计与离线结果继续保留为历史基线。生产 API 仍使用下方 V32，实验推广单独验收。
+V49 的主体持久结构为稳定 ID、首次确认的本名、后续名字别名及 person／animal／organization 三选一类型。职业、社会身份、狗／猫等具体动物类别和主体联系进入 Fact／Event。具体边界见 [V49 主体名字与三类主体](architecture-changes/g11-subject-kinds-v49.md)，离线结果见 [V49 主体验证](subject-v49-results.md)。V48 的对照结果见 [V48 主体验证](subject-v48-results.md)，召回边界见 [V44 程序化无主体补搜](architecture-changes/g11-programmatic-unbound-recall-v44.md)。生产 API 仍使用下方 V32，实验推广单独验收。
 
 ---
 

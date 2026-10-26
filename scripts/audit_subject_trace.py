@@ -27,7 +27,7 @@ def fixture_target(owner, target, catalog):
 
 
 def names(row):
-    """Only actual names align identities; role/species descriptions stay a separate dimension."""
+    """Only actual names align identities; roles and specific animal categories stay in memory."""
     return {normalized(row.get('name', '')), *(
         normalized(item.get('name', '') if isinstance(item, dict) else item)
         for item in row.get('aliases', []))} - {''}

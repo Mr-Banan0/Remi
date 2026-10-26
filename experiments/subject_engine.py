@@ -1,4 +1,4 @@
-"""V45 subject-first memory maintenance with program recall and untyped subject links.
+"""V49 subject-first memory maintenance with names and three broad subject kinds.
 
 The production entry point remains unchanged. Shared memory/date/retrieval algorithms are reused.
 """
@@ -19,16 +19,16 @@ from remi.graph import active_edges, active_connections
 from remi.retrieval import clip_bytes
 from experiments.subject_recall import prepare_candidates, pack_history, subject_stage_state
 from experiments.subject_identity import CONTEXT_LIMIT,SubjectRecord,visible_subject,matching_subjects
-from experiments.subject_connections import review
+from experiments.subject_maintenance import review
 from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-untyped-subject-links-v45'
+PIPELINE='G11-subject-kinds-v49'
 
 
 class SubjectMemoryStore(MemoryStore):
-    """Both navigation links and revision projections share the existing logical edges collection."""
+    """Memory revision projections use the existing logical edges collection."""
     def edges_for(self,owner,origins=None,targets=None,limit=None):
         return [Edge.model_validate(row) for row in self.list('edges',owner) if 'relation' in row and
             (origins is None or row['origin'] in origins) and (targets is None or row['target'] in targets)][:limit]
@@ -42,15 +42,6 @@ class SubjectMemoryStore(MemoryStore):
             for table,rows in snapshot.items():
                 for row in rows:
                     self.put(table,row['owner'],row.get('id') or row['request_id'],row)
-
-
-def visible_links(store,owner,clock,objects):
-    result=[]
-    for row in store.list('edges',owner):
-        if 'endpoint_ids' not in row or not set(row['endpoint_ids'])<=objects.keys():continue
-        sources=store.sources(owner,row['source_ids'])
-        if len(sources)==len(set(row['source_ids'])) and all(source_visible(s,clock) for s in sources):result.append(row)
-    return result
 
 
 def shared_recall(engine,state,deadline):
@@ -79,8 +70,6 @@ class SubjectGraphEngine(MemoryEngine):
         users={obj.id for obj in objects.values() if obj.is_user}
         entities={e.target for e in edges if e.origin in mids}-users
         entities.update(obj.id for obj,matches in matching_subjects(self.store,owner,[query],as_of,limit=24) if matches and not obj.is_user)
-        links=[link for link in visible_links(self.store,owner,as_of,objects) if entities.intersection(link['endpoint_ids'])]
-        entities.update({eid for link in links for eid in link['endpoint_ids']}-users)
         record_ids={edge.origin for edge in edges if edge.target in entities}
         visible_events={m.id for original in self.store.memories(owner)
                         if (m:=visible_memory(original,as_of)) and m.record_type=='event'}
@@ -134,7 +123,7 @@ class SubjectGraphEngine(MemoryEngine):
         if 'items' in cache:return
         state=result['state'];bindings=result['bindings']
         view=[dict(ref=s['ref'],name=s['name'],kind=s['kind'],is_user=s.get('is_user',False),
-            aliases=s['aliases'],descriptions=s.get('descriptions',[]),
+            aliases=s['aliases'],
             id=bindings['subject_ids'].get(str(s['ref'])),
             current_evidence_id=s['current_evidence_id'],
             status='resolved' if str(s['ref']) in bindings['subject_ids'] else 'pending')
@@ -210,7 +199,7 @@ class SubjectGraphEngine(MemoryEngine):
                     cache=progress['units'].setdefault(key,dict(phase='pending',source_start=start,source_stop=stop))
                     if cache['phase']=='indexed':continue
                     if monotonic()>=deadline:raise ProviderUnavailable('add_deadline')
-                    objects=[];memories=[];edges=[];pending=[];links=[]
+                    objects=[];memories=[];edges=[];pending=[]
                     if user and self.model:
                         if 'shared_recall' not in cache:
                             state=self._add_state(user,unit,sources,deadline);state['new_user_source']['content']=text
@@ -224,7 +213,7 @@ class SubjectGraphEngine(MemoryEngine):
                         state=cache['shared_recall']
                         result=self._identity_stage(cache,state,save,deadline)
                         self._memory_after_identity(cache,result,save,deadline)
-                        state=deepcopy(cache['memory_recall']);bindings=result['bindings'];links=result['connections']
+                        state=deepcopy(cache['memory_recall']);bindings=result['bindings']
                         try:
                             objects,memories,edges,expected,pending,dispositions=materialize(self.store,state,bindings,cache['memory_plan'])
                         except ProviderUnavailable as error:
@@ -265,7 +254,6 @@ class SubjectGraphEngine(MemoryEngine):
                             for old_edge in self.store.edges_for(owner):
                                 if old_edge.memory_id in touched:self.store.delete('edges',owner,old_edge.id)
                             for edge in edges:self.store.put('edges',owner,edge.id,edge.model_dump())
-                            for link in links:self.store.put('edges',owner,link['id'],link)
                             for document in changed:self.store.put('search_documents',owner,document.id,document.model_dump())
                             if recovery and cache.get('resolved_pending'):
                                 self.store.delete('search_documents',owner,recovery['document_id'])

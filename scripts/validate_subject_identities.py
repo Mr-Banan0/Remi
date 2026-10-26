@@ -1,4 +1,4 @@
-"""Independent V38 subject/description/connection experiment; all records use MemoryStore."""
+"""Independent V49 subject name and kind experiment; all records use MemoryStore."""
 from __future__ import annotations
 import argparse,hashlib,json,statistics
 from concurrent.futures import ThreadPoolExecutor
@@ -6,7 +6,7 @@ from pathlib import Path
 from time import monotonic
 from copy import deepcopy
 
-from experiments.subject_connections import maintain,review,commit
+from experiments.subject_maintenance import maintain,review,commit
 from experiments.subject_references import prepare_reference_state
 from remi.add_judgments import PROPOSE_PROMPT
 from scripts.validate_subject_identity import prepare_state as prepare_legacy_fixture
@@ -23,14 +23,12 @@ from remi.models import ProposalDraft
 
 
 def experiment_state(state,store):
-    """Adapt historical relation-card fixtures inside the historical validator."""
-    state=deepcopy(state);old=state.pop('relation_catalog',[])
-    state['existing_connections']=[dict(endpoint_ids=row['endpoint_ids']) for row in store.list('edges',state['owner'])]
-    for row in old:
-        state['existing_connections'].append(dict(endpoint_ids=row['endpoint_ids']))
-        if not any(card['id']==row['id'] for card in state.get('history',[])):
-            state.setdefault('history',[]).append(dict(id=row['id'],record_type='fact',content=row['content'],
-                entity_ids=row.get('ordered_subject_ids',row['endpoint_ids']),mode=row.get('mode','asserted'),sources=row.get('sources',[])))
+    """Discard relationship fixture fields before identity-only evaluation."""
+    state=deepcopy(state);state.pop('relation_catalog',None);state.pop('existing_connections',None)
+    from experiments.subject_recall import maintenance_route
+    primary=state['new_user_source'];clock=primary.get('message_at') or primary.get('created_at')
+    hits=matching_subjects(store,state['owner'],[primary['content']],clock,limit=None)
+    state['maintenance_route']=maintenance_route(hits,primary['content'])
     return prepare_reference_state(state,store)
 
 
@@ -38,52 +36,57 @@ MEMORY_PROMPT=PROPOSE_PROMPT.replace(
     'The preceding stage handles identity aliases and continuing relationships between subjects. Extract distinct\n'
     'facts,preferences,lessons and events present alongside them. A source containing only naming or continuing\n'
     'relationships, or an acknowledgement without new useful content, can return items=[].',
-    'The preceding stage handles subject identities and untyped navigation connections. Extract continuing\n'
+    'The preceding stage handles subject identities. Extract continuing\n'
     'relationship statements as facts and relationship changes as events, preserving participants, source mode\n'
     'and attribution. Preserve preferences and lessons as their appropriate types.\n'
     'A naming-only statement or acknowledgement without new useful content can return items=[].')
 
 
-# Fixture adaptation stays in the evaluator; model decisions use the two-kind contract only.
+# Fixture adaptation stays in the evaluator; model decisions use the V49 contract only.
 def prepare_state(payload,owner):
     legacy=deepcopy(payload)
     for row in legacy.get('subject_catalog',[]):
         if row['kind']=='individual':row['kind']='person'
+        if row.get('name') is None:row['name']='__unnamed_subject__'
     state,store,ids=prepare_legacy_fixture(legacy,owner)
     for raw in store.list('objects',owner):
         row={key:value for key,value in raw.items() if key!='schema_version'}
-        row['kind']='organization' if raw['kind']=='organization' else 'individual'
+        row['kind']='person' if raw['kind']=='individual' else raw['kind']
         original=next((s for s in payload.get('subject_catalog',[]) if ids.get(s['id'])==raw['id']),{})
-        row['descriptions']=[dict(d,observed_at=d.get('observed_at',row['observed_at']),
-            quote=d.get('quote',state['source_catalog'].get(d.get('source_id'),{}).get('content',''))) for d in original.get('descriptions',[])]
+        row['name']=original.get('name',row.get('name'))
+        row['aliases']=[alias for alias in row.get('aliases',[])
+                        if normalized_name(alias['name'])!=normalized_name(row.get('name') or '')]
+        row['references']=deepcopy(original.get('references',[]))
+        if not row['references']:
+            evidence=next((alias for alias in raw.get('aliases',[]) if alias.get('quote')),None)
+            if evidence:
+                row['references']=[dict(source_id=evidence.get('source_id','historical'),quote=evidence['quote'],
+                    observed_at=evidence.get('observed_at',row['observed_at']))]
         obj=SubjectRecord.model_validate(row)
         store.put('objects',owner,obj.id,obj.model_dump())
     for source in state['source_catalog'].values():store.put('sources',owner,source['id'],source)
     for obj in store.list('objects',owner):
-        for alias in obj['aliases']:
-            original=next((source for source in state['source_catalog'].values() if alias['quote'] in source['content']),None)
+        for evidence in [*obj['aliases'],*obj.get('references',[])]:
+            original=next((source for source in state['source_catalog'].values() if evidence['quote'] in source['content']),None)
             if original is None:
                 sid='fixture-'+str(len(state['source_catalog']))
-                original=dict(state['new_user_source'],id=sid,content=alias['quote'])
+                original=dict(state['new_user_source'],id=sid,content=evidence['quote'])
                 state['source_catalog'][sid]=original;store.put('sources',owner,sid,original)
-            alias['source_id']=original['id']
+            evidence['source_id']=original['id']
         store.put('objects',owner,obj['id'],obj)
-    state['subject_catalog']=[store.get('objects',owner,row['id']) for row in state['subject_catalog']]
+    requested=[ids[row['id']] for row in payload.get('subject_catalog',[]) if row.get('id') in ids]
+    state['subject_catalog']=[store.get('objects',owner,key) for key in requested]
     from experiments.subject_references import prepare_reference_state
-    return prepare_reference_state(state,store),store,ids
-
-# Old fixtures included these descriptive expectations in aliases. Both versions are scored
-# for searchable coverage; V34 additionally checks their placement in descriptions.
-DESCRIPTION_EXPECTATIONS={'cat','dog','狗','猫','volunteer','画家'}
+    return experiment_state(prepare_reference_state(state,store),store),store,ids
 
 EXTRA_CASES=[
- ('description_pet',['My dog Tansy is also called Tan.','My dog is sleeping.','Tan is resting.']),
- ('changing_role',['My colleague Selene is a designer at Alder Cooperative.',
-                   'Selene is now a painter, and is also called Seli.','Seli sent a message.']),
- ('shared_description',['Two colleagues work with me: a nurse named Esra and a baker named Esra.',
-                        'The nurse sent a message.']),
- ('cross_species_namesake',['My cousin Vale and my dog Vale are different individuals.',
-                            'My dog Vale needs a walk.']),
+ ('animal_name',['My dog Tansy is also called Tan.','Tansy is sleeping.','Tan is resting.']),
+ ('role_memory_boundary',['My colleague Selene is a designer at Alder Cooperative.',
+                          'Selene is now a painter, and is also called Seli.','Seli sent a message.']),
+ ('shared_role_memory',['Two colleagues work with me: a nurse named Esra and a baker named Esra.',
+                        'The person named Esra sent a message.']),
+ ('cross_kind_namesake',['My cousin Vale and my dog Vale are different individuals.',
+                         'My dog Vale needs a walk.']),
 ]
 
 
@@ -98,18 +101,14 @@ def evaluate(case,raw,result,ids):
     def check(name,value):checks.append(dict(name=name,passed=bool(value)))
     check('subject_program_validation',not result['contract_errors'] and not result['subject_errors'])
     check('alias_program_validation',not result['alias_issues'])
-    check('description_program_validation',not result.get('description_issues'))
-    check('connection_program_validation',not result['connection_errors'])
     groups=case['groups'];objects=result['bindings']['entity_rows'];possible=[]
     for index,group in enumerate(groups):
         wanted={normalized_name(n) for n in group['aliases']};target=ids.get(group.get('target'))
-        matches=[o['id'] for o in objects if wanted<={normalized_name(o['name']),*[normalized_name(a['name']) for a in o['aliases']],*[normalized_name(d['text']) for d in o.get('descriptions',[])]}
+        matches=[o['id'] for o in objects if wanted<={*[normalized_name(n) for n in [o.get('name')] if n],*[normalized_name(a['name']) for a in o['aliases']]}
             and (o['id']==target if target else o['id'] not in ids.values())
-            and (not group.get('kind') or o['kind']==('organization' if group['kind']=='organization' else 'individual'))
+            and (not group.get('kind') or o['kind']==group['kind'])
             and ('is_user' not in group or o['is_user']==group['is_user'])]
         possible.append(matches);check(f'{index}_identity_and_names',bool(matches))
-        descriptors=wanted.intersection(DESCRIPTION_EXPECTATIONS)
-        check(f'{index}_description_field_coverage',not descriptors or any(o['id'] in matches and descriptors<={normalized_name(d['text']) for d in o.get('descriptions',[])} for o in objects))
     def distinct(index,used,selected):
         if index==len(possible):return selected
         for key in possible[index]:
@@ -120,37 +119,29 @@ def evaluate(case,raw,result,ids):
     selected=distinct(0,set(),[]);check('groups_remain_distinct',selected is not None)
     if not groups:check('ambiguous_subjects_stay_unresolved',not result['bindings']['subject_ids'])
     if case.get('no_user'):check('quoted_voice_has_no_current_user',not any(o['is_user'] for o in objects))
-    pairs={tuple(row['endpoint_ids']) for row in result['connections']}
-    expected=set()
-    for relation in case.get('relations',[]):
-        if relation['operation']=='pending':
-            check('required_connection_waits_for_identity',bool(result['pending']))
-        else:
-            pair=tuple(sorted(selected[i] for i in relation['endpoints'])) if selected is not None else ()
-            expected.add(pair)
-    for index,pair in enumerate(sorted(expected)):
-        check(f'undirected_connection_{index}_covered',bool(pair) and pair in pairs)
-    for key,field in [('expected_subject_rows','subjects'),('expected_connection_count','connections')]:
-        if key in case:
-            # Current rule permits the actual user and another person to share a concrete meeting.
-            # The old holdout marked all links absent; its identity requirement stays unchanged.
-            if key=='expected_connection_count' and case['id']=='holdout-different-namesake':continue
-            check(key,len(raw.get(field,[]))==case[key])
+    if 'expected_subject_rows' in case:check('expected_subject_rows',len(raw.get('subjects',[]))==case['expected_subject_rows'])
     identity=all(c['passed'] for c in checks if c['name'].endswith('_identity_and_names') or c['name'] in {'groups_remain_distinct','ambiguous_subjects_stay_unresolved'})
     return checks,identity
 
 
 def run_direct(case,output):
     model,embedder,ranker=providers_from_environment();state,store,ids=prepare_state(case['payload'],case['id'])
-    state=experiment_state(state,store);start=monotonic();result=dict(id=case['id'],checks=[])
+    start=monotonic();result=dict(id=case['id'],checks=[])
     try:
         raw,request=maintain(model,state,deadline=monotonic()+120)
-        reviewed=review(raw,state,store);checks,identity=evaluate(case,raw,reviewed,ids)
+        reviewed=review(raw,state,store);requests=[request];attempt_outputs=[raw]
+        initial_issues=deepcopy(reviewed['issues'])
+        if initial_issues:
+            repair=build_repair_state(raw,reviewed,state)
+            raw,request=maintain(model,repair,deadline=monotonic()+120)
+            reviewed=finish_repair(repair,raw,state,store);requests.append(request);attempt_outputs.append(raw)
+        checks,identity=evaluate(case,raw,reviewed,ids)
         commit(reviewed,store)
-        result.update(output=raw,model_requests=[request],checks=checks,identity_and_names_complete=identity,
+        result.update(output=raw,attempt_outputs=attempt_outputs,model_requests=requests,initial_issues=initial_issues,
+            final_issues=reviewed['issues'],checks=checks,identity_and_names_complete=identity,
             source=state['new_user_source']['content'],subject_errors=reviewed['subject_errors'],contract_errors=reviewed['contract_errors'],
-            alias_issues=reviewed['alias_issues'],description_issues=reviewed['description_issues'],connection_errors=reviewed['connection_errors'],pending=reviewed['pending'],
-            actual_subjects=reviewed['bindings']['entity_rows'],connections=store.list('edges',case['id']))
+            alias_issues=reviewed['alias_issues'],
+            actual_subjects=reviewed['bindings']['entity_rows'])
     except Exception as error:result['error_type']=type(error).__name__
     finally:
         result.update(seconds=monotonic()-start,calls=list(model.calls))
@@ -182,50 +173,55 @@ def run_sequential(output,extra=False):
                     repair=build_repair_state(raw,reviewed,state)
                     raw,request=maintain(model,repair,deadline=monotonic()+120)
                     reviewed=finish_repair(repair,raw,state,store);requests.append(request);attempt_outputs.append(raw)
-                commit(reviewed,store);objects=store.list('objects',name);edges=store.list('edges',name)
-                check(f'{index}_program_checks',not reviewed['contract_errors'] and not reviewed['subject_errors'] and not reviewed['alias_issues'] and not reviewed['description_issues'] and not reviewed['connection_errors'])
+                commit(reviewed,store);objects=store.list('objects',name)
+                check(f'{index}_program_checks',not reviewed['contract_errors'] and not reviewed['subject_errors'] and not reviewed['alias_issues'])
                 if name=='alias_pet':
-                    check(f'{index}_person_aliases',any({'Rhea','Ray'}<={a['name'] for a in o['aliases']} for o in objects))
+                    check(f'{index}_person_names',any(o['name']=='Rhea' and 'Ray' in {a['name'] for a in o['aliases']} for o in objects))
                     if index==1:
-                        check('animal_aliases',any(o['kind']=='individual' and {'Moss','Momo'}<={a['name'] for a in o['aliases']} for o in objects))
-                        person=next((o['id'] for o in objects if o['kind']=='individual' and not o['is_user'] and any(a['name']=='Rhea' for a in o['aliases'])),None)
-                        pet=next((o['id'] for o in objects if o['kind']=='individual' and any(a['name']=='Moss' for a in o['aliases'])),None)
-                        check('ownership_navigation',person is not None and pet is not None and any(set(e['endpoint_ids'])=={person,pet} for e in edges))
-                elif name=='two_namesakes':check('two_distinct_people',len([o for o in objects if not o['is_user'] and o['kind']=='individual'])==2)
+                        rhea=next(o for o in objects if o['name']=='Rhea')
+                        selected=set(reviewed['bindings']['subject_ids'].values())
+                        check('alias_reuses_existing_person',rhea['id'] in selected)
+                        check('context_only_user_excluded',not any(o['is_user'] and o['id'] in selected for o in objects))
+                        check('animal_names',any(o['name']=='Moss' and o['kind']=='animal'
+                            and 'Momo' in {a['name'] for a in o['aliases']} for o in objects))
+                elif name=='two_namesakes':check('two_distinct_people',len([o for o in objects if not o['is_user'] and o['kind']=='person'])==2)
                 elif name=='employment':
-                    check(f'{index}_employment_navigation',len(edges)==1)
-                    if index==0:before=deepcopy(edges[0]) if edges else None
-                    else:check('same_edge_appends_evidence',before is not None and len(edges)==1 and edges[0]['id']==before['id'] and set(edges[0]['source_ids'])=={'step-0','step-1'})
-                elif name=='description_pet':
+                    check(f'{index}_stable_employment_subjects',len(objects)==2 and any(o['is_user'] for o in objects)
+                          and any(o['kind']=='organization' for o in objects))
+                elif name=='animal_name':
                     pets=[o for o in objects if o['name']=='Tansy']
                     check(f'{index}_stable_pet',len(pets)==1)
                     if pets:
                         pet=pets[0]
-                        check(f'{index}_dog_in_descriptions',any(d['text']=='dog' for d in pet['descriptions']))
-                        check(f'{index}_dog_outside_aliases',all(a['name']!='dog' for a in pet['aliases']))
-                        recalled=matching_subjects(store,name,['my dog'],state['new_user_source']['message_at'])
-                        check(f'{index}_description_recall',any(o.id==pet['id'] for o,_ in recalled))
+                        check(f'{index}_animal_kind',pet['kind']=='animal')
                         if index>0:check(f'{index}_reuses_pet',pet['id'] in reviewed['bindings']['subject_ids'].values())
-                elif name=='changing_role':
-                    people=[o for o in objects if not o['is_user'] and o['kind']=='individual']
-                    check(f'{index}_one_individual',len(people)==1)
+                elif name=='role_memory_boundary':
+                    people=[o for o in objects if not o['is_user'] and o['kind']=='person']
+                    check(f'{index}_one_person',len(people)==1)
                     check(f'{index}_separate_organization',any(o['kind']=='organization' for o in objects))
                     if index>=1 and people:
                         person=people[0]
+                        selected=set(reviewed['bindings']['subject_ids'].values())
+                        check(f'{index}_only_current_person_selected',selected=={person['id']})
                         check(f'{index}_new_alias',any(a['name']=='Seli' for a in person['aliases']))
-                        check(f'{index}_role_history',all(any(term in d['text'] for d in person['descriptions']) for term in ['designer','painter']))
-                elif name in {'shared_description','cross_species_namesake'}:
-                    people=[o for o in objects if not o['is_user'] and o['kind']=='individual']
-                    check(f'{index}_two_individuals',len(people)==2)
+                        check(f'{index}_roles_excluded_from_aliases',all(term not in {a['name'] for a in person['aliases']} for term in ['designer','painter','my colleague']))
+                elif name in {'shared_role_memory','cross_kind_namesake'}:
+                    people=[o for o in objects if not o['is_user'] and o['kind'] in {'person','animal'}]
+                    check(f'{index}_two_subjects',len(people)==2)
                     if index==1:
-                        descriptor='nurse' if name=='shared_description' else 'dog'
-                        selected=[o for o in people if any(descriptor in d['text'] for d in o['descriptions'])]
-                        check('description_selects_original_identity',len(selected)==1 and selected[0]['id'] in reviewed['bindings']['subject_ids'].values()
-                            and all(o['id'] not in reviewed['bindings']['subject_ids'].values() for o in people if o not in selected))
+                        if name=='cross_kind_namesake':
+                            selected=[o for o in people if o['kind']=='animal']
+                            check('kind_selects_animal_identity',len(selected)==1 and selected[0]['id'] in reviewed['bindings']['subject_ids'].values())
+                        else:
+                            check('ambiguous_namesake_stays_pending',not reviewed['bindings']['subject_ids'])
+                            check('roles_excluded_from_aliases',all(not {a['name'] for a in o['aliases']}.intersection({'nurse','baker','a nurse','a baker'}) for o in people))
                 else:
                     check('no_false_api_user',not any(o['is_user'] for o in objects))
-                    check('quoted_owner_navigation',len(edges)==1 and len(edges[0]['endpoint_ids'])==2)
-                steps.append(dict(index=index,source=text,output=raw,attempt_outputs=attempt_outputs,model_requests=requests,recall_subject_ids=[o['id'] for o in state['subject_catalog']],connections=deepcopy(edges),pending=reviewed['pending'],effective_output=reviewed.get('effective_output',raw),initial_issues=initial_issues,final_issues=reviewed['issues'],repair_audit=reviewed.get('repair_audit',[]),errors=[e['code'] for e in reviewed['issues']]))
+                    check('quoted_owner_subjects',len(objects)==2)
+                steps.append(dict(index=index,source=text,output=raw,attempt_outputs=attempt_outputs,model_requests=requests,
+                    recall_subject_ids=[o['id'] for o in state['subject_catalog']],effective_output=reviewed.get('effective_output',raw),
+                    initial_issues=initial_issues,final_issues=reviewed['issues'],repair_audit=reviewed.get('repair_audit',[]),
+                    errors=[e['code'] for e in reviewed['issues']]))
                 earlier.append(state['new_user_source'])
         except Exception as error:check('exception_'+type(error).__name__,False)
         finally:
@@ -290,7 +286,7 @@ def main():
     else:
         (args.output/'inputs.json').write_text(json.dumps(MEMORY_CASES,ensure_ascii=False,indent=2));results=run_memory(args.output)
     calls=[c for row in results for c in row['calls']]
-    summary=dict(experiment='V38-ordered-subject-prompt',code_sha256=frozen,code_unchanged_during_run=frozen==fingerprint(),
+    summary=dict(experiment='V49-subject-kinds',code_sha256=frozen,code_unchanged_during_run=frozen==fingerprint(),
         cases=len(results),passed_cases=sum(row['passed'] for row in results),checks=sum(len(row['checks']) for row in results),
         passed_checks=sum(c['passed'] for row in results for c in row['checks']),text_calls=len(calls),
         input_tokens=sum(c.get('input_tokens',0) for c in calls),output_tokens=sum(c.get('output_tokens',0) for c in calls),

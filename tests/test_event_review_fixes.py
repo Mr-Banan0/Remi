@@ -122,7 +122,7 @@ def test_backfill_validates_new_revision_participants_separately_from_later_part
     from remi.graph import project_edges
     engine,model=lifecycle();stored=engine.store.memories(OWNER)[0]
     later_person=add_subject(engine.store,'Beryl',owner=OWNER,when='2030-01-06T00:00:00+00:00')
-    source=engine.store.get('sources',OWNER,later_person['aliases'][0]['source_id'])
+    source=engine.store.get('sources',OWNER,later_person['references'][0]['source_id'])
     revision=stored.current.model_copy(deep=True,update=dict(id='later-participants',maintenance_patch=None,
         observed_at='2030-01-06T00:00:00+00:00',created_at='2030-01-06T00:00:00+00:00',
         entity_ids=[*stored.current.entity_ids,later_person['id']]))

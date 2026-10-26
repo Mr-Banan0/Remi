@@ -10,7 +10,7 @@ def reviewed():
     primary=dict(id='source-now',role='user',content='I called the courier.',
                  message_at='2029-08-01T10:00:00+00:00',created_at='2029-08-01T10:00:00+00:00')
     def subject(ref,name,valid):
-        return dict(ref=ref,name=name,kind='individual',is_user=ref==0,aliases=[],descriptions=[],
+        return dict(ref=ref,name=name,kind='individual',is_user=ref==0,aliases=[],
                     current_reference_valid=valid,current_evidence_id='C1' if valid else None)
     state=dict(owner='boundary-owner',new_user_source=primary,source_catalog={primary['id']:primary},
                context_sources=[],history=[],subject_catalog=[],proposal=dict(

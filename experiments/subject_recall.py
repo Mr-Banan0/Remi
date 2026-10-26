@@ -13,18 +13,16 @@ from experiments.subject_references import prepare_reference_state
 
 RECALL_BYTES = 24000
 HISTORY_LIMIT = 8
-NAME_LIMIT = 8
-DESCRIPTION_LIMIT = 3
+NAME_LIMIT = 12
 IDENTITY_EXCERPT_BYTES = 800
 
 
 def compact_subject(obj, texts):
     """Deduplicate presentation evidence; keep the full record in storage for maintenance."""
     row = obj.model_dump()
-    for field, label, kind, limit in [('aliases', 'name', 'name', NAME_LIMIT),
-                                       ('descriptions', 'text', 'description', DESCRIPTION_LIMIT)]:
+    for field, label, limit in [('aliases', 'name', NAME_LIMIT)]:
         def order(item):
-            score = keyword_score(item[label], kind, texts)
+            score = keyword_score(item[label], texts)
             return (-score[0], -score[1], -parse_time(item['observed_at']).timestamp(), item['source_id'])
         unique = {}
         for item in sorted(row[field], key=order):
@@ -57,8 +55,6 @@ def subject_stage_state(state):
     state = deepcopy(state)
     state['context_sources'] = state.get('context_sources', [])[-CONTEXT_LIMIT:]
     state['history'] = []
-    state.pop('existing_connections', None)
-    state.pop('relation_catalog', None)
     originals = {row['id']: row for row in [state['new_user_source'], *state['context_sources']]}
     for basis in state.get('identity_bases', []):
         sid = basis.get('source_id')
@@ -73,7 +69,7 @@ def recall_bytes(state):
 
     Current source, its latest supporting message and the fixed instructions have separate input sizes.
     """
-    from experiments.subject_connections import render
+    from experiments.subject_maintenance import render
     payload = {**state, 'new_user_source': {**state['new_user_source'], 'content': ''},
                'context_sources': [{**row, 'content': ''} for row in state.get('context_sources', [])]}
     return len(render(payload).encode()) + len(json.dumps(state.get('history', []), ensure_ascii=False).encode())
@@ -84,7 +80,7 @@ def maintenance_route(hits, current_text):
     text = normalized_name(current_text)
     matches = {}
     for subject, _ in hits:
-        labels = [*([subject.name] if not subject.is_user else []), *[row.name for row in subject.aliases]]
+        labels = [*([subject.name] if subject.name and not subject.is_user else []), *[row.name for row in subject.aliases]]
         for label in labels:
             key = normalized_name(label)
             if key and source_name_present(key, text):
@@ -132,7 +128,7 @@ def prepare_candidates(store, state):
     prepared = rebuild()
     # Spend optional display fields before affecting identity coverage. Every chosen ID stays present.
     while recall_bytes(prepared) > RECALL_BYTES:
-        optional = [(row, field) for row in reversed(catalog) for field in ['descriptions', 'aliases'] if len(row[field]) > 1]
+        optional = [(row, 'aliases') for row in reversed(catalog) if len(row['aliases']) > 2]
         if not optional:
             raise ProviderUnavailable('subject_identity_evidence_exceeds_budget')
         row, field = optional[0]; row[field].pop(); prepared = rebuild()

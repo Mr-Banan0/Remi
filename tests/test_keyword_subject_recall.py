@@ -8,7 +8,7 @@ import pytest
 from experiments.subject_identity import matching_subjects
 from experiments.subject_recall import prepare_candidates, pack_history, subject_stage_state, recall_bytes, RECALL_BYTES
 from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore, shared_recall
-from experiments.subject_connections import render, review, maintain
+from experiments.subject_maintenance import render, review, maintain
 from remi.identity import stable_id
 from remi.models import Source
 from tests.test_individual_subjects_experiment import plan
@@ -24,14 +24,15 @@ def source(sid, text, *, owner=OWNER, when=PAST, role='user', session='session',
                   role=role, content=text, message_at=when, created_at=when).model_dump()
 
 
-def add_subject(store, name, *, key=None, aliases=(), descriptions=(), user=False, owner=OWNER, when=PAST, text=None):
+def add_subject(store, name, *, key=None, aliases=(), user=False, kind='person', owner=OWNER, when=PAST, text=None):
     key = key or stable_id('obj_', owner, 'user' if user else name)
     sid = 'evidence-'+key
-    original = source(sid, text or f'{name}; '+ '; '.join([*aliases, *descriptions]), owner=owner, when=when)
+    all_aliases=list(aliases)
+    original = source(sid, text or f'{name}; '+ '; '.join(all_aliases), owner=owner, when=when)
     store.put('sources', owner, sid, original)
-    row = dict(id=key, owner=owner, name='user' if user else name, kind='individual', is_user=user, observed_at=when,
-               aliases=[dict(name=n, source_id=sid, quote=original['content'], observed_at=when) for n in [name, *aliases]],
-               descriptions=[dict(text=d, source_id=sid, quote=original['content'], observed_at=when) for d in descriptions])
+    row = dict(id=key, owner=owner, name='user' if user else name, kind=kind,is_user=user, observed_at=when,
+               aliases=[dict(name=n, source_id=sid, quote=original['content'], observed_at=when) for n in all_aliases],
+               references=[dict(source_id=sid,quote=original['content'],observed_at=when)])
     store.put('objects', owner, key, row)
     return row
 
@@ -44,33 +45,32 @@ def ids(hits):
     return [obj.id for obj, _ in hits]
 
 
-def test_names_and_aliases_rank_above_descriptions_even_when_description_is_longer():
+def test_canonical_names_and_aliases_are_both_recalled():
     store=SubjectMemoryStore()
     named=add_subject(store,'Nila')
     alias=add_subject(store,'Riven',aliases=['Sol'])
-    described=add_subject(store,'Tova',descriptions=['my unusually experienced colleague'])
-    hits=matching_subjects(store,OWNER,['Nila and Sol met my unusually experienced colleague.'],CLOCK)
-    assert set(ids(hits)[:2])=={named['id'],alias['id']}
-    assert ids(hits)[-1]==described['id']
+    described=add_subject(store,'Tova',aliases=['Tov'])
+    hits=matching_subjects(store,OWNER,['Nila and Sol met Tov.'],CLOCK)
+    assert set(ids(hits))=={named['id'],alias['id'],described['id']}
 
 
-def test_context_name_precedes_current_description_and_current_name_precedes_context_name():
+def test_current_alias_and_context_names_are_all_recalled():
     store=SubjectMemoryStore()
-    first=add_subject(store,'Aster');second=add_subject(store,'Briar');third=add_subject(store,'Cairn',descriptions=['a nurse'])
-    assert ids(matching_subjects(store,OWNER,['Aster met a nurse.','Briar replied.'],CLOCK))==[first['id'],second['id'],third['id']]
+    first=add_subject(store,'Aster');second=add_subject(store,'Briar');third=add_subject(store,'Cairn',aliases=['Cai'])
+    assert set(ids(matching_subjects(store,OWNER,['Aster met Cai.','Briar replied.'],CLOCK)))=={first['id'],second['id'],third['id']}
 
 
 def test_repeated_evidence_does_not_change_ranking_or_expand_the_identity_card():
-    store=SubjectMemoryStore();row=add_subject(store,'Tavi',descriptions=['a baker'])
+    store=SubjectMemoryStore();row=add_subject(store,'Tavi',aliases=['Tav'])
     before=ids(matching_subjects(store,OWNER,['Tavi is here.'],CLOCK))
     for index in range(60):
-        original=source('repeat-'+str(index),'Tavi is a baker.')
+        original=source('repeat-'+str(index),'Tavi is also called Tav.')
         store.put('sources',OWNER,original['id'],original)
-        row['aliases'].append(dict(name='Tavi',source_id=original['id'],quote=original['content'],observed_at=PAST))
+        row['aliases'].append(dict(name='Tav',source_id=original['id'],quote=original['content'],observed_at=PAST))
     store.put('objects',OWNER,row['id'],row);snapshot=deepcopy(store.records)
     packet,_=prepare_candidates(store,state('Tavi is here.'))
     assert ids(matching_subjects(store,OWNER,['Tavi is here.'],CLOCK))==before
-    assert [a['name'] for a in packet['subject_catalog'][0]['aliases']]==['Tavi']
+    assert [a['name'] for a in packet['subject_catalog'][0]['aliases']]==['Tav']
     assert len(packet['identity_bases'])==2 and store.records==snapshot
 
 
@@ -109,7 +109,7 @@ def test_candidate_count_is_five_other_subjects_plus_the_existing_user(has_user)
 def test_same_name_candidates_keep_separate_ids_in_the_available_slots():
     store=SubjectMemoryStore()
     for index,role in enumerate(['my neighbor','my colleague']):
-        add_subject(store,'Lior',key='person-'+str(index),descriptions=[role])
+        add_subject(store,'Lior',key='person-'+str(index),aliases=[role])
     packet,_=prepare_candidates(store,state('Lior sent a message.'))
     assert {o['id'] for o in packet['subject_catalog']}=={'person-0','person-1'}
     assert len({b['target_id'] for b in packet['identity_bases']})==2
@@ -134,17 +134,17 @@ def test_foreign_future_subjects_and_context_are_outside_keyword_recall():
 
 def test_navigation_neighbors_do_not_expand_keyword_subject_candidates():
     store=SubjectMemoryStore();a=add_subject(store,'Fara');b=add_subject(store,'Iven')
-    store.put('edges',OWNER,'link',dict(id='link',owner=OWNER,endpoint_ids=[a['id'],b['id']],source_ids=[a['aliases'][0]['source_id']]))
+    store.put('edges',OWNER,'link',dict(id='link',owner=OWNER,endpoint_ids=[a['id'],b['id']],source_ids=[a['references'][0]['source_id']]))
     packet,_=prepare_candidates(store,state('Fara called.'))
     assert [o['id'] for o in packet['subject_catalog']]==[a['id']]
     assert 'existing_connections' not in packet
 
 
 def test_long_identity_evidence_is_excerpted_without_changing_stored_original():
-    store=SubjectMemoryStore();text='unrelated start '*2000+'Neris is my neighbor.'+' unrelated end'*2000
-    row=add_subject(store,'Neris',descriptions=['my neighbor'],text=text);snapshot=deepcopy(store.records)
+    store=SubjectMemoryStore();text='unrelated start '*2000+'Neris is also called Neri.'+' unrelated end'*2000
+    row=add_subject(store,'Neris',aliases=['Neri'],text=text);snapshot=deepcopy(store.records)
     packet,_=prepare_candidates(store,state('Neris called.'));body=render(packet)
-    assert 'Neris is my neighbor.' in body and text not in body
+    assert 'Neris is also called Neri.' in body and text not in body
     assert len(body.encode())<6000 and recall_bytes(packet)<=RECALL_BYTES
     assert store.records==snapshot and packet['source_catalog'][row['aliases'][0]['source_id']]['content']==text
 
@@ -164,7 +164,7 @@ def test_subject_model_view_keeps_identity_evidence_and_excludes_memory_history(
     memory=dict(id='old-memory',content='UNRELATED_MEMORY_MARKER',record_type='fact',entity_ids=[],sources=[source('old-memory-source','UNRELATED_ORIGINAL_MARKER')])
     filled,_=pack_history(store,packet,[memory]);view=subject_stage_state(filled);body=render(filled)
     assert not view['history'] and 'old-memory-source' not in view['source_catalog']
-    assert row['aliases'][0]['source_id'] in view['source_catalog']
+    assert row['references'][0]['source_id'] in view['source_catalog']
     assert 'UNRELATED_MEMORY_MARKER' not in body and 'UNRELATED_ORIGINAL_MARKER' not in body
     assert filled['history']==[memory]
     raw=plan(name='Edda',operation='reuse',target=row['id'],sid='now',basis=filled['identity_bases'][0]['id'])
@@ -178,12 +178,12 @@ def test_subject_wire_schema_and_body_use_the_same_compact_source_scope():
     filled,_=pack_history(store,packet,[memory]);captured=[]
     def create(**body):
         captured.append(body)
-        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[],"connections":[]}',refusal=None))])
+        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[]}',refusal=None))])
     model=SimpleNamespace(model='gpt-4o-mini',timeout=10,calls=[],client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
     maintain(model,filled,deadline=monotonic()+10)
     body=captured[0];text=body['messages'][-1]['content']
-    sources=body['response_format']['json_schema']['schema']['$defs']['SourceCitation']['properties']['source_id']['enum']
-    assert len(sources)==2 and set(sources)=={'S1','S2'}
+    schema=body['response_format']['json_schema']['schema']['$defs']
+    assert schema['SubjectNameDraft']['properties']['source_id']['enum']==['S1']
     assert 'UNRELATED_MEMORY_MARKER' not in text and 'UNRELATED_ORIGINAL_MARKER' not in text
 
 
@@ -242,13 +242,13 @@ def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_vie
 
 
 def test_identity_basis_uses_full_original_when_its_recent_message_view_is_clipped():
-    store=SubjectMemoryStore();text='Opening material. '*1000+'Veyra is my neighbor.'
-    row=add_subject(store,'Veyra',descriptions=['my neighbor'],text=text)
+    store=SubjectMemoryStore();text='Opening material. '*1000+'Veyra is also called Vey.'
+    row=add_subject(store,'Veyra',aliases=['Vey'],text=text)
     original=store.get('sources',OWNER,row['aliases'][0]['source_id'])
     context={**original,'content':original['content'][:100]}
     packet,_=prepare_candidates(store,state('Veyra called.',[context]))
     assert len(packet['identity_bases'])==2
-    assert 'Veyra is my neighbor.' in render(packet)
+    assert 'Veyra is also called Vey.' in render(packet)
     raw=plan(name='Veyra',operation='reuse',target=row['id'],sid='now',basis=packet['identity_bases'][0]['id'])
     result=review(raw,packet,store)
     assert not result['issues'] and result['bindings']['subject_ids']=={'0':row['id']}

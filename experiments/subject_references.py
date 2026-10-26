@@ -34,23 +34,30 @@ def prepare_reference_state(state,store):
             bases.append(dict(id='B'+str(len(bases)+1),target_id=subject['id'],kind=kind,text=text,source_id=sid))
         if current.get('is_user'):
             if current['id']==stable_id('obj_',owner,'user'):add('canonical_user','the current conversation user')
-        eligible={'name':[], 'description':[], 'reference':[]}
-        for field,label,kind in [('aliases','name','name'),('descriptions','text','description')]:
-            seen=set()
-            for supplied in subject.get(field,[]):
-                key=normalized_name(supplied[label])
-                if key in seen:continue
-                # Ground the presented name against the full owned record and its actual original.
-                item=next((row for row in current.get(field,[]) if normalized_name(row[label])==key
-                           and row['source_id']==supplied['source_id']),None)
-                if item is None or parse_time(item['observed_at'])>parse_time(clock):continue
+        eligible={'name':[], 'reference':[]}
+        seen=set()
+        if current.get('name') and not current.get('is_user'):
+            key=normalized_name(current['name'])
+            for item in current.get('references',[]):
+                if parse_time(item['observed_at']) > parse_time(clock):continue
                 sid=item['source_id'];original=store.get('sources',owner,sid) or sources.get(sid)
                 if original is None or original.get('owner',owner)!=owner:continue
-                if parse_time(original.get('message_at') or original['created_at'])>parse_time(clock):continue
-                text=item[label];quote=item.get('quote','')
-                if not quote or quote not in original['content']:continue
-                if not source_name_present(normalized_name(text),normalized_name(quote)):continue
-                seen.add(key);eligible[kind].append((kind,text,sid,original))
+                if parse_time(original.get('message_at') or original['created_at']) > parse_time(clock):continue
+                if item['quote'] in original['content'] and source_name_present(key,normalized_name(item['quote'])):
+                    seen.add(key);eligible['name'].append(('name',current['name'],sid,original));break
+        for supplied in subject.get('aliases',[]):
+            key=normalized_name(supplied['name'])
+            if key in seen:continue
+            item=next((row for row in current.get('aliases',[]) if normalized_name(row['name'])==key
+                       and row['source_id']==supplied['source_id']),None)
+            if item is None or parse_time(item['observed_at'])>parse_time(clock):continue
+            sid=item['source_id'];original=store.get('sources',owner,sid) or sources.get(sid)
+            if original is None or original.get('owner',owner)!=owner:continue
+            if parse_time(original.get('message_at') or original['created_at'])>parse_time(clock):continue
+            text=item['name'];quote=item.get('quote','')
+            if not quote or quote not in original['content']:continue
+            if not source_name_present(normalized_name(text),normalized_name(quote)):continue
+            seen.add(key);eligible['name'].append(('name',text,sid,original))
         for item in current.get('references',[]):
             if parse_time(item['observed_at']) > parse_time(clock):continue
             sid=item['source_id'];original=store.get('sources',owner,sid) or sources.get(sid)
@@ -59,9 +66,8 @@ def prepare_reference_state(state,store):
             if item['quote'] and item['quote'] in original['content']:
                 eligible['reference'].append(('reference',item['quote'],sid,original))
         # Current-reference evidence also supports unnamed identities independently of aliases.
-        selected=[*eligible['name'][:1],*eligible['description'][:1]]
+        selected=[*eligible['name'][:2]]
         if len(selected)<2:selected.extend(eligible['reference'][:2-len(selected)])
-        if len(selected)<2:selected.extend(eligible['name'][1:2] or eligible['description'][1:2])
         for kind,text,sid,original in selected:
             sources[sid]=original;add(kind,text,sid)
     state['current_evidence']=current_evidence(primary)

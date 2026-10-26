@@ -36,14 +36,13 @@ def render_repair(payload):
     import json
     lines = ['REPAIR TASK',
              'Correct the complete previous JSON response using the original task and evidence above.',
-             'Keep each original integer ref attached to its original identity. Consolidate structurally duplicated refs when reported; update their dependent connections.',
-             'Retain the fixed decisions and valid name/description additions listed below.',
-             'Withdraw an unconfirmed failed proposal when CURRENT SOURCE does not support it; remove its dependent connections.',
-             'Recheck connections after correcting their subject refs. Use pending for unresolved identity.',
-             'Return the same subjects/connections JSON contract.']
+             'Keep each original integer ref attached to its original identity. Consolidate structurally duplicated refs when reported.',
+             'Retain the fixed decisions and valid alias additions listed below.',
+             'Withdraw an unconfirmed failed proposal when CURRENT SOURCE does not support it.',
+             'Use pending for unresolved identity.',
+             'Return the same subjects JSON contract.']
     for title, key in [('FIXED SUBJECT DECISIONS', 'fixed_subjects'),
-                       ('FIXED IDENTITY FIELDS AND VALID ADDITIONS', 'fixed_subject_fields'),
-                       ('PROTECTED CONNECTIONS', 'protected_connections')]:
+                       ('FIXED IDENTITY FIELDS AND VALID ADDITIONS', 'fixed_subject_fields')]:
         lines.extend(['', title])
         rows = payload.get(key, [])
         lines.append(json.dumps(rows, ensure_ascii=False) if rows else 'None.')

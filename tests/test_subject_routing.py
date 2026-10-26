@@ -4,8 +4,11 @@ from copy import deepcopy
 import pytest
 
 from experiments.subject_engine import SubjectMemoryStore
+from experiments.subject_maintenance import review
 from experiments.subject_recall import prepare_candidates
+from experiments.subject_repair import build_repair_state, finish_repair
 from remi.providers import ProviderUnavailable
+from tests.test_individual_subjects_experiment import plan
 from tests.test_keyword_subject_recall import OWNER, add_subject, source, state
 
 
@@ -63,13 +66,14 @@ def test_different_names_with_one_id_each_keep_subject_first():
     assert len(packet['maintenance_route']['name_matches']) == 2
 
 
-def test_description_only_matches_keep_subject_first():
+def test_shared_name_alias_exposes_every_namesake_candidate():
     store = SubjectMemoryStore()
-    add_subject(store, 'Lior', key='person-a', descriptions=['a nurse'])
-    add_subject(store, 'Haven', key='person-b', descriptions=['a nurse'])
-    packet, _ = recalled(store, 'I met a nurse.')
+    add_subject(store, 'Lior', key='person-a', aliases=['Lee'])
+    add_subject(store, 'Haven', key='person-b', aliases=['Lee'])
+    packet, _ = recalled(store, 'I met Lee.')
     assert len(packet['subject_catalog']) == 2
-    assert packet['maintenance_route'] == dict(order='subject_first', name_matches=[], collision_groups=[])
+    expected=[dict(name='Lee',subject_ids=['person-a','person-b'])]
+    assert packet['maintenance_route'] == dict(order='subject_first', name_matches=expected, collision_groups=expected)
 
 
 def test_context_only_name_collision_keeps_subject_first():
@@ -168,3 +172,100 @@ def test_multiple_collision_groups_are_preserved_together():
     packet, _ = recalled(store, 'Lior and Haven arrived.')
     assert len(packet['maintenance_route']['collision_groups']) == 2
     assert len(packet['subject_catalog']) == 4
+
+
+def test_same_name_same_kind_reuse_requires_unique_identity_evidence():
+    store = SubjectMemoryStore()
+    for key in ['person-a', 'person-b']:
+        add_subject(store, 'Lior', key=key)
+    packet, _ = recalled(store, 'Lior arrived.')
+    basis = next(row for row in packet['identity_bases'] if row['target_id']=='person-a')
+    raw = plan(name='Lior',kind='person',operation='reuse',target='person-a',sid='now',basis=basis['id'])
+    result = review(raw,packet,store)
+    assert any(issue['code']=='reuse_requires_unique_identity_evidence' for issue in result['issues'])
+    assert not result['bindings']['subject_ids']
+
+
+def test_collision_reuse_is_allowed_when_kind_leaves_one_compatible_identity():
+    store = SubjectMemoryStore()
+    add_subject(store,'Vale',key='person-vale',kind='person')
+    add_subject(store,'Vale',key='animal-vale',kind='animal')
+    packet, _ = recalled(store, 'Vale needs a walk.')
+    basis = next(row for row in packet['identity_bases'] if row['target_id']=='animal-vale')
+    raw = plan(name='Vale',kind='animal',operation='reuse',target='animal-vale',sid='now',basis=basis['id'])
+    result = review(raw,packet,store)
+    assert not result['issues']
+    assert result['bindings']['subject_ids']=={'0':'animal-vale'}
+
+
+def test_unique_alias_allows_reuse_when_canonical_names_collide():
+    store = SubjectMemoryStore()
+    add_subject(store,'Lior',key='person-a',aliases=['Lee'])
+    add_subject(store,'Lior',key='person-b')
+    packet, _ = recalled(store, 'Lee arrived.')
+    basis = next(row for row in packet['identity_bases'] if row['target_id']=='person-a' and row['text']=='Lee')
+    raw = plan(name='Lior',kind='person',operation='reuse',target='person-a',sid='now',basis=basis['id'])
+    result = review(raw,packet,store)
+    assert not result['issues']
+    assert result['bindings']['subject_ids']=={'0':'person-a'}
+
+
+def test_unique_current_name_supplies_its_reuse_basis_programmatically():
+    store=SubjectMemoryStore()
+    add_subject(store,'Lior',key='person-a')
+    packet,_=recalled(store,'Lior is also called Lee.')
+    raw=plan(name='Lior',kind='person',operation='reuse',target='person-a',aliases=['Lee'],sid='now',basis=None)
+    result=review(raw,packet,store)
+    assert not result['issues']
+    assert result['bindings']['subject_ids']=={'0':'person-a'}
+
+
+@pytest.mark.parametrize('stored_count',[0,1])
+def test_named_pending_requires_at_least_two_matching_candidates(stored_count):
+    store=SubjectMemoryStore()
+    for index in range(stored_count):add_subject(store,'Lior',key='person-'+str(index))
+    packet,_=recalled(store,'Lior arrived.')
+    raw=plan(name='Lior',kind='person',operation='pending',target=None,sid='now',basis=None)
+    result=review(raw,packet,store)
+    assert any(issue['code']=='pending_requires_multiple_identity_candidates' for issue in result['issues'])
+    assert not result['bindings']['subject_ids']
+
+
+def test_named_pending_accepts_an_unresolved_same_kind_collision():
+    store=SubjectMemoryStore()
+    for key in ['person-a','person-b']:add_subject(store,'Lior',key=key)
+    packet,_=recalled(store,'Lior arrived.')
+    raw=plan(name='Lior',kind='person',operation='pending',target=None,sid='now',basis=None)
+    result=review(raw,packet,store)
+    assert not result['issues']
+    assert not result['bindings']['subject_ids']
+
+
+def test_create_overlapping_a_recalled_name_requires_one_confirmation():
+    store=SubjectMemoryStore()
+    add_subject(store,'Lior',key='existing-lior')
+    packet,_=recalled(store,'I met a different Lior, also called Lee, today.')
+    raw=plan(name='Lior',kind='person',operation='create',target=None,aliases=['Lee'],sid='now',basis=None)
+    first=review(raw,packet,store)
+    assert any(issue['code']=='create_overlaps_recalled_identity' for issue in first['issues'])
+    assert not first['bindings']['subject_ids']
+
+    repair=build_repair_state(raw,first,packet)
+    confirmed=finish_repair(repair,raw,packet,store)
+    assert not confirmed['issues']
+    assert set(confirmed['bindings']['subject_ids'].values()) != {'existing-lior'}
+
+
+def test_create_overlapping_a_collision_can_be_repaired_to_pending():
+    store=SubjectMemoryStore()
+    for key in ['person-a','person-b']:add_subject(store,'Lior',key=key,aliases=['Lee'])
+    packet,_=recalled(store,'Lee arrived.')
+    raw=plan(name='Lee',kind='person',operation='create',target=None,sid='now',basis=None)
+    first=review(raw,packet,store)
+    assert any(issue['code']=='create_overlaps_recalled_identity' for issue in first['issues'])
+
+    repair=build_repair_state(raw,first,packet)
+    pending=plan(name='Lee',kind='person',operation='pending',target=None,sid='now',basis=None)
+    corrected=finish_repair(repair,pending,packet,store)
+    assert not corrected['issues']
+    assert not corrected['bindings']['subject_ids']

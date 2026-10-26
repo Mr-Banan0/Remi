@@ -72,7 +72,7 @@ def main() -> None:
     os.chdir(runtime)
     from remi.settings import load_environment
     from experiments.subject_providers import experimental_providers
-    from scripts import validate_subject_connections as benchmark
+    from scripts import validate_subject_identities as benchmark
     load_environment(args.env_file.resolve())
     transport=out/'transport';transport.mkdir()
 

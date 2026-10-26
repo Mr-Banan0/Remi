@@ -75,6 +75,8 @@ A continuing relationship or affiliation is a fact with every participating subj
 start, change or end is an event. When the source explicitly supports both an occurrence and a resulting
 continuing state, preserve them as independent items only when both are useful propositions. An untyped
 subject navigation connection carries no relationship meaning and does not replace a fact or event item.
+An occupation, role or social identity is also a fact. Its start, change or end is an event. Subject aliases
+contain alternative names only, so these claims remain complete in memory content.
 
 # Decisions
 create: a new memory; target_id=null, changed_fields=[], participant_mode=retain.
@@ -233,7 +235,7 @@ def provider_plan(model, state, *, deadline):
 def examples():
     def state(text,history=()):
         source=dict(id='now',role='user',content=text,message_at='2029-06-01T10:00:00+00:00')
-        return dict(new_user_source=source,context_sources=[],resolved_subjects=[dict(ref=0,id='person',name='Mira',kind='individual',status='resolved',aliases=[],descriptions=[])],history=list(history),subject_catalog=[dict(id='person',name='Mira')])
+        return dict(new_user_source=source,context_sources=[],resolved_subjects=[dict(ref=0,id='person',name='Mira',kind='person',status='resolved',aliases=[])],history=list(history),subject_catalog=[dict(id='person',name='Mira')])
     old=dict(id='old',record_type='event',content='Mira plans a studio visit on June 3.',entity_ids=['person'],status='planned',planned_at='2029-06-03T00:00:00+00:00',sources=[dict(id='before',role='user',content='Mira plans a studio visit on June 3.',message_at='2029-05-31T10:00:00+00:00')])
     values=[(state('Mira plans another studio visit on June 8.',[old]),dict(content='Mira plans another studio visit on 2029-06-08.',status='planned',time_updates=[dict(field='planned_at',expression='June 8')])),
             (state('Mira moved that studio visit to June 4.',[old]),dict(operation='update',target_id='M1',content='Mira plans the studio visit on 2029-06-04.',status='planned',time_updates=[dict(field='planned_at',expression='June 4')],changed_fields=['content','planned_at'],change_quote='Mira moved that studio visit to June 4.')),

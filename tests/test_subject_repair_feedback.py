@@ -4,14 +4,14 @@ from types import SimpleNamespace
 from time import monotonic
 import json
 import pytest
-from experiments.subject_connections import review, commit, maintain
+from experiments.subject_maintenance import review, commit, maintain
 from experiments.subject_repair import build_repair_state, finish_repair
 from experiments.subject_engine import SubjectGraphEngine
 from tests.test_subject_reference_pipeline import nurse_state, Model, request
-from tests.test_subject_connections_experiment import initial, raw_subjects
+from tests.test_subject_maintenance_experiment import initial, raw_subjects
 from tests.test_individual_subjects_experiment import plan
 from remi.providers import ProviderUnavailable, OutputInvalid
-from scripts.validate_subject_connections import step_state
+from scripts.validate_subject_identities import step_state
 
 
 def bad_reference():
@@ -63,17 +63,17 @@ def test_unavailable_foreign_basis_is_reported_without_its_content():
     assert any(e['code'] in {'subject_source_requires_owned_supplied_original','reference_requires_supplied_basis'} for e in result['issues'])
 
 
-def test_valid_subject_and_dependent_connection_survive_omission_in_repair():
+def test_valid_subject_and_valid_additions_survive_omission_in_repair():
     state,store=initial('Mara owns the cat Sprig, also called Twig.')
     raw=raw_subjects(state);raw['subjects'][0]['name']='invented'
     raw['subjects'][1]['aliases']=[dict(name='Twig',source_id='current')]
     first=review(raw,state,store);repair=build_repair_state(raw,first,state)
-    fixed=deepcopy(raw);fixed['subjects'][0]['name']='Mara';fixed['subjects']=fixed['subjects'][:1];fixed['connections']=[]
+    fixed=deepcopy(raw);fixed['subjects'][0]['name']='Mara';fixed['subjects']=fixed['subjects'][:1]
     final=finish_repair(repair,fixed,state,store);commit(final,store)
-    assert not final['issues'] and len(store.list('objects','experiment'))==2 and len(store.list('edges','experiment'))==1
+    assert not final['issues'] and len(store.list('objects','experiment'))==2 and not store.list('edges','experiment')
     pet=next(o for o in store.list('objects','experiment') if o['name']=='Sprig')
     assert 'Twig' in {a['name'] for a in pet['aliases']}
-    assert {'repair_restored_valid_subject','repair_restored_protected_connections'}<={e['code'] for e in final['repair_audit']}
+    assert 'repair_restored_valid_subject' in {e['code'] for e in final['repair_audit']}
 
 
 def test_valid_subject_ignores_repair_renumbering_and_rewrites():
@@ -87,24 +87,16 @@ def test_valid_subject_ignores_repair_renumbering_and_rewrites():
     assert final['bindings']['subject_ids']['1']==first['bindings']['subject_ids']['1']
 
 
-def test_alias_and_description_failures_preserve_identity_and_valid_additions():
-    state,store=initial('Tansy is my dog, also called Tan.');raw=plan(aliases=['Tan','fiction'],descriptions=['dog','cat'])
+def test_alias_failures_preserve_identity_and_valid_additions():
+    state,store=initial('Tansy is my dog, also called Tan.');raw=plan(kind='animal',aliases=['Tan','fiction','cat'])
     first=review(raw,state,store);assert not first['subject_errors']
-    assert {e['scope'] for e in first['issues']}=={'alias','description'}
+    assert {e['scope'] for e in first['issues']}=={'alias'}
     repair=build_repair_state(raw,first,state);changed=deepcopy(raw)
-    changed['subjects'][0].update(name='other',operation='pending',aliases=[],descriptions=[])
+    changed['subjects'][0].update(name='other',operation='pending',aliases=[])
     final=finish_repair(repair,changed,state,store);commit(final,store)
     obj=store.list('objects','experiment')[0]
-    assert obj['name']=='Tansy' and 'Tan' in {a['name'] for a in obj['aliases']} and [d['text'] for d in obj['descriptions']]==['dog']
+    assert obj['name']=='Tansy' and {a['name'] for a in obj['aliases']}=={'Tan'}
     assert not final['issues']
-
-
-def test_connection_missing_source_and_undeclared_refs_return_both_fields():
-    state,store=initial();raw=raw_subjects(state)
-    raw['connections']=[dict(subject_refs=[0,9],evidence=[dict(source_id='unknown')])]
-    issues=[e for e in review(raw,state,store)['issues'] if e['scope']=='connection']
-    assert {'connection_requires_declared_subject_refs','connection_requires_current_source','connection_requires_owned_supplied_source'}<={e['code'] for e in issues}
-    assert all(e['path'][:2]==['connections',0] for e in issues)
 
 
 def test_duplicate_local_refs_can_be_split_while_valid_siblings_are_protected():
@@ -114,12 +106,12 @@ def test_duplicate_local_refs_can_be_split_while_valid_siblings_are_protected():
     assert not final['issues'] and len(final['bindings']['subject_ids'])==2
 
 
-def test_duplicate_existing_identity_refs_can_be_consolidated_with_rechecked_connections():
+def test_duplicate_existing_identity_refs_can_be_consolidated():
     state,store=initial('Mara owns the cat Sprig.');first=review(raw_subjects(state),state,store);commit(first,store)
     later=step_state(store,'experiment','Mara greeted Sprig.',1,[])
     raw=raw_subjects(later);extra=deepcopy(raw['subjects'][0]);extra['ref']=2;raw['subjects'].append(extra)
     initial_review=review(raw,later,store);repair=build_repair_state(raw,initial_review,later)
-    fixed=deepcopy(raw);fixed['subjects'].pop();fixed['connections']=[dict(subject_refs=[0,1],evidence=[dict(source_id='step-1')])]
+    fixed=deepcopy(raw);fixed['subjects'].pop()
     final=finish_repair(repair,fixed,later,store)
     assert not final['issues'] and len(final['bindings']['subject_ids'])==2
 
@@ -139,8 +131,8 @@ class RepairModel(Model):
         self.payloads.append(deepcopy(state));self.calls.append('subject_repair' if state.get('repair_errors') else 'subject')
         if state.get('repair_errors'):
             if self.fail_repair:self.fail_repair=False;raise ProviderUnavailable('temporary_repair_outage')
-            return plan(name='Nolan',descriptions=['teammate'],sid=state['new_user_source']['id'])
-        return plan(name='absent',descriptions=['teammate'],sid=state['new_user_source']['id'])
+            return plan(name='Nolan',aliases=['Nole'],sid=state['new_user_source']['id'])
+        return plan(name='absent',aliases=['Nole'],sid=state['new_user_source']['id'])
 
 
 def test_full_engine_uses_one_detailed_subject_repair_and_shared_budget():
@@ -209,21 +201,21 @@ def test_still_invalid_repair_remains_unbound_and_has_no_extra_call():
 
 
 
-def test_complete_repair_can_withdraw_unconfirmed_subject_and_dependent_pending_connections():
+def test_complete_repair_can_withdraw_unconfirmed_subject():
     state,store=initial('Mara owns the cat Sprig.');raw=raw_subjects(state)
     raw['subjects'][0]['name']='absent'
     first=review(raw,state,store);repair=build_repair_state(raw,first,state)
-    returned=dict(subjects=[deepcopy(raw['subjects'][1])],connections=deepcopy(raw['connections']))
+    returned=dict(subjects=[deepcopy(raw['subjects'][1])])
     final=finish_repair(repair,returned,state,store);commit(final,store)
     assert not final['issues'] and set(final['bindings']['subject_ids'])=={'1'}
     assert not store.list('edges','experiment')
     assert any(e['code']=='repair_withdrew_unconfirmed_subject' for e in final['repair_audit'])
 
 
-def test_withdrawing_bad_proposal_keeps_a_fully_valid_sibling_connection():
+def test_withdrawing_bad_proposal_keeps_fully_valid_siblings():
     state,store=initial('Mara owns the cat Sprig.');raw=raw_subjects(state)
     bad=deepcopy(raw['subjects'][0]);bad.update(ref=2,name='absent');raw['subjects'].append(bad)
     first=review(raw,state,store);repair=build_repair_state(raw,first,state)
-    returned=dict(subjects=[],connections=[])
+    returned=dict(subjects=[])
     final=finish_repair(repair,returned,state,store);commit(final,store)
-    assert not final['issues'] and len(store.list('objects','experiment'))==2 and len(store.list('edges','experiment'))==1
+    assert not final['issues'] and len(store.list('objects','experiment'))==2 and not store.list('edges','experiment')

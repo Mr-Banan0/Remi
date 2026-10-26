@@ -57,7 +57,7 @@ labels, source S labels and memory M labels describe evidence rather than additi
 Original words and roles establish who a claim is about. A legal handle alone supplies no semantic proof.
 
 # Extract memory content
-fact records a state or attribute, including concrete relationship statements; preference records a like,
+fact records a state or attribute, including occupations, roles, social identities and concrete relationship statements; preference records a like,
 dislike or tendency; experience records an expressed lesson or reusable insight; event records a particular
 occurrence or plan. Keep independently changeable propositions separate. Preserve useful source-reported
 states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
@@ -65,7 +65,9 @@ Each item contains content,record_type,participant_handles,mode,context,status,t
 participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
 pending handles. Use [] for a claim with no particular in-scope participant. Compare current referents,
 roles and original evidence when interpreting a historical mention. The program maintains subject names,
-aliases and navigation connections separately. Extract substantive relationship claims as facts.
+aliases and the broad person/animal/organization kind separately. Extract occupations, roles, specific animal
+categories and substantive relationship claims as facts; extract
+their start, change or end as events.
 Use supporting context and history to interpret the current source. This turn's supported information
 becomes new content; naming-only input and acknowledgements can return items=[]. Each item is appended
 as a new source-reported record. Preserve the meaning of changed plans, completion or cancellation.
@@ -110,8 +112,7 @@ def prepare(state):
         current.append(dict(handle=handle,name=row['name'],kind=row['kind'],status=status,
             is_user=row.get('is_user',row['name'] in {'@user','user'}),
             current_grounding=fragments.get(row.get('current_evidence_id')),
-            aliases=[a['name'] if isinstance(a,dict) else a for a in row.get('aliases',[])],
-            descriptions=[d['text'] if isinstance(d,dict) else d for d in row.get('descriptions',[])]))
+            aliases=[a['name'] if isinstance(a,dict) else a for a in row.get('aliases',[])]))
     catalog={row['id']:row for row in state.get('subject_catalog',[])}
     catalog.update({row['id']:row for row in state.get('resolved_subjects',[]) if row.get('id')})
     historical={}
@@ -312,11 +313,11 @@ def render(packet):
     section('CURRENT PARTICIPANTS')
     if not packet['current_participants']:lines.append('No current participants. Use participant_handles=[].')
     for row in packet['current_participants']:
-        lines.append(f"{row['handle']} | name: {row['name']} | kind: {row['kind']} | status: {row['status']}")
+        name=row['name'] or '(unnamed)'
+        lines.append(f"{row['handle']} | name: {name} | kind: {row['kind']} | status: {row['status']}")
         if row['is_user']:lines.append('    Identity: the canonical conversation user.')
         if row['current_grounding']:lines.append('    Current-source grounding: '+row['current_grounding'])
-        if row['aliases']:lines.append('    Known names: '+'; '.join(row['aliases']))
-        for description in row['descriptions']:lines.append('    Description: '+description)
+        if row['aliases']:lines.append('    Known aliases: '+'; '.join(row['aliases']))
     if packet['historical_participants']:
         section('HISTORICAL PARTICIPANTS — evidence labels')
         for row in packet['historical_participants']:
@@ -343,15 +344,15 @@ def render(packet):
 
 def examples():
     def source(content):return dict(id='example-current',role='user',content=content,message_at='2028-05-10T10:00:00+00:00')
-    def person(ref,name,*,oid=None,status='resolved',descriptions=()):
-        return dict(ref=ref,id=oid,name=name,kind='individual',status=status,aliases=[],descriptions=list(descriptions))
+    def person(ref,name,*,oid=None,status='resolved',aliases=(),kind='person'):
+        return dict(ref=ref,id=oid,name=name,kind=kind,status=status,aliases=list(aliases))
     def output(content,kind,handles,*,condition=None,status=None,time=None):
         return dict(items=[dict(content=content,record_type=kind,participant_handles=handles,mode='asserted',context=condition,
                                status=status,time_expression=time,evidence=[dict(source_id='S1')])],reason='Current source-grounded claim.')
     text='The storage locker code is 7824.'
     fact=dict(new_user_source=source(text),context_sources=[],resolved_subjects=[],history=[])
     preference_text='Cedar the dog prefers warm blankets.'
-    preference=dict(new_user_source=source(preference_text),context_sources=[],resolved_subjects=[person(7,'Cedar',oid='dog-identity',descriptions=['dog'])],
+    preference=dict(new_user_source=source(preference_text),context_sources=[],resolved_subjects=[person(7,'Cedar',oid='dog-identity',kind='animal')],
         subject_catalog=[dict(id='neighbor-identity',name='Cedar')],history=[dict(id='old-neighbor',record_type='fact',content='Cedar is a neighbor.',
             entity_ids=['neighbor-identity'],sources=[dict(id='neighbor-source',role='user',content='Cedar is a neighbor.')]),
             dict(id='old-dog',record_type='fact',content='Cedar is a dog.',entity_ids=['dog-identity'],

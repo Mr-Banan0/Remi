@@ -11,8 +11,6 @@
       },
       "context_sources": [],
       "subject_catalog": [],
-      "relation_catalog": [],
-      "existing_connections": [],
       "history": [],
       "identity_bases": [],
       "source_catalog": {
@@ -24,16 +22,7 @@
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
         }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 44,
-          "text": "My name is Elena, and friends call me Ellie."
-        }
-      ]
+      }
     },
     {
       "subjects": [
@@ -42,7 +31,7 @@
           "operation": "create",
           "target_id": null,
           "name": "@user",
-          "kind": "individual",
+          "kind": "person",
           "aliases": [
             {
               "name": "Elena",
@@ -53,14 +42,12 @@
               "source_id": "S1"
             }
           ],
-          "descriptions": [],
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
           }
         }
-      ],
-      "connections": []
+      ]
     }
   ],
   [
@@ -73,20 +60,33 @@
         "message_at": "2028-02-01T10:00:00+00:00",
         "created_at": "2028-02-01T10:00:00+00:00"
       },
-      "context_sources": [],
+      "context_sources": [
+        {
+          "id": "S2",
+          "role": "user",
+          "content": "I use this memory assistant.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
       "subject_catalog": [
         {
           "id": "E1",
           "name": "user",
-          "kind": "individual",
+          "kind": "person",
           "is_user": true,
           "aliases": [],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "I use this memory assistant.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
         }
       ],
-      "relation_catalog": [],
-      "existing_connections": [],
       "history": [],
       "identity_bases": [
         {
@@ -105,17 +105,16 @@
           "owner": "subject-reference-example",
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
+        },
+        "S2": {
+          "id": "S2",
+          "role": "user",
+          "content": "I use this memory assistant.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
         }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 44,
-          "text": "My name is Elena, and friends call me Ellie."
-        }
-      ]
+      }
     },
     {
       "subjects": [
@@ -124,7 +123,7 @@
           "operation": "reuse",
           "target_id": "E1",
           "name": "@user",
-          "kind": "individual",
+          "kind": "person",
           "aliases": [
             {
               "name": "Elena",
@@ -135,294 +134,12 @@
               "source_id": "S1"
             }
           ],
-          "descriptions": [],
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
           }
         }
-      ],
-      "connections": []
-    }
-  ],
-  [
-    {
-      "new_user_source": {
-        "id": "S1",
-        "role": "user",
-        "content": "I met a different Sol today.",
-        "owner": "subject-reference-example",
-        "message_at": "2028-02-01T10:00:00+00:00",
-        "created_at": "2028-02-01T10:00:00+00:00"
-      },
-      "context_sources": [
-        {
-          "id": "S2",
-          "role": "user",
-          "content": "Sol is my neighbor.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "subject_catalog": [
-        {
-          "id": "E1",
-          "name": "Sol",
-          "kind": "individual",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Sol",
-              "source_id": "S2",
-              "quote": "Sol is my neighbor.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "relation_catalog": [],
-      "existing_connections": [],
-      "history": [],
-      "identity_bases": [
-        {
-          "id": "B1",
-          "target_id": "E1",
-          "kind": "name",
-          "text": "Sol",
-          "source_id": "S2"
-        }
-      ],
-      "source_catalog": {
-        "S1": {
-          "id": "S1",
-          "role": "user",
-          "content": "I met a different Sol today.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        },
-        "S2": {
-          "id": "S2",
-          "role": "user",
-          "content": "Sol is my neighbor.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 28,
-          "text": "I met a different Sol today."
-        }
       ]
-    },
-    {
-      "subjects": [
-        {
-          "ref": 0,
-          "operation": "create",
-          "target_id": null,
-          "name": "@user",
-          "kind": "individual",
-          "aliases": [],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": null
-          }
-        },
-        {
-          "ref": 1,
-          "operation": "create",
-          "target_id": null,
-          "name": "Sol",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "Sol",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": null
-          }
-        }
-      ],
-      "connections": [
-        {
-          "subject_refs": [
-            0,
-            1
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  [
-    {
-      "new_user_source": {
-        "id": "S1",
-        "role": "user",
-        "content": "Riven called.",
-        "owner": "subject-reference-example",
-        "message_at": "2028-02-01T10:00:00+00:00",
-        "created_at": "2028-02-01T10:00:00+00:00"
-      },
-      "context_sources": [
-        {
-          "id": "S2",
-          "role": "user",
-          "content": "Riven is my neighbor; a different Riven is my cousin.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "subject_catalog": [
-        {
-          "id": "E1",
-          "name": "Riven",
-          "kind": "individual",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Riven",
-              "source_id": "S2",
-              "quote": "Riven is my neighbor; a different Riven is my cousin.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "my neighbor",
-              "source_id": "S2",
-              "quote": "Riven is my neighbor; a different Riven is my cousin.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        },
-        {
-          "id": "E2",
-          "name": "Riven",
-          "kind": "individual",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Riven",
-              "source_id": "S2",
-              "quote": "Riven is my neighbor; a different Riven is my cousin.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "my cousin",
-              "source_id": "S2",
-              "quote": "Riven is my neighbor; a different Riven is my cousin.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "relation_catalog": [],
-      "existing_connections": [],
-      "history": [],
-      "identity_bases": [
-        {
-          "id": "B1",
-          "target_id": "E1",
-          "kind": "name",
-          "text": "Riven",
-          "source_id": "S2"
-        },
-        {
-          "id": "B2",
-          "target_id": "E1",
-          "kind": "description",
-          "text": "my neighbor",
-          "source_id": "S2"
-        },
-        {
-          "id": "B3",
-          "target_id": "E2",
-          "kind": "name",
-          "text": "Riven",
-          "source_id": "S2"
-        },
-        {
-          "id": "B4",
-          "target_id": "E2",
-          "kind": "description",
-          "text": "my cousin",
-          "source_id": "S2"
-        }
-      ],
-      "source_catalog": {
-        "S1": {
-          "id": "S1",
-          "role": "user",
-          "content": "Riven called.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        },
-        "S2": {
-          "id": "S2",
-          "role": "user",
-          "content": "Riven is my neighbor; a different Riven is my cousin.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 13,
-          "text": "Riven called."
-        }
-      ]
-    },
-    {
-      "subjects": [
-        {
-          "ref": 0,
-          "operation": "pending",
-          "target_id": null,
-          "name": "Riven",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "Riven",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": null
-          }
-        }
-      ],
-      "connections": []
     }
   ],
   [
@@ -436,29 +153,9 @@
         "created_at": "2028-02-01T10:00:00+00:00"
       },
       "context_sources": [],
-      "subject_catalog": [
-        {
-          "id": "E1",
-          "name": "user",
-          "kind": "individual",
-          "is_user": true,
-          "aliases": [],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "relation_catalog": [],
-      "existing_connections": [],
+      "subject_catalog": [],
       "history": [],
-      "identity_bases": [
-        {
-          "id": "B1",
-          "target_id": "E1",
-          "kind": "canonical_user",
-          "text": "the current conversation user",
-          "source_id": null
-        }
-      ],
+      "identity_bases": [],
       "source_catalog": {
         "S1": {
           "id": "S1",
@@ -468,37 +165,20 @@
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
         }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 60,
-          "text": "My dog Juniper, also called June, lives with my sister Nora."
-        },
-        {
-          "id": "C2",
-          "source_id": "S1",
-          "start": 61,
-          "stop": 78,
-          "text": "My router failed."
-        }
-      ]
+      }
     },
     {
       "subjects": [
         {
           "ref": 0,
-          "operation": "reuse",
-          "target_id": "E1",
+          "operation": "create",
+          "target_id": null,
           "name": "@user",
-          "kind": "individual",
+          "kind": "person",
           "aliases": [],
-          "descriptions": [],
           "reference": {
             "evidence_id": "C1",
-            "basis_id": "B1"
+            "basis_id": null
           }
         },
         {
@@ -506,20 +186,10 @@
           "operation": "create",
           "target_id": null,
           "name": "Juniper",
-          "kind": "individual",
+          "kind": "animal",
           "aliases": [
             {
-              "name": "Juniper",
-              "source_id": "S1"
-            },
-            {
               "name": "June",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "dog",
               "source_id": "S1"
             }
           ],
@@ -533,58 +203,12 @@
           "operation": "create",
           "target_id": null,
           "name": "Nora",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "Nora",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "my sister",
-              "source_id": "S1"
-            }
-          ],
+          "kind": "person",
+          "aliases": [],
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
           }
-        }
-      ],
-      "connections": [
-        {
-          "subject_refs": [
-            0,
-            1
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
-        },
-        {
-          "subject_refs": [
-            0,
-            2
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
-        },
-        {
-          "subject_refs": [
-            1,
-            2
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
         }
       ]
     }
@@ -594,7 +218,7 @@
       "new_user_source": {
         "id": "S1",
         "role": "user",
-        "content": "Arden is a teacher at Cedar School. Her pupils sent a card. Cedar Orchestra is a community orchestra, a different organization.",
+        "content": "My dog is called Tansy.",
         "owner": "subject-reference-example",
         "message_at": "2028-02-01T10:00:00+00:00",
         "created_at": "2028-02-01T10:00:00+00:00"
@@ -603,53 +227,36 @@
         {
           "id": "S2",
           "role": "user",
-          "content": "Cedar School is a public school.",
+          "content": "I adopted a dog.",
           "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
         }
       ],
       "subject_catalog": [
         {
           "id": "E1",
-          "name": "Cedar School",
-          "kind": "organization",
+          "name": null,
+          "kind": "animal",
           "is_user": false,
-          "aliases": [
+          "aliases": [],
+          "references": [
             {
-              "name": "Cedar School",
               "source_id": "S2",
-              "quote": "Cedar School is a public school.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
+              "quote": "I adopted a dog.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
             }
           ],
-          "descriptions": [
-            {
-              "text": "a public school",
-              "source_id": "S2",
-              "quote": "Cedar School is a public school.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "observed_at": "2028-02-01T10:00:00+00:00"
+          "observed_at": "2028-02-01T09:00:00+00:00"
         }
       ],
-      "relation_catalog": [],
-      "existing_connections": [],
       "history": [],
       "identity_bases": [
         {
           "id": "B1",
           "target_id": "E1",
-          "kind": "name",
-          "text": "Cedar School",
-          "source_id": "S2"
-        },
-        {
-          "id": "B2",
-          "target_id": "E1",
-          "kind": "description",
-          "text": "a public school",
+          "kind": "reference",
+          "text": "I adopted a dog.",
           "source_id": "S2"
         }
       ],
@@ -657,7 +264,7 @@
         "S1": {
           "id": "S1",
           "role": "user",
-          "content": "Arden is a teacher at Cedar School. Her pupils sent a card. Cedar Orchestra is a community orchestra, a different organization.",
+          "content": "My dog is called Tansy.",
           "owner": "subject-reference-example",
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
@@ -665,35 +272,66 @@
         "S2": {
           "id": "S2",
           "role": "user",
-          "content": "Cedar School is a public school.",
+          "content": "I adopted a dog.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "create",
+          "target_id": null,
+          "name": "@user",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        },
+        {
+          "ref": 1,
+          "operation": "reuse",
+          "target_id": "E1",
+          "name": "Tansy",
+          "kind": "animal",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": "B1"
+          }
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "Arden is a teacher at Cedar School.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [],
+      "subject_catalog": [],
+      "history": [],
+      "identity_bases": [],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "Arden is a teacher at Cedar School.",
           "owner": "subject-reference-example",
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
         }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 35,
-          "text": "Arden is a teacher at Cedar School."
-        },
-        {
-          "id": "C2",
-          "source_id": "S1",
-          "start": 36,
-          "stop": 59,
-          "text": "Her pupils sent a card."
-        },
-        {
-          "id": "C3",
-          "source_id": "S1",
-          "start": 60,
-          "stop": 127,
-          "text": "Cedar Orchestra is a community orchestra, a different organization."
-        }
-      ]
+      }
     },
     {
       "subjects": [
@@ -702,19 +340,8 @@
           "operation": "create",
           "target_id": null,
           "name": "Arden",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "Arden",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "a teacher",
-              "source_id": "S1"
-            }
-          ],
+          "kind": "person",
+          "aliases": [],
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
@@ -722,366 +349,17 @@
         },
         {
           "ref": 1,
-          "operation": "reuse",
-          "target_id": "E1",
-          "name": "Cedar School",
-          "kind": "organization",
-          "aliases": [
-            {
-              "name": "Cedar School",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": "B1"
-          }
-        },
-        {
-          "ref": 2,
           "operation": "create",
           "target_id": null,
-          "name": "Cedar Orchestra",
+          "name": "Cedar School",
           "kind": "organization",
-          "aliases": [
-            {
-              "name": "Cedar Orchestra",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "a community orchestra",
-              "source_id": "S1"
-            }
-          ],
+          "aliases": [],
           "reference": {
-            "evidence_id": "C3",
+            "evidence_id": "C1",
             "basis_id": null
           }
         }
-      ],
-      "connections": [
-        {
-          "subject_refs": [
-            0,
-            1
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
-        }
       ]
-    }
-  ],
-  [
-    {
-      "new_user_source": {
-        "id": "S1",
-        "role": "user",
-        "content": "Yara wrote: 'I no longer work at Harbor Club.'",
-        "owner": "subject-reference-example",
-        "message_at": "2028-02-01T10:00:00+00:00",
-        "created_at": "2028-02-01T10:00:00+00:00"
-      },
-      "context_sources": [
-        {
-          "id": "S2",
-          "role": "user",
-          "content": "Yara works at Harbor Club.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "subject_catalog": [
-        {
-          "id": "E1",
-          "name": "user",
-          "kind": "individual",
-          "is_user": true,
-          "aliases": [],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        },
-        {
-          "id": "E2",
-          "name": "Yara",
-          "kind": "individual",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Yara",
-              "source_id": "S2",
-              "quote": "Yara works at Harbor Club.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        },
-        {
-          "id": "E3",
-          "name": "Harbor Club",
-          "kind": "organization",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Harbor Club",
-              "source_id": "S2",
-              "quote": "Yara works at Harbor Club.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "relation_catalog": [],
-      "existing_connections": [
-        {
-          "endpoint_ids": [
-            "E2",
-            "E3"
-          ]
-        }
-      ],
-      "history": [],
-      "identity_bases": [
-        {
-          "id": "B1",
-          "target_id": "E1",
-          "kind": "canonical_user",
-          "text": "the current conversation user",
-          "source_id": null
-        },
-        {
-          "id": "B2",
-          "target_id": "E2",
-          "kind": "name",
-          "text": "Yara",
-          "source_id": "S2"
-        },
-        {
-          "id": "B3",
-          "target_id": "E3",
-          "kind": "name",
-          "text": "Harbor Club",
-          "source_id": "S2"
-        }
-      ],
-      "source_catalog": {
-        "S1": {
-          "id": "S1",
-          "role": "user",
-          "content": "Yara wrote: 'I no longer work at Harbor Club.'",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        },
-        "S2": {
-          "id": "S2",
-          "role": "user",
-          "content": "Yara works at Harbor Club.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 45,
-          "text": "Yara wrote: 'I no longer work at Harbor Club."
-        },
-        {
-          "id": "C2",
-          "source_id": "S1",
-          "start": 45,
-          "stop": 46,
-          "text": "'"
-        }
-      ]
-    },
-    {
-      "subjects": [
-        {
-          "ref": 0,
-          "operation": "reuse",
-          "target_id": "E2",
-          "name": "Yara",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "Yara",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": "B2"
-          }
-        },
-        {
-          "ref": 1,
-          "operation": "reuse",
-          "target_id": "E3",
-          "name": "Harbor Club",
-          "kind": "organization",
-          "aliases": [
-            {
-              "name": "Harbor Club",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": "B3"
-          }
-        }
-      ],
-      "connections": [
-        {
-          "subject_refs": [
-            0,
-            1
-          ],
-          "evidence": [
-            {
-              "source_id": "S1"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  [
-    {
-      "new_user_source": {
-        "id": "S1",
-        "role": "user",
-        "content": "The teammate N arrived.",
-        "owner": "subject-reference-example",
-        "message_at": "2028-02-01T10:00:00+00:00",
-        "created_at": "2028-02-01T10:00:00+00:00"
-      },
-      "context_sources": [
-        {
-          "id": "S2",
-          "role": "user",
-          "content": "Nera, also called N, is my teammate.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "subject_catalog": [
-        {
-          "id": "E1",
-          "name": "Nera",
-          "kind": "individual",
-          "is_user": false,
-          "aliases": [
-            {
-              "name": "Nera",
-              "source_id": "S2",
-              "quote": "Nera, also called N, is my teammate.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            },
-            {
-              "name": "N",
-              "source_id": "S2",
-              "quote": "Nera, also called N, is my teammate.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "descriptions": [
-            {
-              "text": "my teammate",
-              "source_id": "S2",
-              "quote": "Nera, also called N, is my teammate.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "observed_at": "2028-02-01T10:00:00+00:00"
-        }
-      ],
-      "relation_catalog": [],
-      "existing_connections": [],
-      "history": [],
-      "identity_bases": [
-        {
-          "id": "B1",
-          "target_id": "E1",
-          "kind": "name",
-          "text": "Nera",
-          "source_id": "S2"
-        },
-        {
-          "id": "B2",
-          "target_id": "E1",
-          "kind": "description",
-          "text": "my teammate",
-          "source_id": "S2"
-        }
-      ],
-      "source_catalog": {
-        "S1": {
-          "id": "S1",
-          "role": "user",
-          "content": "The teammate N arrived.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        },
-        "S2": {
-          "id": "S2",
-          "role": "user",
-          "content": "Nera, also called N, is my teammate.",
-          "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
-        }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 23,
-          "text": "The teammate N arrived."
-        }
-      ]
-    },
-    {
-      "subjects": [
-        {
-          "ref": 0,
-          "operation": "reuse",
-          "target_id": "E1",
-          "name": "Nera",
-          "kind": "individual",
-          "aliases": [
-            {
-              "name": "N",
-              "source_id": "S1"
-            }
-          ],
-          "descriptions": [],
-          "reference": {
-            "evidence_id": "C1",
-            "basis_id": "B2"
-          }
-        }
-      ],
-      "connections": []
     }
   ],
   [
@@ -1100,8 +378,8 @@
           "role": "user",
           "content": "Lumen Collective is our research team.",
           "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
         }
       ],
       "subject_catalog": [
@@ -1110,41 +388,24 @@
           "name": "Lumen Collective",
           "kind": "organization",
           "is_user": false,
-          "aliases": [
+          "aliases": [],
+          "references": [
             {
-              "name": "Lumen Collective",
               "source_id": "S2",
               "quote": "Lumen Collective is our research team.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
+              "observed_at": "2028-02-01T09:00:00+00:00"
             }
           ],
-          "descriptions": [
-            {
-              "text": "research team",
-              "source_id": "S2",
-              "quote": "Lumen Collective is our research team.",
-              "observed_at": "2028-02-01T10:00:00+00:00"
-            }
-          ],
-          "observed_at": "2028-02-01T10:00:00+00:00"
+          "observed_at": "2028-02-01T09:00:00+00:00"
         }
       ],
-      "relation_catalog": [],
-      "existing_connections": [],
       "history": [],
       "identity_bases": [
         {
           "id": "B1",
           "target_id": "E1",
-          "kind": "name",
-          "text": "Lumen Collective",
-          "source_id": "S2"
-        },
-        {
-          "id": "B2",
-          "target_id": "E1",
-          "kind": "description",
-          "text": "research team",
+          "kind": "reference",
+          "text": "Lumen Collective is our research team.",
           "source_id": "S2"
         }
       ],
@@ -1162,26 +423,10 @@
           "role": "user",
           "content": "Lumen Collective is our research team.",
           "owner": "subject-reference-example",
-          "message_at": "2028-02-01T10:00:00+00:00",
-          "created_at": "2028-02-01T10:00:00+00:00"
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
         }
-      },
-      "current_evidence": [
-        {
-          "id": "C1",
-          "source_id": "S1",
-          "start": 0,
-          "stop": 54,
-          "text": "Lumen Collective has renamed itself Beacon Collective;"
-        },
-        {
-          "id": "C2",
-          "source_id": "S1",
-          "start": 55,
-          "stop": 75,
-          "text": "it is the same team."
-        }
-      ]
+      }
     },
     {
       "subjects": [
@@ -1193,22 +438,526 @@
           "kind": "organization",
           "aliases": [
             {
-              "name": "Lumen Collective",
-              "source_id": "S1"
-            },
-            {
               "name": "Beacon Collective",
               "source_id": "S1"
             }
           ],
-          "descriptions": [],
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
           }
         }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "Nico the nurse and Nico the baker are different people.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [],
+      "subject_catalog": [],
+      "history": [],
+      "identity_bases": [],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "Nico the nurse and Nico the baker are different people.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "create",
+          "target_id": null,
+          "name": "Nico",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        },
+        {
+          "ref": 1,
+          "operation": "create",
+          "target_id": null,
+          "name": "Nico",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "The new router arrived today.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [],
+      "subject_catalog": [],
+      "history": [],
+      "identity_bases": [],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "The new router arrived today.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": []
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "I met a different Sol today.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [
+        {
+          "id": "S2",
+          "role": "user",
+          "content": "Sol is my neighbor.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
       ],
-      "connections": []
+      "subject_catalog": [
+        {
+          "id": "E1",
+          "name": "Sol",
+          "kind": "person",
+          "is_user": false,
+          "aliases": [],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "Sol is my neighbor.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "history": [],
+      "identity_bases": [
+        {
+          "id": "B1",
+          "target_id": "E1",
+          "kind": "reference",
+          "text": "Sol is my neighbor.",
+          "source_id": "S2"
+        }
+      ],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "I met a different Sol today.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        },
+        "S2": {
+          "id": "S2",
+          "role": "user",
+          "content": "Sol is my neighbor.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "create",
+          "target_id": null,
+          "name": "@user",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        },
+        {
+          "ref": 1,
+          "operation": "create",
+          "target_id": null,
+          "name": "Sol",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "Riven called.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [
+        {
+          "id": "S2",
+          "role": "user",
+          "content": "One Riven is my neighbor and another Riven is my cousin.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "subject_catalog": [
+        {
+          "id": "E1",
+          "name": "Riven",
+          "kind": "person",
+          "is_user": false,
+          "aliases": [],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "One Riven is my neighbor and another Riven is my cousin.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        },
+        {
+          "id": "E2",
+          "name": "Riven",
+          "kind": "person",
+          "is_user": false,
+          "aliases": [],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "One Riven is my neighbor and another Riven is my cousin.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "history": [],
+      "identity_bases": [
+        {
+          "id": "B1",
+          "target_id": "E1",
+          "kind": "reference",
+          "text": "One Riven is my neighbor and another Riven is my cousin.",
+          "source_id": "S2"
+        },
+        {
+          "id": "B2",
+          "target_id": "E2",
+          "kind": "reference",
+          "text": "One Riven is my neighbor and another Riven is my cousin.",
+          "source_id": "S2"
+        }
+      ],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "Riven called.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        },
+        "S2": {
+          "id": "S2",
+          "role": "user",
+          "content": "One Riven is my neighbor and another Riven is my cousin.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "pending",
+          "target_id": null,
+          "name": "Riven",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": null
+          }
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "Kel repaired a bicycle.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [
+        {
+          "id": "S2",
+          "role": "user",
+          "content": "My neighbor Kellan is also called Kel.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "subject_catalog": [
+        {
+          "id": "E0",
+          "name": "user",
+          "kind": "person",
+          "is_user": true,
+          "aliases": [],
+          "references": [],
+          "observed_at": "2028-02-01T08:00:00+00:00"
+        },
+        {
+          "id": "E1",
+          "name": "Kellan",
+          "kind": "person",
+          "is_user": false,
+          "aliases": [
+            {
+              "name": "Kel",
+              "source_id": "S2",
+              "quote": "My neighbor Kellan is also called Kel.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "My neighbor Kellan is also called Kel.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "history": [],
+      "identity_bases": [
+        {
+          "id": "B0",
+          "target_id": "E0",
+          "kind": "canonical_user",
+          "text": "@user",
+          "source_id": null
+        },
+        {
+          "id": "B1",
+          "target_id": "E1",
+          "kind": "name",
+          "text": "Kel",
+          "source_id": "S2"
+        }
+      ],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "Kel repaired a bicycle.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        },
+        "S2": {
+          "id": "S2",
+          "role": "user",
+          "content": "My neighbor Kellan is also called Kel.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "reuse",
+          "target_id": "E1",
+          "name": "Kellan",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": "B1"
+          }
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "new_user_source": {
+        "id": "S1",
+        "role": "user",
+        "content": "Priya now prefers morning meetings.",
+        "owner": "subject-reference-example",
+        "message_at": "2028-02-01T10:00:00+00:00",
+        "created_at": "2028-02-01T10:00:00+00:00"
+      },
+      "context_sources": [
+        {
+          "id": "S2",
+          "role": "user",
+          "content": "My teammate Priya coordinates with Northwind Club.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "subject_catalog": [
+        {
+          "id": "E0",
+          "name": "user",
+          "kind": "person",
+          "is_user": true,
+          "aliases": [],
+          "references": [],
+          "observed_at": "2028-02-01T08:00:00+00:00"
+        },
+        {
+          "id": "E1",
+          "name": "Priya",
+          "kind": "person",
+          "is_user": false,
+          "aliases": [],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "My teammate Priya coordinates with Northwind Club.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        },
+        {
+          "id": "E2",
+          "name": "Northwind Club",
+          "kind": "organization",
+          "is_user": false,
+          "aliases": [],
+          "references": [
+            {
+              "source_id": "S2",
+              "quote": "My teammate Priya coordinates with Northwind Club.",
+              "observed_at": "2028-02-01T09:00:00+00:00"
+            }
+          ],
+          "observed_at": "2028-02-01T09:00:00+00:00"
+        }
+      ],
+      "history": [],
+      "identity_bases": [
+        {
+          "id": "B0",
+          "target_id": "E0",
+          "kind": "canonical_user",
+          "text": "@user",
+          "source_id": null
+        },
+        {
+          "id": "B1",
+          "target_id": "E1",
+          "kind": "reference",
+          "text": "My teammate Priya coordinates with Northwind Club.",
+          "source_id": "S2"
+        },
+        {
+          "id": "B2",
+          "target_id": "E2",
+          "kind": "reference",
+          "text": "My teammate Priya coordinates with Northwind Club.",
+          "source_id": "S2"
+        }
+      ],
+      "source_catalog": {
+        "S1": {
+          "id": "S1",
+          "role": "user",
+          "content": "Priya now prefers morning meetings.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T10:00:00+00:00",
+          "created_at": "2028-02-01T10:00:00+00:00"
+        },
+        "S2": {
+          "id": "S2",
+          "role": "user",
+          "content": "My teammate Priya coordinates with Northwind Club.",
+          "owner": "subject-reference-example",
+          "message_at": "2028-02-01T09:00:00+00:00",
+          "created_at": "2028-02-01T09:00:00+00:00"
+        }
+      }
+    },
+    {
+      "subjects": [
+        {
+          "ref": 0,
+          "operation": "reuse",
+          "target_id": "E1",
+          "name": "Priya",
+          "kind": "person",
+          "aliases": [],
+          "reference": {
+            "evidence_id": "C1",
+            "basis_id": "B1"
+          }
+        }
+      ]
     }
   ]
 ]

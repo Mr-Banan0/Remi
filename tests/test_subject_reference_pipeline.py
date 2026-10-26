@@ -5,10 +5,10 @@ from time import monotonic
 import pytest
 from fastapi.testclient import TestClient
 from experiments.subject_engine import SubjectGraphEngine,SubjectMemoryStore
-from experiments.subject_connections import review,commit
+from experiments.subject_maintenance import review,commit
 from experiments.subject_identity import recall_state
-from scripts.validate_subject_connections import step_state
-from tests.test_subject_connections_experiment import initial
+from scripts.validate_subject_identities import step_state
+from tests.test_subject_maintenance_experiment import initial
 from tests.test_individual_subjects_experiment import plan
 from remi.models import AddRequest,AddMessage,SearchRequest
 from remi.providers import ProviderUnavailable
@@ -17,21 +17,21 @@ from remi.api import create_app
 
 
 def nurse_state():
-    state,store=initial('One colleague named Esra is a nurse; another named Esra is a baker.')
-    raw=plan(name='Esra',descriptions=['a nurse'])
-    other=deepcopy(raw['subjects'][0]);other.update(ref=1,descriptions=[dict(text='a baker',source_id='current')]);raw['subjects'].append(other)
+    state,store=initial('One person named Esra is also called Ez; another named Esra is also called Essie.')
+    raw=plan(name='Esra',aliases=['Ez'])
+    other=deepcopy(raw['subjects'][0]);other.update(ref=1,aliases=[dict(name='Essie',source_id='current')]);raw['subjects'].append(other)
     first=review(raw,state,store);commit(first,store)
-    later=step_state(store,'experiment','The nurse sent a message.',1,[state['new_user_source']])
-    nurse=next(o for o in later['subject_catalog'] if any(d['text']=='a nurse' for d in o['descriptions']))
-    basis=next(b for b in later['identity_bases'] if b['target_id']==nurse['id'] and b['kind']=='description')
-    raw=plan(name='Esra',operation='reuse',target=nurse['id'],sid='step-1',mention='The nurse',basis=basis['id'])
-    return later,store,raw,nurse['id']
+    later=step_state(store,'experiment','Ez sent a message.',1,[state['new_user_source']])
+    selected=next(o for o in later['subject_catalog'] if any(a['name']=='Ez' for a in o['aliases']))
+    basis=next(b for b in later['identity_bases'] if b['target_id']==selected['id'] and b['text']=='Ez')
+    raw=plan(name='Esra',operation='reuse',target=selected['id'],sid='step-1',mention='Ez',basis=basis['id'])
+    return later,store,raw,selected['id']
 
 
 def test_context_reference_accepts_correct_subject_without_old_name_or_full_description_in_current_source():
     state,store,raw,key=nurse_state();result=review(raw,state,store)
     assert not result['subject_errors'] and result['bindings']['subject_ids']=={'0':key}
-    assert result['state']['new_user_source']['content']=='The nurse sent a message.'
+    assert result['state']['new_user_source']['content']=='Ez sent a message.'
 
 
 @pytest.mark.parametrize('fault',['other_subject_basis','fabricated_mention','historical_mention','missing_basis','foreign_basis_source','future_basis_source'])
@@ -51,12 +51,12 @@ def test_reference_requires_real_current_mention_owned_visible_evidence_and_matc
     assert result['subject_errors'] and not result['bindings']['subject_ids']
 
 
-def test_same_description_retains_distinct_candidates_and_explicit_pending():
-    state,store=initial('My colleagues Ione and Rami are both nurses.')
-    raw=plan(name='Ione',descriptions=['nurses']);second=deepcopy(raw['subjects'][0]);second.update(ref=1,name='Rami');raw['subjects'].append(second)
+def test_shared_name_alias_retains_distinct_candidates_and_explicit_pending():
+    state,store=initial('Ione is also called Lee, and Rami is also called Lee.')
+    raw=plan(name='Ione',aliases=['Lee']);second=deepcopy(raw['subjects'][0]);second.update(ref=1,name='Rami');raw['subjects'].append(second)
     result=review(raw,state,store);commit(result,store)
-    later=step_state(store,'experiment','The nurse arrived.',1,[state['new_user_source']])
-    pending=plan(name='The nurse',operation='pending',sid='step-1')
+    later=step_state(store,'experiment','Lee arrived.',1,[state['new_user_source']])
+    pending=plan(name='Lee',operation='pending',sid='step-1')
     result=review(pending,later,store)
     assert not result['subject_errors'] and not result['bindings']['subject_ids']
     assert len(later['subject_catalog'])==2
@@ -67,9 +67,9 @@ class Model:
     def maintain_subjects(self,state,*,deadline):
         self.calls.append('subject');source=state['new_user_source'];existing=state['subject_catalog']
         if existing:
-            subject=next(o for o in existing if o['name']=='Nolan');basis=next(b for b in state['identity_bases'] if b['target_id']==subject['id'] and b['kind']=='description')
-            return plan(name='Nolan',operation='reuse',target=subject['id'],sid=source['id'],mention='The teammate',basis=basis['id'])
-        return plan(name='Nolan',descriptions=['my teammate'],sid=source['id'])
+            subject=next(o for o in existing if o['name']=='Nolan');basis=next(b for b in state['identity_bases'] if b['target_id']==subject['id'] and b['text']=='Nole')
+            return plan(name='Nolan',operation='reuse',target=subject['id'],sid=source['id'],mention='Nole',basis=basis['id'])
+        return plan(name='Nolan',aliases=['Nole'],sid=source['id'])
     def propose(self,state,*,deadline):
         self.calls.append('memory')
         return dict(items=[dict(content=state['new_user_source']['content'],record_type='fact',subject_refs=[0],mode='asserted',
@@ -78,19 +78,19 @@ class Model:
     def close(self):pass
 
 
-def request(text='Nolan is my teammate.',key='r1'):
+def request(text='Nolan is also called Nole.',key='r1'):
     return AddRequest(request_id=key,user_id='reference-owner',session_id='session',messages=[AddMessage(role='user',content=text,timestamp=1833000000000)])
 
 
 def test_complete_add_reuses_context_reference_and_search_returns_actual_original():
     model=Model();engine=SubjectGraphEngine(model=model)
-    engine.add(request());engine.add(request('The teammate likes jasmine tea.','r2'))
+    engine.add(request());engine.add(request('Nole likes jasmine tea.','r2'))
     assert model.calls==['subject','memory','subject','memory']
     objects=engine.store.list('objects','reference-owner');memories=engine.store.memories('reference-owner')
     assert len(objects)==1 and len(memories)==2
     assert all(m.current.entity_ids==[objects[0]['id']] for m in memories)
     found=engine.search(SearchRequest(user_id='reference-owner',query='jasmine tea',top_k=5),'2029-01-01T00:00:00Z')
-    assert any('The teammate likes jasmine tea.' in item.content for item in found.data)
+    assert any('Nole likes jasmine tea.' in item.content for item in found.data)
 
 
 class FlakyEmbedder:
@@ -123,7 +123,7 @@ def test_new_pipeline_is_callable_through_existing_http_contract():
     with TestClient(create_app(engine,api_key='local-test')) as client:
         response=client.post('/add',json=request().model_dump(),headers={'Authorization':'Bearer local-test'})
         assert response.status_code==200 and response.json()['success']
-        response=client.post('/search',json=dict(user_id='reference-owner',query='teammate',top_k=3),
+        response=client.post('/search',json=dict(user_id='reference-owner',query='Nole',top_k=3),
             headers={'Authorization':'Bearer local-test','x-memory-reference-time':'2029-01-01T00:00:00Z'})
         assert response.status_code==200 and response.json()['data']
 
@@ -157,8 +157,8 @@ def test_graph_search_uses_query_matches_as_seeds_and_keeps_canonical_user_out_o
     engine=SubjectGraphEngine(model=Model());engine.add(request())
     owner='reference-owner';person=engine.store.list('objects',owner)[0]
     user=stable_id('obj_',owner,'user')
-    engine.store.put('objects',owner,user,dict(id=user,owner=owner,name='user',kind='individual',is_user=True,
-        aliases=[],descriptions=[],observed_at=person['observed_at']))
+    engine.store.put('objects',owner,user,dict(id=user,owner=owner,name='user',kind='person',is_user=True,
+        aliases=[],references=[],observed_at=person['observed_at']))
     source=engine.store.list('sources',owner)[0]['id'];pair=sorted([user,person['id']]);key=stable_id('con_',owner,*pair)
     engine.store.put('edges',owner,key,dict(id=key,owner=owner,endpoint_ids=pair,source_ids=[source]))
     captured=[]

@@ -5,7 +5,7 @@ import os
 from openai import OpenAI
 from remi.providers import GPTModel,providers_from_environment
 from remi.settings import private_key
-from experiments.subject_connections import maintain
+from experiments.subject_maintenance import maintain
 from experiments.event_maintenance import provider_plan
 
 

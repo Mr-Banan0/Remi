@@ -4,10 +4,10 @@ import json
 from time import monotonic
 from types import SimpleNamespace
 
-from experiments.subject_connections import PROMPT, REPAIR_PROMPT, examples, maintain, render, review
+from experiments.subject_maintenance import PROMPT, REPAIR_PROMPT, examples, maintain, render, review
 from experiments.subject_repair import build_repair_state
 from remi.identity import normalized_name
-from tests.test_subject_connections_experiment import initial
+from tests.test_subject_maintenance_experiment import initial
 from tests.test_subject_reference_pipeline import nurse_state
 
 
@@ -16,7 +16,7 @@ def capture(state):
     def create(**body):
         requests.append(body)
         return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(
-            content='{"subjects":[],"connections":[]}',refusal=None))])
+            content='{"subjects":[]}',refusal=None))])
     model=SimpleNamespace(model='gpt-4o-mini',timeout=10,calls=[],client=SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
     maintain(model,state,deadline=monotonic()+10)
@@ -29,17 +29,24 @@ def test_current_mention_schema_excludes_the_available_historical_source():
     schema=body['response_format']['json_schema']['schema']['$defs']
     assert schema['IdentityReference']['properties']['evidence_id']['enum']==['C1']
     assert 'evidence' not in schema['SubjectDraft']['properties']
-    assert set(schema['SourceCitation']['properties']['source_id']['enum'])=={'S1','S2'}
+    assert schema['SubjectNameDraft']['properties']['source_id']['enum']==['S1']
     assert schema['IdentityReference']['properties']['evidence_id']['description']
-    assert schema['SubjectDraft']['properties']['descriptions']['description']
+    assert set(schema['SubjectDraft']['properties'])=={'ref','operation','target_id','name','kind','aliases','reference'}
 
 
-def test_subject_prompt_has_only_identity_and_untyped_navigation_responsibilities():
+def test_subject_prompt_has_only_identity_responsibilities():
     lower=PROMPT.casefold()
-    assert 'untyped navigation connections' in lower
-    assert 'stores only two endpoints and current-source evidence' in lower
-    for outside in ['memory stage','record_type','preference','experience',' fact',' event']:
+    assert 'return subjects as json' in lower
+    for outside in ['connection','memory stage','record_type','preference','experience',' fact',' event']:
         assert outside not in lower
+
+
+def test_subject_prompt_distinguishes_candidates_from_current_referents():
+    lower=PROMPT.casefold()
+    assert 'search results rather than a checklist' in lower
+    assert 'identities appearing only in supporting context' in lower
+    assert 'another or different identity selects create' in lower
+    assert 'unresolved collision' in lower
 
 
 def test_normal_and_repair_requests_share_core_contract_with_one_on_demand_repair_task():
@@ -74,13 +81,13 @@ def test_demonstration_additions_are_novel_values_with_owned_current_source_evid
         catalog={s['id']:s for s in packet['subject_catalog']}
         primary=packet['new_user_source']
         for subject in output['subjects']:
-            assert subject['reference']['evidence_id'] in {row['id'] for row in packet['current_evidence']}
+            from experiments.subject_references import current_evidence
+            assert subject['reference']['evidence_id'] in {row['id'] for row in current_evidence(primary)}
             stored=catalog.get(subject['target_id'],{})
-            for field,label in [('aliases','name'),('descriptions','text')]:
-                known={normalized_name(x[label]) for x in stored.get(field,[])}
-                if field=='aliases' and stored:known.add(normalized_name(stored['name']))
-                for value in subject[field]:
-                    assert value['source_id']==primary['id'] and value[label] in primary['content']
+            known={normalized_name(x['name']) for x in stored.get('aliases',[])}
+            if stored.get('name'):known.add(normalized_name(stored['name']))
+            for value in subject['aliases']:
+                assert value['source_id']==primary['id'] and value['name'] in primary['content']
 
 
 def test_source_delimiters_preserve_literal_code_and_instruction_like_data():

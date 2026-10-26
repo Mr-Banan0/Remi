@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import json
 import pytest
 
-from experiments.subject_connections import SubjectConnectionPlan, maintain, review, commit, examples
+from experiments.subject_maintenance import SubjectPlan, maintain, review, commit, examples
 from experiments.subject_engine import SubjectMemoryStore
 from experiments.subject_identity import SubjectRecord, matching_subjects, visible_subject
 from experiments.subject_references import current_evidence, prepare_reference_state
@@ -27,14 +27,13 @@ def packet(text, store=None, *, sid='current', role='user', when=NOW):
     return prepare_reference_state(state,store),store
 
 
-def choice(name, *, operation='create', target=None, basis=None, fragment='C1', names=(), descriptions=(), sid='current', ref=0):
-    return dict(ref=ref,operation=operation,target_id=target,name=name,kind='individual',
+def choice(name, *, operation='create', target=None, basis=None, fragment='C1', names=(), sid='current', ref=0, kind='person'):
+    return dict(ref=ref,operation=operation,target_id=target,name=name,kind=kind,
                 aliases=[dict(name=value,source_id=sid) for value in names],
-                descriptions=[dict(text=value,source_id=sid) for value in descriptions],
                 reference=dict(evidence_id=fragment,basis_id=basis))
 
 
-def output(*rows):return dict(subjects=list(rows),connections=[])
+def output(*rows):return dict(subjects=list(rows))
 
 
 @pytest.mark.parametrize('text',[
@@ -58,10 +57,12 @@ def test_fragments_copy_exact_source_offsets_and_have_stable_ids(text):
 def test_create_and_pending_select_current_fragment_with_null_basis(operation):
     state,store=packet('Mira arrived.');raw=output(choice('Mira',operation=operation,names=['Mira']))
     result=review(raw,state,store)
-    assert not result['issues']
+    if operation=='create':assert not result['issues']
+    else:assert any(issue['code']=='pending_requires_multiple_identity_candidates' for issue in result['issues'])
     local=result['state']['proposal']['subjects'][0]
     assert local['current_reference_valid'] and local['current_evidence_id']=='C1'
-    assert local['evidence']==[dict(source_id='current',quote='Mira arrived.')]
+    expected=[dict(source_id='current',quote='Mira arrived.')] if operation=='create' else []
+    assert local['evidence']==expected
     assert bool(result['bindings']['subject_ids'])==(operation=='create')
 
 
@@ -97,13 +98,13 @@ def test_invalid_current_fragment_is_separate_from_other_identity_errors():
 
 def test_unnamed_subject_retains_reference_basis_without_name_alias():
     state,store=packet('Her daughter arrived.',sid='first',when=PAST)
-    first=review(output(choice('Her daughter',sid='first')),state,store);commit(first,store)
+    first=review(output(choice(None,sid='first')),state,store);commit(first,store)
     key=first['bindings']['subject_ids']['0'];saved=store.get('objects',OWNER,key)
     assert saved['aliases']==[] and saved['references'][0]['quote']=='Her daughter arrived.'
     later,store=packet('Her daughter called.',store,sid='later')
     basis=next(row for row in later['identity_bases'] if row['target_id']==key)
     assert basis['kind']=='reference'
-    result=review(output(choice('Her daughter',operation='reuse',target=key,basis=basis['id'],sid='later')),later,store)
+    result=review(output(choice(None,operation='reuse',target=key,basis=basis['id'],sid='later')),later,store)
     assert not result['issues'] and result['bindings']['subject_ids']=={'0':key}
     assert len(result['bindings']['entity_rows'][0]['references'])==2
     assert not result['bindings']['entity_rows'][0]['aliases']
@@ -111,36 +112,36 @@ def test_unnamed_subject_retains_reference_basis_without_name_alias():
 
 def test_short_name_is_added_explicitly_and_recalled_in_a_later_turn():
     state,store=packet('Mireya Solano joined.',sid='first',when=PAST)
-    first=review(output(choice('Mireya Solano',names=['Mireya Solano'],sid='first')),state,store);commit(first,store)
+    first=review(output(choice('Mireya Solano',sid='first')),state,store);commit(first,store)
     key=first['bindings']['subject_ids']['0']
     later,store=packet('Mireya called.',store)
     basis=next(row for row in later['identity_bases'] if row['target_id']==key)
     row=choice('Mireya Solano',operation='reuse',target=key,basis=basis['id'],names=['Mireya'])
     second=review(output(row),later,store);commit(second,store)
-    assert not second['issues'] and {a['name'] for a in store.get('objects',OWNER,key)['aliases']}=={'Mireya Solano','Mireya'}
+    assert not second['issues'] and {a['name'] for a in store.get('objects',OWNER,key)['aliases']}=={'Mireya'}
     assert [obj.id for obj,_ in matching_subjects(store,OWNER,['Mireya sent a message.'],NOW)]==[key]
     repeated=review(output(row),later,store);commit(repeated,store)
-    assert len(store.get('objects',OWNER,key)['aliases'])==2
+    assert len(store.get('objects',OWNER,key)['aliases'])==1
 
 
 def test_reuse_reference_never_becomes_a_name_alias():
     state,store=packet('Mireya Solano is my colleague.',sid='first',when=PAST)
-    first=review(output(choice('Mireya Solano',names=['Mireya Solano'],sid='first')),state,store);commit(first,store)
+    first=review(output(choice('Mireya Solano',sid='first')),state,store);commit(first,store)
     key=first['bindings']['subject_ids']['0'];later,store=packet('My colleague helped me.',store)
     basis=next(row for row in later['identity_bases'] if row['target_id']==key)
     result=review(output(choice('Mireya Solano',operation='reuse',target=key,basis=basis['id'])),later,store)
     assert not result['issues']
-    assert {row['name'] for row in result['bindings']['entity_rows'][0]['aliases']}=={'Mireya Solano'}
+    assert not result['bindings']['entity_rows'][0]['aliases']
 
 
-def test_historical_name_and_description_additions_are_rejected_independently():
+def test_historical_alias_additions_are_rejected_independently():
     state,store=packet('Mira is a designer.',sid='first',when=PAST)
     first=review(output(choice('Mira',names=['Mira'],sid='first')),state,store);commit(first,store)
     key=first['bindings']['subject_ids']['0'];later,store=packet('Mira called.',store)
     basis=next(row for row in later['identity_bases'] if row['target_id']==key)
-    result=review(output(choice('Mira',operation='reuse',target=key,basis=basis['id'],names=['Mira'],
-                                descriptions=['designer'],sid='first')),later,store)
-    assert not result['subject_errors'] and result['alias_issues'] and result['description_issues']
+    result=review(output(choice('Mira',operation='reuse',target=key,basis=basis['id'],
+                                names=['Mira','designer'],sid='first')),later,store)
+    assert not result['subject_errors'] and result['alias_issues']
 
 
 def test_reference_basis_must_belong_to_selected_subject():
@@ -170,7 +171,7 @@ def test_schema_fewshot_and_repair_use_one_numbered_reference_contract():
     requests=[]
     def create(**request):
         requests.append(request)
-        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[],"connections":[]}',refusal=None))])
+        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[]}',refusal=None))])
     model=SimpleNamespace(model='gpt-4o-mini',timeout=5,calls=[],client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
     maintain(model,state,deadline=monotonic()+5)
     defs=requests[0]['response_format']['json_schema']['schema']['$defs']
@@ -178,7 +179,7 @@ def test_schema_fewshot_and_repair_use_one_numbered_reference_contract():
     assert defs['IdentityReference']['properties']['evidence_id']['enum']==['C1','C2']
     assert 'evidence' not in defs['SubjectDraft']['properties']
     for packet_,answer in examples():
-        SubjectConnectionPlan.model_validate(answer)
+        SubjectPlan.model_validate(answer)
         assert all(row['reference']['evidence_id'] in {x['id'] for x in current_evidence(packet_['new_user_source'])} for row in answer['subjects'])
     broken=output(choice('Mira',fragment='C999'));initial=review(broken,state,store)
     repair=build_repair_state(broken,initial,state)
@@ -255,7 +256,7 @@ def test_actual_sdk_schema_ref_nodes_have_no_sibling_keywords(with_basis):
     requests=[]
     def create(**request):
         requests.append(request)
-        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[],"connections":[]}',refusal=None))])
+        return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content='{"subjects":[]}',refusal=None))])
     model=SimpleNamespace(model='gpt-4o-mini',timeout=5,calls=[],client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
     maintain(model,state,deadline=monotonic()+5)
     schema=requests[0]['response_format']['json_schema']['schema']
