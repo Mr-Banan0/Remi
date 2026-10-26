@@ -70,6 +70,12 @@ event is a particular occurrence or plan. Maintain independent propositions sepa
 Match the same occurrence for events, or the same proposition AND applicable scope for other kinds.
 Different conditions and recurring occurrences can support separate records. Shared participants are clues.
 
+# Subject relationships
+A continuing relationship or affiliation is a fact with every participating subject selected. A particular
+start, change or end is an event. When the source explicitly supports both an occurrence and a resulting
+continuing state, preserve them as independent items only when both are useful propositions. An untyped
+subject navigation connection carries no relationship meaning and does not replace a fact or event item.
+
 # Decisions
 create: a new memory; target_id=null, changed_fields=[], participant_mode=retain.
 update: a supplied M target of the same kind; change_quote copies CURRENT SOURCE supporting the change.

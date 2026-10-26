@@ -1,4 +1,4 @@
-"""Small keyword identity candidates and optional memory evidence from one owned snapshot."""
+"""Small keyword identity candidates and source-backed identity evidence from one owned snapshot."""
 from experiments.maintenance_clock import maintenance_clock
 from copy import deepcopy
 import re
@@ -57,13 +57,13 @@ def subject_stage_state(state):
     state = deepcopy(state)
     state['context_sources'] = state.get('context_sources', [])[-CONTEXT_LIMIT:]
     state['history'] = []
+    state.pop('existing_connections', None)
+    state.pop('relation_catalog', None)
     originals = {row['id']: row for row in [state['new_user_source'], *state['context_sources']]}
     for basis in state.get('identity_bases', []):
         sid = basis.get('source_id')
         if sid in state.get('source_catalog', {}):
             originals[sid] = state['source_catalog'][sid]
-    for card in state['history']:
-        originals.update({source['id']: source for source in card.get('sources', [])})
     state['source_catalog'] = originals
     return state
 
@@ -123,17 +123,7 @@ def prepare_candidates(store, state):
         selected_ids.add(obj.id)
     selected = [(obj, matches) for obj, matches in hits if obj.id in selected_ids]
     catalog = [compact_subject(obj, [normalized_name(text) for text in texts]) for obj, _ in selected]
-    ids = {row['id'] for row in catalog}
-    connections = []
-    for row in store.list('edges', owner):
-        pair = row.get('endpoint_ids')
-        if not pair or not set(pair) <= ids:
-            continue
-        evidence = [store.get('sources', owner, sid) for sid in row['source_ids']]
-        if evidence and all(source is not None and visible(source) for source in evidence):
-            connections.append(dict(endpoint_ids=pair))
-    state.update(subject_catalog=catalog, history=[], relation_catalog=[], existing_connections=connections,
-                 maintenance_route=route,
+    state.update(subject_catalog=catalog, history=[], maintenance_route=route,
                  subject_recall=dict(candidate_limit=SUBJECT_LIMIT, matched_count=len(hits), truncated=len(hits)>len(selected)))
 
     def rebuild():

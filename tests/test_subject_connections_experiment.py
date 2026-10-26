@@ -3,7 +3,9 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from experiments.subject_connections import ConnectionProposal,SubjectConnectionPlan,examples,experiment_state,review,commit,render,MEMORY_PROMPT
+from experiments.subject_connections import ConnectionProposal,SubjectConnectionPlan,examples,review,commit,render,PROMPT
+from experiments.event_maintenance import PROMPT as EVENT_PROMPT
+from experiments.subject_references import prepare_reference_state
 from scripts.validate_subject_connections import prepare_state
 from scripts.validate_subject_connections import step_state
 from tests.helpers import direct_subjects_fixture
@@ -11,7 +13,7 @@ from tests.helpers import direct_subjects_fixture
 
 def initial(text='Mara owns the cat Sprig.'):
     state,store,ids=prepare_state(dict(new_user_source=dict(id='current',role='user',content=text),context_sources=[],subject_catalog=[],relation_catalog=[]),'experiment')
-    return experiment_state(state,store),store
+    return prepare_reference_state(state,store),store
 
 
 def raw_subjects(state,names=('Mara','Sprig'),pending=()):
@@ -77,7 +79,7 @@ def test_few_shots_execute_identity_checks_and_undirected_compilation():
         SubjectConnectionPlan.model_validate(raw)
         state,store,ids=prepare_state(payload,'fewshot-connection')
         # The independent example catalog uses short IDs, then prepare_state remaps storage IDs.
-        state=experiment_state(state,store)
+        state=prepare_reference_state(state,store)
         raw=deepcopy(raw)
         for row in raw['subjects']:
             if row['target_id']:row['target_id']=ids[row['target_id']]
@@ -91,10 +93,13 @@ def test_few_shots_execute_identity_checks_and_undirected_compilation():
         assert not result['alias_issues'] and not result['description_issues'] and not result['connection_errors']
 
 
-def test_memory_contract_retains_relationship_claims_and_removes_the_old_exclusion():
-    assert 'Extract concrete\nrelationship statements as facts' in MEMORY_PROMPT
-    assert 'only naming or continuing' not in MEMORY_PROMPT
+def test_subject_contract_keeps_relation_semantics_in_memory_maintenance():
+    assert 'A continuing relationship or affiliation is a fact' in EVENT_PROMPT
+    assert 'A particular\nstart, change or end is an event' in EVENT_PROMPT
+    assert 'memory stage' not in PROMPT.casefold()
+    assert ' fact' not in PROMPT.casefold() and 'preference' not in PROMPT.casefold()
+    assert 'event' not in PROMPT.casefold()
     state,store=initial();text=render(state)
     assert 'EXISTING CONNECTIONS' not in text and 'EXISTING RELATIONSHIPS' not in text
-    assert 'EXISTING CONNECTIONS' in render(next(packet for packet,output in examples() if packet.get('existing_connections')))
+    assert 'EXISTING CONNECTIONS' not in render(next(packet for packet,output in examples() if packet.get('existing_connections')))
     assert 'message_at' not in text and 'observed_at' not in text

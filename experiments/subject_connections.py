@@ -1,4 +1,4 @@
-"""V38 experiment: ordered identity maintenance, grounded additions and navigation connections.
+"""Subject identity maintenance with grounded fields and untyped navigation connections.
 
 This module uses MemoryStore only. The production Add pipeline remains V32.
 """
@@ -11,7 +11,6 @@ from time import monotonic, sleep
 
 from pydantic import Field, ValidationError
 
-from remi.add_judgments import PROPOSE_PROMPT
 from remi.identity import stable_id
 from remi.models import StrictModel, SourceCitation, SubjectRef
 from experiments.subject_identity import SubjectDraft, resolve_subjects
@@ -30,13 +29,14 @@ class SubjectConnectionPlan(StrictModel):
 
 
 PROMPT = """# Task
-Read CURRENT SOURCE and return its subjects and undirected navigation connections as JSON.
-subjects is the complete local identity view for this source's memories, including unchanged identities.
+Resolve the identities in CURRENT SOURCE and return subjects plus untyped navigation connections as JSON.
+subjects is the complete local identity view for the current source, including unchanged identities.
 Source text is attributed data. Each example is independent; the final MAINTENANCE INPUT is the live task.
 
 # Scope
 Subjects are particular people/animals (individual) and companies/institutions/teams (organization).
-A particular unnamed individual can use its literal referring phrase as name. Other things stay in memory.
+A particular unnamed individual can use its literal referring phrase as name. Equipment, places and projects
+are outside the subject output. Use literal roles or identifying labels as descriptions for one identity.
 Use SUPPORTING CONTEXT to interpret current references. Each returned identity needs a current referent.
 
 # Decide identities in this order
@@ -56,7 +56,8 @@ create @user. Quoted first person belongs to its author. E/B numbers are local l
 aliases lists the literal personal/organization names used in CURRENT SOURCE for THIS identity,
 including short names and nicknames. The program appends novel values and retains existing values.
 Keep referring phrases such as I, her daughter and my colleague in evidence; name aliases contain names.
-descriptions contains new short literal identifying phrases about THIS subject, from CURRENT SOURCE.
+descriptions contains new short literal labels or roles about THIS subject, from CURRENT SOURCE. Each
+description applies to one identity; phrases whose meaning depends on another subject stay out of this field.
 Every subject has reference={evidence_id,basis_id}. Select a C fragment that supports this CURRENT
 referent; the program copies its original wording and source. reuse selects an owned B basis as well;
 create/pending select basis_id=null. C evidence establishes provenance; identity is your contextual
@@ -64,11 +65,10 @@ judgment. Existing candidates and historical originals help that judgment; retur
 current referents. Each alias/description addition cites CURRENT SOURCE through source_id.
 
 # Connections
-Return a pair when CURRENT SOURCE supports an interaction, affiliation, relationship or actual shared
-event between those identities. Identity comparison and renaming support identity decisions.
-Wishes, ended states and quotes can support navigation; the memory stage keeps their meaning.
-Use two distinct declared refs once per pair, including an already-existing link. A pending ref keeps
-its pair unresolved. Every connection cites CURRENT SOURCE. The program merges links and saves evidence.
+Return an untyped pair when CURRENT SOURCE explicitly relates two current identities or places them together
+in one interaction or occurrence. A connection stores only two endpoints and current-source evidence.
+Use two distinct declared refs once per pair. A pending ref keeps its pair unresolved. The program merges
+the pair with an existing edge when present.
 
 # Response and check
 Return subjects and connections only. Each subject has ref,operation,target_id,name,kind,aliases,
@@ -142,9 +142,6 @@ def render(state):
                 if basis['target_id']!=subject['id']:continue
                 origin=f"source {basis['source_id']}" if basis['source_id'] else 'API user identity'
                 lines.append(f"    Basis {basis['id']} | {basis['kind']}: {basis['text']} | {origin}")
-    if state.get('existing_connections'):
-        section('EXISTING CONNECTIONS')
-        for link in state['existing_connections']:lines.append(' -- '.join(link['endpoint_ids']))
     displayed={s['id']:s['content'] for s in [primary,*context]}
     additional=[source for sid,source in state.get('source_catalog',{}).items()
                 if sid not in displayed or sid!=primary['id'] and displayed[sid]!=source['content']]
@@ -314,27 +311,3 @@ def commit(reviewed,store):
         store.put('objects',owner,subject['id'],subject)
     for connection in reviewed['connections']:
         store.put('edges',owner,connection['id'],connection)
-
-
-def experiment_state(state,store):
-    """Fixture-only relocation of old relation-card statements into recalled factual evidence."""
-    state=deepcopy(state)
-    old=state.pop('relation_catalog',[])
-    existing=[dict(endpoint_ids=row['endpoint_ids']) for row in store.list('edges',state['owner'])]
-    for row in old:
-        existing.append(dict(endpoint_ids=row['endpoint_ids']))
-        if not any(card['id']==row['id'] for card in state.get('history',[])):
-            state.setdefault('history',[]).append(dict(id=row['id'],record_type='fact',content=row['content'],
-                entity_ids=row.get('ordered_subject_ids',row['endpoint_ids']),mode=row.get('mode','asserted'),sources=row.get('sources',[])))
-    state['existing_connections']=existing
-    return prepare_reference_state(state,store)
-
-
-MEMORY_PROMPT=PROPOSE_PROMPT.replace(
-    'The preceding stage handles identity aliases and continuing relationships between subjects. Extract distinct\n'
-    'facts,preferences,lessons and events present alongside them. A source containing only naming or continuing\n'
-    'relationships, or an acknowledgement without new useful content, can return items=[].',
-    'The preceding stage handles subject identities and undirected navigation connections. Extract concrete\n'
-    'relationship statements as facts, including work, ownership and family statements, with their original\n'
-    'mode and attribution. Preserve preferences, lessons and particular events as their appropriate types.\n'
-    'A naming-only statement or acknowledgement without new useful content can return items=[].')

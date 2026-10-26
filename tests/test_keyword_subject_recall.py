@@ -137,7 +137,7 @@ def test_navigation_neighbors_do_not_expand_keyword_subject_candidates():
     store.put('edges',OWNER,'link',dict(id='link',owner=OWNER,endpoint_ids=[a['id'],b['id']],source_ids=[a['aliases'][0]['source_id']]))
     packet,_=prepare_candidates(store,state('Fara called.'))
     assert [o['id'] for o in packet['subject_catalog']]==[a['id']]
-    assert not packet['existing_connections']
+    assert 'existing_connections' not in packet
 
 
 def test_long_identity_evidence_is_excerpted_without_changing_stored_original():

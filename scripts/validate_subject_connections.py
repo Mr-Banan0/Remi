@@ -6,7 +6,9 @@ from pathlib import Path
 from time import monotonic
 from copy import deepcopy
 
-from experiments.subject_connections import maintain,review,commit,experiment_state,MEMORY_PROMPT
+from experiments.subject_connections import maintain,review,commit
+from experiments.subject_references import prepare_reference_state
+from remi.add_judgments import PROPOSE_PROMPT
 from scripts.validate_subject_identity import prepare_state as prepare_legacy_fixture
 from experiments.subject_identity import CONTEXT_LIMIT, SubjectRecord, recall_state, matching_subjects
 from experiments.subject_repair import build_repair_state,finish_repair
@@ -18,6 +20,28 @@ from remi.storage import MemoryStore
 from remi.add_pipeline import AddPipeline
 from remi.engine import MemoryEngine
 from remi.models import ProposalDraft
+
+
+def experiment_state(state,store):
+    """Adapt historical relation-card fixtures inside the historical validator."""
+    state=deepcopy(state);old=state.pop('relation_catalog',[])
+    state['existing_connections']=[dict(endpoint_ids=row['endpoint_ids']) for row in store.list('edges',state['owner'])]
+    for row in old:
+        state['existing_connections'].append(dict(endpoint_ids=row['endpoint_ids']))
+        if not any(card['id']==row['id'] for card in state.get('history',[])):
+            state.setdefault('history',[]).append(dict(id=row['id'],record_type='fact',content=row['content'],
+                entity_ids=row.get('ordered_subject_ids',row['endpoint_ids']),mode=row.get('mode','asserted'),sources=row.get('sources',[])))
+    return prepare_reference_state(state,store)
+
+
+MEMORY_PROMPT=PROPOSE_PROMPT.replace(
+    'The preceding stage handles identity aliases and continuing relationships between subjects. Extract distinct\n'
+    'facts,preferences,lessons and events present alongside them. A source containing only naming or continuing\n'
+    'relationships, or an acknowledgement without new useful content, can return items=[].',
+    'The preceding stage handles subject identities and untyped navigation connections. Extract continuing\n'
+    'relationship statements as facts and relationship changes as events, preserving participants, source mode\n'
+    'and attribution. Preserve preferences and lessons as their appropriate types.\n'
+    'A naming-only statement or acknowledgement without new useful content can return items=[].')
 
 
 # Fixture adaptation stays in the evaluator; model decisions use the two-kind contract only.

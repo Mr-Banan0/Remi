@@ -1,4 +1,4 @@
-"""V42 subject-first event-maintenance experimental Add/Search using individuals, evidence references and navigation links.
+"""V45 subject-first memory maintenance with program recall and untyped subject links.
 
 The production entry point remains unchanged. Shared memory/date/retrieval algorithms are reused.
 """
@@ -24,7 +24,7 @@ from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-programmatic-unbound-recall-v44'
+PIPELINE='G11-untyped-subject-links-v45'
 
 
 class SubjectMemoryStore(MemoryStore):

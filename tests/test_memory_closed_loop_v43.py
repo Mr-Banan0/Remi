@@ -45,6 +45,26 @@ def test_unbound_event_gains_subject_without_changing_id():
     assert unit(e,'bound')['memory_recall_trace']['lanes'][memory.id]=='unbound'
 
 
+def test_untyped_subject_link_and_relationship_fact_are_saved_independently():
+    model=FlowModel();model.people=['Mara','Cedar Lab'];engine=SubjectGraphEngine(model=model)
+    base_maintain=model.maintain_subjects
+    def subjects(state,*,deadline):
+        result=base_maintain(state,deadline=deadline)
+        result['subjects'][1]['kind']='organization'
+        result['connections']=[dict(subject_refs=[0,1],evidence=[dict(source_id=state['new_user_source']['id'])])]
+        return result
+    model.maintain_subjects=subjects
+    model.writer=lambda state:[row(state,record_type='fact',status=None,subject_refs=[0,1],
+        content='Mara works at Cedar Lab.')]
+    engine.add(req('Mara works at Cedar Lab.','relationship'))
+    link=next(row for row in engine.store.list('edges',OWNER) if 'endpoint_ids' in row)
+    memory=engine.store.memories(OWNER)[0]
+    assert set(link)=={'id','owner','endpoint_ids','source_ids'}
+    assert len(link['endpoint_ids'])==2
+    assert memory.record_type=='fact' and len(memory.current.entity_ids)==2
+    assert memory.current.content=='Mara works at Cedar Lab.'
+
+
 def test_both_recall_lanes_have_budget_and_foreign_memories_are_excluded():
     e,m=lifecycle();base=e.store.memories(OWNER)[0]
     for index in range(12):

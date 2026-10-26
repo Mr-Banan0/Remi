@@ -34,6 +34,14 @@ def test_current_mention_schema_excludes_the_available_historical_source():
     assert schema['SubjectDraft']['properties']['descriptions']['description']
 
 
+def test_subject_prompt_has_only_identity_and_untyped_navigation_responsibilities():
+    lower=PROMPT.casefold()
+    assert 'untyped navigation connections' in lower
+    assert 'stores only two endpoints and current-source evidence' in lower
+    for outside in ['memory stage','record_type','preference','experience',' fact',' event']:
+        assert outside not in lower
+
+
 def test_normal_and_repair_requests_share_core_contract_with_one_on_demand_repair_task():
     state,store,raw,key=nurse_state();normal=capture(state)
     broken=deepcopy(raw);broken['subjects'][0]['reference']['evidence_id']='C999'
