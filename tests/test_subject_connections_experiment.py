@@ -1,10 +1,10 @@
-"""Evidence-backed undirected experiment invariants, separate from production V32."""
+"""Evidence-backed undirected experiment invariants, separate from production V32; current experiment V34."""
 from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
 from experiments.subject_connections import ConnectionProposal,SubjectConnectionPlan,examples,experiment_state,review,commit,render,MEMORY_PROMPT
-from scripts.validate_subject_identity import prepare_state
+from scripts.validate_subject_connections import prepare_state
 from scripts.validate_subject_connections import step_state
 from tests.helpers import direct_subjects_fixture
 
@@ -15,7 +15,14 @@ def initial(text='Mara owns the cat Sprig.'):
 
 
 def raw_subjects(state,names=('Mara','Sprig'),pending=()):
-    raw=direct_subjects_fixture(state,list(names),kinds={'Sprig':'animal'},pending=pending)
+    raw=direct_subjects_fixture(state,list(names),kinds={name:'individual' for name in names},pending=pending)
+    for row in raw['subjects']:
+        row.pop('evidence',None);row['descriptions']=[];row['reference']=dict(evidence_id='C1',basis_id=None)
+        if row['operation']=='create' and row['name'] in state['new_user_source']['content']:
+            row['aliases']=[dict(name=row['name'],source_id=state['new_user_source']['id']),*row['aliases']]
+        if row['operation']=='reuse':
+            basis=next(b for b in state['identity_bases'] if b['target_id']==row['target_id'] and b['kind']=='name')
+            row['reference']=dict(evidence_id='C1',basis_id=basis['id'])
     raw['connections']=[dict(subject_refs=[0,1],evidence=[dict(source_id=state['new_user_source']['id'])])]
     return raw
 
@@ -74,14 +81,20 @@ def test_few_shots_execute_identity_checks_and_undirected_compilation():
         raw=deepcopy(raw)
         for row in raw['subjects']:
             if row['target_id']:row['target_id']=ids[row['target_id']]
+            if row['reference']['basis_id']:
+                original=next(b for b in payload['identity_bases'] if b['id']==row['reference']['basis_id'])
+                basis=next(b for b in state['identity_bases'] if b['target_id']==ids[original['target_id']]
+                           and b['kind']==original['kind'] and b['text']==original['text'])
+                row['reference']['basis_id']=basis['id']
         result=review(raw,state,store)
         assert not result['contract_errors'] and not result['subject_errors']
-        assert not result['alias_issues'] and not result['connection_errors']
+        assert not result['alias_issues'] and not result['description_issues'] and not result['connection_errors']
 
 
 def test_memory_contract_retains_relationship_claims_and_removes_the_old_exclusion():
     assert 'Extract concrete\nrelationship statements as facts' in MEMORY_PROMPT
     assert 'only naming or continuing' not in MEMORY_PROMPT
     state,store=initial();text=render(state)
-    assert 'EXISTING CONNECTIONS' in text and 'EXISTING RELATIONSHIPS' not in text
+    assert 'EXISTING CONNECTIONS' not in text and 'EXISTING RELATIONSHIPS' not in text
+    assert 'EXISTING CONNECTIONS' in render(next(packet for packet,output in examples() if packet.get('existing_connections')))
     assert 'message_at' not in text and 'observed_at' not in text

@@ -1,4 +1,18 @@
-# Remi 当前架构：维护主体与关系，提取四类记忆后追加保存
+# 当前实验架构：V43 持续记忆维护闭环
+
+实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-memory-closed-loop-v43`。
+
+原文 → 主体候选 → 主体与联系维护 → 固定身份 → 主体关联／无主体两路召回 → 四类记忆维护 → 校验、修订回放与原子提交。相关待定记录在本次正常维护后，使用旧原文和新增澄清独立重审，持续保持主体先于记忆。
+
+事实、偏好、经验和事件支持创建、更新、保持、待定。同一记录更新保留 ID 和来源修订；事件支持计划／实际两项时间、参与者增减和关联撤销。正常两个模型调用，共享一次协议修正；可按需补搜一次。每次 Add 最多重审两条待定，共用请求截止时间。
+
+历史补录重建结构字段与图投影。原始正文保存在变更记录；发生历史分支时，用带来源日期的叙述保存完整文本依据。Search 沿有效事件边扩展最多两跳、24 个事件节点。主体导航、全局混合检索和重排继续保留。
+
+详细边界见 [V43 方案](architecture-changes/g11-memory-closed-loop-v43.md)，验证结果见 [V43 离线报告](memory-v43-results.md)。生产 API 仍使用下方 V32，实验推广单独验收。
+
+---
+
+# 生产 V32 架构记录：维护主体与关系，提取四类记忆后追加保存
 
 当前 pipeline 为 `G11-readable-subjects-v32`。每个用户文本单元共用召回一次，依次执行主体与关系维护、四类记忆提取，最后由程序校验并保存。正常模型调用为两次。
 
@@ -57,3 +71,53 @@ context_sources 来自同用户、同会话已有的最近两条原始 user／as
 最近一次完整Golden：冻结V29已完成，原文证据R@10为69.23%，主集保存69条四类记忆；主体语义与后续事件写入仍未闭环。完整结果见 [V29 Golden](golden-g11-v29-results.md)。
 
 当前主链路为 V32，专项结果见 [V32 报告](subject-v32-results.md)。V33 主体身份与无向连接为独立实验，主 src 保持 V32；实验结果与边界见 [V33 报告](subject-v33-results.md)。
+
+V34 主体实验统一为 individual／organization，并分别保存别名与有来源的描述。实验验证描述召回和跨轮身份；生产主链路维持 V32。设计边界见 [V34](architecture-changes/g11-individual-descriptions-v34.md)。
+
+V34 最终主体验证：离线363 passed，真实28组18/28、扩展10组6/10、原跨轮3/4、描述跨轮1/4。结果与具体失败见 [V34报告](subject-v34-results.md)。
+
+## V35 完整实验与生产入口
+
+生产 `src` 服务入口继续为 V32；当前完整实验 `G11-reference-evidence-v35` 已贯通 individual／organization、来源描述、当前回指／历史身份依据、无向主体连接及四类记忆 Add／Search。新增 reference 校验替换当前引文完整包含旧名／描述的门槛；实验使用 MemoryStore，实际六集合快照可审计。两组 Golden 已完整结束，结果见 [V35 对照](golden-v35-model-comparison.md)，设计与边界见 [V35 架构](architecture-changes/g11-reference-evidence-v35.md)。本轮保持未提交。
+
+## V36 主体校验与修正闭环
+
+当前完整实验为 `G11-structured-repair-v36`，增加定位到字段的校验、上一轮输出、已通过部分保护和未确认提议撤回；正常两次调用及共享一次修正预算保持。生产入口维持V32。最近完整Golden仍为V35，本轮仅验证主体。设计见 [V36架构](architecture-changes/g11-structured-repair-v36.md)，离线407项及真实模型结果见 [V36报告](subject-v36-repair-results.md)。
+
+
+## V37：关键词主体召回与两条上下文
+
+当前完整实验为 `G11-keyword-subject-recall-v37`：已有 user 加最多五个关键词候选，名称／别名优先于描述；最近两条先前消息处理指代。主体模型使用精简身份卡与少量原文依据；历史记忆供后续四类记忆模型读取，同一快照与正常两次调用保持。历史参与主体优先并从尾部裁主体的逻辑由先固定关键词主体、再装入记忆的流程替代。生产入口继续 V32；完整离线427项通过，318条旧原文候选重放完成，真实模型及Golden本轮未重跑。详见 [V37架构](architecture-changes/g11-keyword-subject-recall-v37.md) 和 [验证报告](subject-v37-keyword-results.md)。
+
+## V37 双模型完整 Golden（2026-10-23）
+
+同一冻结V37已完成双模型Golden。DeepSeek原文证据R@10 69.23%、9/13全证据命中、生命周期3/3、13.32分钟；GPT为73.08%、9/13、3/3、39.60分钟。主体同标签重复新增ID诊断14→0、3→0，但DeepSeek有机构合并和描述归属问题，GPT主集仅user／Monica／Jasper三个主体，明确新参与者漏建。摘要可见与原文回传分别审阅，人工语义问题与结构审计分别报告。代码和prompt全程冻结，生产入口V32、历史结果保留，Git未提交。详见 [完整对照与bad case](golden-v37-model-comparison.md)。
+
+
+## V38 主体提示词实验
+
+当前实验pipeline为`G11-subject-prompt-v38-r4`。共用召回→主体维护→程序固定身份→四类记忆提取的链路与正常两次调用预算保持。主体输入按当前原文、两条上下文和附B依据的身份卡直接渲染，9组独立示例与实时输入分别标记，修正规则按需提供。433项离线检查通过；真实双模型结果和各轮回退记录见[验证报告](subject-v38-prompt-results.md)。生产入口保持V32。
+
+
+## V39 GPT 精简协议对照与回退（2026-10-23）
+
+V39-R1／R2各完成三轮GPT对照，旧回归均值29／46、32／46，低于本次V38三轮均值34.33／46。R2的操作分支Schema消除了观测到的字段组合违约，修正次数19→11；基本用户身份回退、当前／历史混淆与摘录误拒仍在，质量门槛未通过。活跃实验已恢复`G11-subject-prompt-v38-r4`，生产V32保持；完整原型及九轮trace存于`.local-data/subjects-v39-gpt-20261023-v1/`。保留原总分和独立身份／描述／联系审计，当前未重跑Golden、未commit。详见[V39 GPT报告](subject-v39-gpt-results.md)。
+
+
+## V40：按名称ID数量切换维护顺序（2026-10-23）
+
+当前完整实验为`G11-name-collision-routing-v40`。当前原文同一名字／别名命中至少两个不同ID时先记忆后主体，其余先主体后记忆。程序保全同名候选，复用共享召回；记忆优先阶段提供参与者ref、历史定位与当前四类内容，主体阶段保留ref后维护身份、别名、描述与连接。正常两次调用，共享一次修正，保持检查点与原子保存。生产入口保持V32；本轮真实主体质量尚未通过稳定性验收。
+
+离线503项通过。GPT完整Golden来源R@10为69.23%、全证据8/13、生命周期3/3；主集152次主体优先、7次记忆优先。实际Alicia别名漏存造成重复ID，记忆优先3次计划清空，主体仍不稳定。通用场景三轮最终主体验收18/24、全部维度16/24。完整设计见[V40边界](architecture-changes/g11-name-collision-routing-v40.md)，结果与原文trace见[V40报告](subject-v40-gpt-results.md)。本轮未commit，存储继续使用原有六集合。
+
+## V41：主体证据与参与者交接（2026-10-23）
+
+当前实验为 `G11-subject-closed-loop-v41`，生产入口维持V32。主体阶段选择程序编号的C原文片段及属于候选ID的B依据，程序复制引用并独立保存references；模型显式归属当前名字，程序校验追加aliases。主体优先记忆输入使用稳定P{ref}，历史人物仅作证据标签；来源／handle错误保留原答与具体字段反馈进入共享修正。当前原文有效引用与实际人物归属分别评价，同名路由及两次正常调用保持。设计边界见[V41](architecture-changes/g11-subject-closed-loop-v41.md)。
+
+## V41真实验证结果（2026-10-23）
+
+最终590 passed、0 skipped，16.32秒。固定runtime-r2的GPT三轮完成24组72步，150份JSON回复；身份整组12/24、全维度7/24、最终协议72/72，正常两次调用与共享修正预算全过。中文短名漏存、明确同名新人判断、当前user漏提及历史人物误带仍存在。报告者entity_ids的评分边界与引用归属问题单列。预先语义门槛未通过，Golden本轮未启动。生产src保持V32、物理新表0、工作区未commit。详见[V41结果](subject-v41-gpt-results.md)。
+
+## V41-context1：最近一条前文（2026-10-23）
+
+当前实验pipeline为 `G11-subject-closed-loop-v41-context1`，共用上下文取同会话当前原文之前最近1条user／assistant原始消息。主体候选召回、主体渲染、两种记忆入口及其修正调用共用CONTEXT_LIMIT；B身份依据与历史记忆继续按各自证据范围提供。检查点使用独立pipeline，旧实验快照保持原状。离线592 passed、0 skipped，13.18秒；本次真实模型与Golden调用0，Git未提交。验证记录位于`.local-data/subject-context1-v41-20261023-v1/verification.json`。

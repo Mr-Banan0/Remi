@@ -190,6 +190,16 @@ class CardDecision(StrictModel):
     _null_arguments = field_validator('target_id', 'time_expression', mode='before')(nullable)
 
 
+class EventTimeEvidence(StrictModel):
+    """Source expression and anchor for an event date, including unresolved dates."""
+    field: Literal['planned_at', 'event_at']
+    expression: str | None
+    source_id: str
+    anchor: str | None
+    value: str | None
+    precision: Literal['day', 'instant', 'unknown']
+
+
 class Revision(StrictModel):
     id: str
     content: str
@@ -209,6 +219,8 @@ class Revision(StrictModel):
     time_precision: Literal['day', 'instant', 'unknown']
     operation: Literal['create', 'reschedule', 'complete', 'cancel', 'update']
     replaces_revision_id: str | None = None
+    time_evidence: list[EventTimeEvidence] = Field(default_factory=list)
+    maintenance_patch: dict | None = None
 
 
 class Memory(StrictModel):
@@ -239,8 +251,6 @@ class Memory(StrictModel):
             raise ValueError('ordinary_memories_use_participants_and_source_evidence')
         if self.record_type != 'event' and any(r.status != 'stated' for r in self.revisions):
             raise ValueError('statements_use_stated_status')
-        if self.record_type in {'fact', 'preference', 'experience'} and len(self.revisions)>1:
-            raise ValueError('ordinary_statements_are_append_only')
         if self.record_type == 'event' and any(r.status == 'stated' for r in self.revisions):
             raise ValueError('events_use_event_status')
         return self
