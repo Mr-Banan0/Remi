@@ -59,8 +59,9 @@ Original words and roles establish who a claim is about. A legal handle alone su
 # Extract memory content
 fact records a state or attribute, including occupations, roles, social identities and concrete relationship statements; preference records a like,
 dislike or tendency; experience records an expressed lesson or reusable insight; event records a particular
-occurrence or plan. Keep independently changeable propositions separate. Preserve useful source-reported
-states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
+occurrence or plan. A detail added to one particular occurrence remains part of that event; a fact describes
+a state or attribute that stands independently of one occurrence. Keep independently changeable propositions
+separate. Preserve useful source-reported states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
 Each item contains content,record_type,participant_handles,mode,context,status,time_expression,evidence.
 participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
 pending handles. Use [] for a claim with no particular in-scope participant. Compare current referents,
@@ -366,9 +367,14 @@ def examples():
                  sources=[dict(id='nursery-source',role='user',content='Norah works at a nursery.')]),
             dict(id='old-tax',record_type='fact',content='The other Norah prepares tax returns.',entity_ids=['tax-norah'],
                  sources=[dict(id='tax-source',role='user',content='The other Norah prepares tax returns.')])])
+    detail_text='Mira added a lighting demonstration to that scheduled studio visit.'
+    detail=dict(new_user_source=source(detail_text),context_sources=[],resolved_subjects=[person(0,'Mira',oid='mira')],
+        history=[dict(id='visit',record_type='event',content='Mira scheduled a studio visit.',entity_ids=['mira'],status='planned',
+            sources=[dict(id='visit-source',role='user',content='Mira scheduled a studio visit.')])])
     return [(fact,output(text,'fact',[])),(preference,output(preference_text,'preference',['P7'])),
             (experience,output(experience_text,'experience',['P5'])),
-            (event,output(event_text,'event',['P14','P2'],status='occurred',time='today'))]
+            (event,output(event_text,'event',['P14','P2'],status='occurred',time='today')),
+            (detail,output(detail_text,'event',['P0'],status='planned'))]
 
 
 def propose(model,state,*,deadline):

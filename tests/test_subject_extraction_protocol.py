@@ -185,7 +185,7 @@ def test_transport_uses_live_schema_and_readable_independent_fewshots_and_restor
     request=calls[0];messages=request['messages']
     assert request['response_format']['json_schema']['name']=='ExtractionPlan'
     assert request['response_format']['json_schema']['strict'] is True
-    assert len(messages)==10 and messages[0]['content']==PROMPT
+    assert len(messages)==2*len(examples())+2 and messages[0]['content']==PROMPT
     assert messages[-1]['content'].startswith('# EXTRACTION INPUT')
     for number,(packet,answer) in enumerate(examples(),1):
         assert messages[number*2-1]['content'].startswith(f'# INDEPENDENT EXAMPLE {number}')

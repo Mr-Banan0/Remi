@@ -74,7 +74,8 @@ def test_first_confirmed_name_is_stable_and_later_name_is_an_alias():
 def test_unnamed_subject_cannot_store_an_alias_before_a_first_name():
     state,store=initial('I adopted a dog called Tan.')
     result=review(plan(name=None,kind='animal',aliases=['Tan']),state,store)
-    assert any(issue['code']=='unnamed_subject_cannot_have_aliases' for issue in result['issues'])
+    codes={issue['code'] for issue in result['issues']}
+    assert {'create_requires_stated_name','unnamed_subject_cannot_have_aliases'}<=codes
 
 
 def test_alias_evidence_is_idempotent_by_name():

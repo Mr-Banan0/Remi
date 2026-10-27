@@ -109,8 +109,8 @@ class MemoryEngine:
                         stop=min(offset + 2240, stop) - begin) for key, begin, stop in locations
                         if max(offset, begin) < min(offset + 2240, stop)]))
         owner = owner or (unit[0].owner if unit else memories[0].owner if memories else None)
-        names = {raw['id']: raw['name'] for raw in self.store.list('objects', owner)} if owner else {}
-        names.update({e['id']: e['name'] for e in entities})
+        names = {raw['id']: raw.get('name') or raw['id'] for raw in self.store.list('objects', owner)} if owner else {}
+        names.update({e['id']: e.get('name') or e['id'] for e in entities})
         for memory in memories:
             for revision in memory.revisions:
                 sources = self.store.sources(memory.owner, revision.source_ids[:1])

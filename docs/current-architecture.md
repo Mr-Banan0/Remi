@@ -1,14 +1,14 @@
-# 当前实验架构：V50 候选提取与记忆维护闭环
+# 当前实验架构：V52 候选级记忆身份门
 
-实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-memory-maintenance-v50`。
+实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-memory-identity-gate-v52`。
 
 当前写入顺序为：保存原文 → 主体维护并固定 scope → 候选记忆提取 → scope 内记忆召回与程序化无主体补搜 → 记忆维护定稿 → 程序差异计算、校验、修订回放和原子提交。正常链路调用主体、候选、维护三个模型阶段。
 
-记忆模型操作统一为 create／update／pending。update 返回完整最终视图；程序比较旧视图并生成 updated 或 supported 结果。时间字段使用 retain／set／clear，参与者使用 retain／add／remove／replace。同轮事件通过 C 引用连接，程序分配正式 ID 后统一落库。每个返回项记录 created／updated／supported／pending／validation_failed 处置结果。
+记忆维护模型只决定候选的 create／update／pending、update 目标和完整最终正文。候选阶段已经确定类型、主体、表达归属、条件、事件状态、日期表达和来源；程序使用这些字段生成修订。update 保留旧参与主体并加入本轮主体，合并来源，保留未更新的历史时间字段。最终视图发生变化时生成 updated；视图一致时生成 supported。
 
-召回范围由主体固定：与确认主体相连的记忆进入主通道，相关性不足时补充无主体记忆，只属于其他主体的记忆保持在 scope 外。模型输入保留每条记忆的当前有效视图，并压缩历史证据；存储层继续保留全部修订和来源。
+召回范围由主体固定：与确认主体相连的记忆进入主通道，相关性不足时补充无主体记忆，只属于其他主体的记忆保持在 scope 外。V52 在召回后按候选正文和记忆身份锚点计算主题连续性，每个候选最多显示三个同类目标。程序校验 update 的 target 属于该候选的目标集合。已完成或取消事件保持终态；不同实际日期的完成事件形成独立 occurrence。模型漏掉的候选会得到 `candidate_omitted_by_model` 处置。
 
-V50 沿用 sources、memories、objects、edges、requests、search_documents 六个逻辑集合，没有增加数据库表。完整协议、完成标准与验证见 [V50 候选提取与记忆维护闭环](architecture-changes/g11-memory-maintenance-v50.md)。V49 主体边界见 [V49 主体名字与三类主体](architecture-changes/g11-subject-kinds-v49.md)。
+Jev 对连接错误、超时、429 和 5xx 每批重试一次，失败批次继续使用基础排序。V52 沿用 sources、memories、objects、edges、requests、search_documents 六个逻辑集合，没有增加数据库表。V51 的五字段维护协议见 [V51 设计](architecture-changes/g11-memory-maintenance-v51.md)，V52 的身份门及完成边界见 [V52 设计](architecture-changes/g11-memory-identity-gate-v52.md)，两轮 Golden 对照见 [V51／V52 结果](golden-v51-v52-results.md)。
 
 ---
 

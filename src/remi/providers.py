@@ -347,41 +347,46 @@ class JevReranker:
             return result
 
     def _batch(self, query, cards, deadline):
-        started = monotonic()
-        trace = {"kind": "rerank", "model": self.model, "batch_size": len(cards)}
-        try:
-            questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": SUPPORT_QUESTION},
-                "criteria": {"true": "Concrete answer support, identifying anchor, task constraint or premise correction.",
-                             "false": "Shared topic only, another occurrence or unrelated generic advice."}} for card in cards}
-            for card in cards:
-                for target in card.get("temporal_targets", []):
-                    questions[target["id"]] = {"type": "noul", "instructions": {"target": target,
-                        "question": TEMPORAL_MATCH_QUESTION}, "criteria": {
-                            "true": "The source supports the requested activity, participants and applicable status.",
-                            "false": "Different activity, shared topic only, denied occurrence or unsupported summary."}}
-            response = self.client.post("systemone", json={"model": self.model, "state": {"query": query}, "questions": questions},
-                                        timeout=remaining(deadline, self.timeout))
-            trace["http_status"] = response.status_code
-            response.raise_for_status()
-            body = response.json()
-            answers = body.get("answers", {}) if isinstance(body, dict) else {}
-            if not isinstance(answers, dict):
-                raise OutputInvalid("reranker_answers_invalid")
-            result = RankResult()
-            temporal_ids = {target["id"] for card in cards for target in card.get("temporal_targets", [])}
-            for key in questions:
-                answer = answers.get(key, {})
-                value = answer.get("noul") if isinstance(answer, dict) else None
-                if (isinstance(answer, dict) and answer.get("type") == "noul" and not isinstance(value, bool)
-                        and isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1):
-                    (result.temporal_scores if key in temporal_ids else result.scores)[key] = value
-            return result
-        except Exception as error:
-            trace.update(error_label(error))
-            return RankResult()
-        finally:
-            trace["seconds"] = monotonic() - started
-            self.calls.append(trace)
+        questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": SUPPORT_QUESTION},
+            "criteria": {"true": "Concrete answer support, identifying anchor, task constraint or premise correction.",
+                         "false": "Shared topic only, another occurrence or unrelated generic advice."}} for card in cards}
+        for card in cards:
+            for target in card.get("temporal_targets", []):
+                questions[target["id"]] = {"type": "noul", "instructions": {"target": target,
+                    "question": TEMPORAL_MATCH_QUESTION}, "criteria": {
+                        "true": "The source supports the requested activity, participants and applicable status.",
+                        "false": "Different activity, shared topic only, denied occurrence or unsupported summary."}}
+        for attempt in range(2):
+            started = monotonic()
+            trace = {"kind": "rerank", "model": self.model, "batch_size": len(cards), "attempt": attempt + 1}
+            try:
+                response = self.client.post("systemone", json={"model": self.model, "state": {"query": query}, "questions": questions},
+                                            timeout=remaining(deadline, self.timeout))
+                trace["http_status"] = response.status_code
+                response.raise_for_status()
+                body = response.json()
+                answers = body.get("answers", {}) if isinstance(body, dict) else {}
+                if not isinstance(answers, dict):
+                    raise OutputInvalid("reranker_answers_invalid")
+                result = RankResult()
+                temporal_ids = {target["id"] for card in cards for target in card.get("temporal_targets", [])}
+                for key in questions:
+                    answer = answers.get(key, {})
+                    value = answer.get("noul") if isinstance(answer, dict) else None
+                    if (isinstance(answer, dict) and answer.get("type") == "noul" and not isinstance(value, bool)
+                            and isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1):
+                        (result.temporal_scores if key in temporal_ids else result.scores)[key] = value
+                return result
+            except Exception as error:
+                trace.update(error_label(error))
+                if attempt == 0 and transient(error) and deadline - monotonic() > .25:
+                    sleep(.05)
+                    continue
+                return RankResult()
+            finally:
+                trace["seconds"] = monotonic() - started
+                self.calls.append(trace)
+        return RankResult()
 
     def close(self):
         self.client.close()

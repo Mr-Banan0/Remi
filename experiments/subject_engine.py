@@ -24,7 +24,7 @@ from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-memory-maintenance-v50'
+PIPELINE='G11-memory-identity-gate-v52'
 
 
 class SubjectMemoryStore(MemoryStore):
@@ -182,10 +182,19 @@ class SubjectGraphEngine(MemoryEngine):
         cache.update(memory_plan=accepted,items=candidates(accepted,state))
         final_output=outputs.get('propose_repair') if cache.get('repair_used') else outputs.get('propose')
         rows=final_output.get('items',[]) if isinstance(final_output,dict) and isinstance(final_output.get('items'),list) else []
-        cache['memory_validation_dispositions']=[dict(candidate_id=row.get('ref') if isinstance(row,dict) and isinstance(row.get('ref'),str) else 'index:'+str(index),
-            item_index=index,status='validation_failed',operation='validation_failed',
-            reason_codes=[issue['code'] for issue in errors if issue.get('path',[])[:2]==['items',index]])
-            for index,row in enumerate(rows) if str(index) not in accepted]
+        accepted_refs={row['ref'] for row in accepted.values()}
+        validation_dispositions=[]
+        for candidate in state['memory_candidates']:
+            if candidate['ref'] in accepted_refs:continue
+            positions=[index for index,row in enumerate(rows)
+                       if isinstance(row,dict) and row.get('ref')==candidate['ref']]
+            codes=list(dict.fromkeys(issue['code'] for issue in errors
+                if not positions or any(issue.get('path',[])[:2]==['items',index] for index in positions)))
+            if not positions:codes=['candidate_omitted_by_model',*codes]
+            validation_dispositions.append(dict(candidate_id=candidate['ref'],
+                item_index=positions[0] if positions else None,status='validation_failed',operation='validation_failed',
+                reason_codes=list(dict.fromkeys(codes)) or ['candidate_decision_invalid']))
+        cache['memory_validation_dispositions']=validation_dispositions
         if errors:cache['memory_rejections']=errors
         else:cache.pop('memory_rejections',None)
         save()

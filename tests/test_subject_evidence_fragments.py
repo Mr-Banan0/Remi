@@ -96,18 +96,12 @@ def test_invalid_current_fragment_is_separate_from_other_identity_errors():
     assert result['state']['proposal']['subjects'][0]['current_reference_valid'] is True
 
 
-def test_unnamed_subject_retains_reference_basis_without_name_alias():
+def test_new_unnamed_referent_stays_outside_subject_storage():
     state,store=packet('Her daughter arrived.',sid='first',when=PAST)
-    first=review(output(choice(None,sid='first')),state,store);commit(first,store)
-    key=first['bindings']['subject_ids']['0'];saved=store.get('objects',OWNER,key)
-    assert saved['aliases']==[] and saved['references'][0]['quote']=='Her daughter arrived.'
-    later,store=packet('Her daughter called.',store,sid='later')
-    basis=next(row for row in later['identity_bases'] if row['target_id']==key)
-    assert basis['kind']=='reference'
-    result=review(output(choice(None,operation='reuse',target=key,basis=basis['id'],sid='later')),later,store)
-    assert not result['issues'] and result['bindings']['subject_ids']=={'0':key}
-    assert len(result['bindings']['entity_rows'][0]['references'])==2
-    assert not result['bindings']['entity_rows'][0]['aliases']
+    result=review(output(choice(None,sid='first')),state,store)
+    assert any(issue['code']=='create_requires_stated_name' for issue in result['issues'])
+    assert result['bindings']['subject_ids']=={} and result['bindings']['entity_rows']==[]
+    assert store.list('objects',OWNER)==[]
 
 
 def test_short_name_is_added_explicitly_and_recalled_in_a_later_turn():

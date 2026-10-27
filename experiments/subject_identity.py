@@ -278,7 +278,12 @@ def resolve_subjects(raw, state, store):
                      {'target_id':draft.target_id},{'target_id':None})
             if draft.operation=='create':
                 key = stable_id('obj_',owner,'user') if marker else stable_id('obj_',owner,primary['id'],maintenance_identity_scope(state),ref)
-                if store.get('objects',owner,key) is not None:
+                if draft.name is None:
+                    emit(['name'],'create_requires_stated_name',
+                         'Create a subject only when CURRENT SOURCE states its proper name. Keep unnamed people and animals in memory content.',
+                         {'name':None},{'rule':'Use a stated proper name or withdraw this subject.'},source_ids=[primary['id']])
+                    key=None
+                if key is not None and store.get('objects',owner,key) is not None:
                     emit(['operation'],'existing_identity_requires_reuse','Reuse the existing identity from the supplied candidates.',
                          {'operation':draft.operation})
                 route=state.get('maintenance_route',{})

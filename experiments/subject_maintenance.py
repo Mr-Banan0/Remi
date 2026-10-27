@@ -32,10 +32,11 @@ stay outside the response.
 
 # Scope
 Subjects are particular people (person), animals (animal), and companies/institutions/teams (organization).
-Equipment, places and projects are outside the subject output. An unnamed subject uses name=null until a real
-name is stated. Roles, occupations, kinship terms, relationships, demographic attributes, social identities,
-and specific animal categories such as dog or cat are memory content. Return them nowhere in name or aliases.
-Descriptive noun phrases stay in evidence.
+Equipment, places and projects are outside the subject output. Create a new subject only when CURRENT SOURCE
+states its proper name. An unnamed person or animal remains readable memory content until a real name is stated.
+Roles, occupations, kinship terms, relationships, demographic attributes, social identities, and specific animal
+categories such as dog or cat are memory content. Return them nowhere in name or aliases.
+Descriptive noun phrases stay in memory content.
 Use SUPPORTING CONTEXT to interpret current references. Each returned identity needs a current referent.
 
 # Decide identities in this order
@@ -71,7 +72,7 @@ names, nicknames or abbreviations explicitly stated for the same subject in CURR
 canonical name or an existing alias. An alias must function as a proper name for this exact identity. Occupations,
 roles, kinship terms, relationships, demographic attributes, animal categories and descriptive phrases are prohibited.
 Examples that are not aliases include nurse, designer, colleague, sister, employee, man, dog, pet and the baker.
-Keep unnamed referring phrases and pronouns in reference evidence rather than name or aliases.
+A pronoun can reuse a named stored subject when context resolves it. Omit a new unnamed referent from subjects and preserve it in memory content.
 Every subject has reference={evidence_id,basis_id}. Select a C fragment that supports this CURRENT
 referent; the program copies its original wording and source. reuse selects an owned B basis as well;
 create/pending select basis_id=null. C evidence establishes provenance; identity is your contextual

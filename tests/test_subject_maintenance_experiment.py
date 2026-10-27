@@ -3,6 +3,7 @@ from copy import deepcopy
 
 from experiments.subject_maintenance import SubjectPlan,examples,review,commit,render,PROMPT
 from experiments.event_maintenance import PROMPT as EVENT_PROMPT
+from experiments.subject_extraction import PROMPT as EXTRACTION_PROMPT
 from experiments.subject_references import prepare_reference_state
 from experiments.subject_repair import build_repair_state, finish_repair
 from scripts.validate_subject_identities import prepare_state
@@ -61,9 +62,10 @@ def test_few_shots_execute_identity_checks():
         assert not result['alias_issues']
 
 
-def test_subject_contract_keeps_relation_semantics_in_memory_maintenance():
-    assert 'A continuing relationship or affiliation is a fact' in EVENT_PROMPT
-    assert 'A particular\nstart, change or end is an event' in EVENT_PROMPT
+def test_subject_contract_routes_relation_semantics_through_extraction_then_fixed_maintenance():
+    assert 'substantive relationship claims as facts' in EXTRACTION_PROMPT
+    assert 'their start, change or end as events' in EXTRACTION_PROMPT
+    assert 'memory kind, participants, attribution, condition, status, time and evidence are fixed' in EVENT_PROMPT
     assert 'memory stage' not in PROMPT.casefold()
     assert ' fact' not in PROMPT.casefold() and 'preference' not in PROMPT.casefold() and 'event' not in PROMPT.casefold()
     assert 'connection' not in PROMPT.casefold()

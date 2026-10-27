@@ -26,11 +26,24 @@ def test_jev_native_contract_and_invalid_score_rejection():
     reranker.close()
 
 
-@pytest.mark.parametrize("status", [400, 402, 429, 500])
-def test_jev_failure_uses_existing_order_without_retry(status):
+@pytest.mark.parametrize("status,attempts", [(400,1),(402,1),(429,2),(500,2)])
+def test_jev_failure_uses_one_bounded_retry_for_transient_errors(status,attempts):
     reranker = JevReranker("dummy", transport=httpx.MockTransport(lambda request: httpx.Response(status)))
     assert reranker.rank("Q", [{"id": "a", "original": "text"}], deadline=monotonic() + 10).scores == {}
-    assert len(reranker.calls) == 1
+    assert len(reranker.calls) == attempts
+    assert [call['attempt'] for call in reranker.calls] == list(range(1,attempts+1))
+    reranker.close()
+
+
+def test_jev_transient_retry_can_recover_the_batch():
+    attempts=[]
+    def handler(request):
+        attempts.append(True)
+        if len(attempts)==1:return httpx.Response(500)
+        return httpx.Response(200,json={"answers":{"a":{"type":"noul","noul":.8}}})
+    reranker=JevReranker("dummy",transport=httpx.MockTransport(handler))
+    assert reranker.rank("Q",[{"id":"a","original":"text"}],deadline=monotonic()+10).scores=={"a":.8}
+    assert len(reranker.calls)==2
     reranker.close()
 
 
