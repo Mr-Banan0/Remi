@@ -159,11 +159,75 @@ class MemoryEngine:
         documents = []
         for document in self.store.documents(owner):
             if parse_time(document.message_at or document.created_at) <= parse_time(as_of):
+                if document.revision_id and document.revision_id not in revisions:
+                    continue
                 sources = self.store.sources(owner, document.source_ids)
                 if len(sources) != len(set(document.source_ids)) or not all(source_visible(s, as_of) for s in sources):
                     continue
                 documents.append(document)
         return documents
+
+    def _expand_revision_chains(self, owner, hits, documents, as_of):
+        """Activate a logical Memory from any visible version/source hit and include its path to current."""
+        by_memory, by_revision = {}, {}
+        for document in documents:
+            if document.memory_id:
+                by_memory.setdefault(document.memory_id, []).append(document)
+            if document.revision_id:
+                by_revision[document.revision_id] = document
+        scores = {document.id: score for document, score in hits}
+        activated, matched = {}, {}
+        for document, score in hits:
+            memory_ids = {document.memory_id} if document.memory_id else {
+                candidate.memory_id for candidate in documents if candidate.memory_id
+                and set(candidate.source_ids).intersection(document.source_ids)}
+            for memory_id in memory_ids - {None}:
+                activated[memory_id] = max(score, activated.get(memory_id, 0))
+                if document.memory_id == memory_id and document.revision_id:
+                    matched.setdefault(memory_id, set()).add(document.revision_id)
+                else:
+                    matched.setdefault(memory_id, set()).update(candidate.revision_id for candidate in by_memory.get(memory_id, [])
+                        if candidate.revision_id and set(candidate.source_ids).intersection(document.source_ids))
+        paths = []
+        for memory_id, score in activated.items():
+            originals = self.store.memories(owner, [memory_id])
+            memory = visible_memory(originals[0], as_of) if originals else None
+            if memory is None:
+                continue
+            revisions = {revision.id: revision for revision in memory.revisions}
+            current_id = memory.current.id
+            for matched_id in matched.get(memory_id) or {current_id}:
+                path, cursor, seen = [], current_id, set()
+                while cursor and cursor not in seen:
+                    seen.add(cursor);path.append(cursor)
+                    if cursor == matched_id:
+                        break
+                    cursor = revisions.get(cursor).replaces_revision_id if cursor in revisions else None
+                if matched_id not in path:
+                    path.append(matched_id)
+                path.reverse()
+                paths.append(dict(memory_id=memory_id, matched_revision_id=matched_id,
+                                  current_revision_id=current_id, revision_ids=path))
+                for revision_id in path:
+                    document = by_revision.get(revision_id)
+                    if document:
+                        scores[document.id] = max(score, scores.get(document.id, 0))
+        expanded = [(next(document for document in documents if document.id == key), score)
+                    for key, score in scores.items()]
+        expanded.sort(key=lambda item: (-item[1], item[0].id))
+        return expanded, paths
+
+    @staticmethod
+    def _retrieval_coverage(query, hits):
+        """Measure direct lexical coverage without interpreting query intent."""
+        terms = set(tokenize(query))
+        if not terms or not hits:
+            return dict(sufficient=False, token_coverage=0.0, direct_documents=len(hits))
+        evidence = set()
+        for document, _ in hits[:3]:
+            evidence.update(tokenize(document.text))
+        coverage = len(terms & evidence) / len(terms)
+        return dict(sufficient=coverage >= .6, token_coverage=coverage, direct_documents=len(hits))
 
     def _hybrid(self, owner, query, documents, vector=None, limit=40):
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
@@ -277,12 +341,15 @@ class MemoryEngine:
                 steps.append(step)
             except (ValidationError, ValueError):
                 errors.append({"position": position, "error": "tool_step_invalid"})
-        if set(raw) - {"steps", "relevant_memory_ids", "action_time_expression"}:
+        if set(raw) - {"query_mode", "steps", "relevant_memory_ids", "action_time_expression"}:
             errors.append({"field": "decision", "error": "extra_fields_disposed"})
         action_time = raw.get("action_time_expression")
-        return Decision(steps=steps, relevant_memory_ids=identifiers, action_time_expression=action_time if isinstance(action_time, str) else None), errors
+        return Decision(query_mode=raw.get('query_mode', 'direct'), steps=steps,
+                        relevant_memory_ids=identifiers,
+                        action_time_expression=action_time if isinstance(action_time, str) else None), errors
 
-    def _recall_step(self, owner, question, step, allowed_sources, documents, as_of, deadline, prior_results=()):
+    def _recall_step(self, owner, question, step, allowed_sources, documents, as_of, deadline,
+                     prior_results=(), vector=None, allow_embedding=True):
         scope = None
         if step.anchor_step is not None:
             if step.anchor_step >= len(prior_results):
@@ -336,36 +403,106 @@ class MemoryEngine:
                 if step.relation == "after" and clock <= target or step.relation == "before" and clock >= target:
                     continue
             pool.append(document)
-        vector = self._embed([step.query], deadline)[0] if self.embedder else None
+        vector = (vector if vector is not None else self._embed([step.query], deadline)[0]
+                  if self.embedder and allow_embedding else None)
         hits = self._hybrid(owner, step.query, pool, vector, limit=self.settings.candidate_limit)
         coverage = "bounded_candidates" + ("_unknown_times" if unknown else "")
         return hits, coverage
 
     @staticmethod
-    def _merge(hits, documents=()):
-        merged = {}
+    def _logical_groups(documents):
         unit_sources = {}
+        source_memories = {}
         for document in documents:
             if document.memory_id is None and document.source_ids:
                 unit_sources.setdefault(document.source_ids[0], set()).update(document.source_ids)
+            elif document.memory_id:
+                for source_id in document.source_ids:
+                    source_memories.setdefault(source_id, set()).add(document.memory_id)
+        return unit_sources, source_memories
+
+    @staticmethod
+    def _logical_key(document, source_memories):
+        if document.memory_id:
+            return 'memory', document.memory_id
+        linked = {memory_id for source_id in document.source_ids
+                  for memory_id in source_memories.get(source_id, set())}
+        return ('memory', next(iter(linked))) if len(linked) == 1 else (
+            'source', document.source_ids[0] if document.source_ids else document.id)
+
+    @classmethod
+    def _merge(cls, hits, documents=()):
+        merged = {}
+        unit_sources, source_memories = cls._logical_groups(documents)
         for document, score in hits:
-            # Distinct memory kinds and graph paths still produce one original source-turn evidence item.
-            key = document.source_ids[0] if document.source_ids else document.id
+            key = cls._logical_key(document, source_memories)
             previous = merged.get(key)
             if previous is None:
                 copy = document.model_copy(deep=True)
-                copy.source_ids = list(dict.fromkeys([*copy.source_ids, *sorted(unit_sources.get(key, set()))]))
+                if key[0] == 'memory' and copy.memory_id is None:
+                    memory_documents = [candidate for candidate in documents if candidate.memory_id == key[1]]
+                    if memory_documents:
+                        copy.memory_id = key[1]
+                        copy.revision_id = memory_documents[-1].revision_id
+                        copy.memory_evidence = [evidence for candidate in memory_documents for evidence in candidate.memory_evidence]
+                source_key = copy.source_ids[0] if copy.source_ids else None
+                copy.source_ids = list(dict.fromkeys([*copy.source_ids, *sorted(unit_sources.get(source_key, set()))]))
                 merged[key] = copy, score
             else:
                 best, other = (document, previous[0]) if score > previous[1] else (previous[0], document)
                 copy = best.model_copy(deep=True)
-                copy.source_ids = list(dict.fromkeys([*best.source_ids, *other.source_ids, *sorted(unit_sources.get(key, set()))]))
+                copy.memory_id = key[1] if key[0] == 'memory' else copy.memory_id
+                source_key = copy.source_ids[0] if copy.source_ids else None
+                copy.source_ids = list(dict.fromkeys([*best.source_ids, *other.source_ids, *sorted(unit_sources.get(source_key, set()))]))
                 copy.source_windows = list({(span.source_id, span.start, span.stop): span
                                            for span in [*best.source_windows, *other.source_windows]}.values())
                 copy.memory_evidence = list({memory.revision_id: memory for memory in
                                             [*best.memory_evidence, *other.memory_evidence]}.values())
                 merged[key] = copy, max(score, previous[1])
         return sorted(merged.values(), key=lambda item: (-item[1], item[0].id))
+
+    @classmethod
+    def _fuse_channels(cls, channel_hits, documents):
+        """Fuse independent ranked channels by logical Memory using rank, never raw score scale."""
+        _, source_memories = cls._logical_groups(documents)
+        scores, roles, unique = {}, {}, {}
+        for channel in channel_hits:
+            seen = set()
+            for position, (document, _) in enumerate(channel['hits'], 1):
+                key = cls._logical_key(document, source_memories)
+                unique.setdefault(document.id, document)
+                roles.setdefault(key, set()).add(channel['role'])
+                if key in seen:
+                    continue
+                seen.add(key)
+                scores[key] = scores.get(key, 0.0) + channel.get('weight', 1.0) / (60 + position)
+        hits = [(document, scores[cls._logical_key(document, source_memories)])
+                for document in unique.values()]
+        return cls._merge(hits, documents), roles
+
+    @staticmethod
+    def _fallback_decision(query):
+        """One bounded semantic supplement keeps Search useful when the planner is unavailable."""
+        return Decision(query_mode='direct', relevant_memory_ids=[], steps=[RecallStep(
+            role='constraint', purpose='history',
+            query=('Past or current conditions, constraints, changes, risks, and experiences '
+                   'that affect whether this request is suitable or feasible: ' + query),
+            time_expression=None, anchor_source_id=None, anchor_step=None,
+            time_basis='message', relation='independent', select='all', window_days=0)])
+
+    @staticmethod
+    def _role_graph_seeds(step, hits, limit=8):
+        """Choose graph roots from relevant hits; temporal roles order only their bounded seed pool."""
+        pool = list(hits[:20])
+        if step.role == 'latest_state' or step.select == 'latest':
+            pool.sort(key=lambda item: parse_time(
+                (item[0].message_at if step.time_basis == 'message' else item[0].event_at)
+                or item[0].created_at), reverse=True)
+        elif step.select == 'first':
+            pool.sort(key=lambda item: parse_time(
+                (item[0].message_at if step.time_basis == 'message' else item[0].event_at)
+                or item[0].created_at))
+        return [document for document, _ in pool[:limit]]
 
     def search(self, request, reference_time=None):
         deadline = monotonic() + self.settings.search_timeout
@@ -380,13 +517,20 @@ class MemoryEngine:
                 except ProviderUnavailable:
                     degradation.append("query_embedding_unavailable")
             base = self._hybrid(request.user_id, request.query, documents, vector, self.settings.candidate_limit)
-            graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in base[:8]], documents, vector, as_of) \
+            base_expanded, revision_paths = self._expand_revision_chains(request.user_id, base, documents, as_of)
+            graph_seeds = [document for document, _ in base[:min(20, len(base))]]
+            graph = self._graph_candidates(request.user_id, request.query, graph_seeds, documents, vector, as_of) \
                 if self.settings.graph_enabled else []
-            merged = self._merge([*base, *graph], documents)
-            baseline_order = {doc.source_ids[0] if doc.source_ids else doc.id: index
-                              for index, (doc, _) in enumerate(merged)}
-            channels = [{"channel": "base", "source_ids": sorted({key for doc, _ in base for key in doc.source_ids})},
-                        {"channel": "graph", "source_ids": sorted({key for doc, _ in graph for key in doc.source_ids})}]
+            graph_expanded, graph_paths = self._expand_revision_chains(request.user_id, graph, documents, as_of)
+            revision_paths.extend(graph_paths)
+            retrieval_channels = [
+                {'channel': 'base', 'role': 'direct', 'query': request.query,
+                 'weight': 1.0, 'hits': base_expanded},
+                {'channel': 'graph', 'role': 'direct', 'query': request.query,
+                 'weight': .5, 'hits': graph_expanded},
+            ]
+            merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
+            direct_coverage = self._retrieval_coverage(request.query, base)
             current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
             decision = Decision(steps=[], relevant_memory_ids=[])
@@ -396,44 +540,87 @@ class MemoryEngine:
                     decision, decision_errors = self._decode_decision(self.model.decide(state, deadline=deadline))
                 except (ProviderUnavailable, OutputInvalid, ValidationError):
                     degradation.append("decision_unavailable")
+                    decision = self._fallback_decision(request.query)
             shown = {item["id"] for item in state["current_conditions"]}
             selected = [memory for memory in current if memory.id in shown and memory.id in decision.relevant_memory_ids]
             unavailable_condition_count = len(set(decision.relevant_memory_ids) - shown)
             if "decision_unavailable" in degradation:
-                selected = [memory for memory in current if memory.id in shown]
+                selected = []
             source_ids = {source_id for card in state["evidence"] for source_id in card["source_ids"]}
             source_ids.update(source_id for item in state["current_conditions"] for source_id in item["source_ids"])
             tool_results, step_hits = [], []
             for index, step in enumerate(decision.steps):
+                temporal_step = bool(step.time_expression or step.anchor_source_id or step.anchor_step is not None
+                                     or step.relation != 'independent' or step.select != 'all')
+                if (direct_coverage['sufficient'] and not temporal_step
+                        and step.role in {'direct', 'answer_detail'}):
+                    tool_results.append({'coverage':'direct_evidence_sufficient','new_documents':0,
+                                         'fallback_executed':False})
+                    step_hits.append([])
+                    continue
                 try:
-                    hits, coverage = self._recall_step(request.user_id, request.query, step, source_ids, documents,
-                                                      as_of, deadline, step_hits)
-                    step_hits.append(hits)
+                    step_vector, allow_step_embedding = None, True
+                    if self.embedder:
+                        try:
+                            step_vector = self._embed([step.query], deadline)[0]
+                        except ProviderUnavailable:
+                            allow_step_embedding = False
+                            degradation.append(f'tool_{index}_embedding_unavailable')
+                    hits, recall_coverage = self._recall_step(request.user_id, request.query, step, source_ids, documents,
+                        as_of, deadline, step_hits, step_vector, allow_step_embedding)
                     scoped_new = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
-                    result = {"coverage": coverage, "scoped_new_documents": scoped_new, "fallback_executed": False}
+                    result = {"coverage": recall_coverage, "scoped_new_documents": scoped_new, "fallback_executed": False}
                     tool_results.append(result)
-                    if not hits and coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
+                    if not hits and recall_coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
                         # An invalid temporal constraint still permits a clearly diagnosed unrestricted supplemental search.
-                        supplement_vector = self._embed([step.query], deadline)[0] if self.embedder else None
-                        supplemental = self._hybrid(request.user_id, step.query, documents, vector=supplement_vector, limit=self.settings.candidate_limit)
+                        supplemental = self._hybrid(request.user_id, step.query, documents, vector=step_vector,
+                                                    limit=self.settings.candidate_limit)
                         hits = supplemental
                         result["fallback_executed"] = True
+                    step_hits.append(hits)
                     result["new_documents"] = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
                     result["new_source_turns"] = len({doc.source_ids[0] for doc, _ in hits if doc.source_ids}
                                                     - {doc.source_ids[0] for doc, _ in merged if doc.source_ids})
-                    channels.append({"channel": f"tool_{index}", "source_ids": sorted({key for doc, _ in hits for key in doc.source_ids})})
-                    extra_graph = self._graph_candidates(request.user_id, request.query, [document for document, _ in hits[:4]], documents, vector, as_of) \
+                    role_graph_seeds = self._role_graph_seeds(step, hits)
+                    extra_graph = self._graph_candidates(request.user_id, step.query,
+                        role_graph_seeds, documents,
+                        step_vector, as_of) \
                         if self.settings.graph_enabled else []
-                    merged = self._merge([*merged, *hits, *extra_graph], documents)
-                    channels.append({"channel": f"tool_graph_{index}", "source_ids": sorted({key for doc, _ in extra_graph for key in doc.source_ids})})
+                    expanded_hits, extra_paths = self._expand_revision_chains(request.user_id, hits, documents, as_of)
+                    expanded_graph, graph_step_paths = self._expand_revision_chains(request.user_id, extra_graph, documents, as_of)
+                    revision_paths.extend([*extra_paths,*graph_step_paths])
+                    retrieval_channels.extend([
+                        {'channel': f'tool_{index}', 'role': step.role, 'query': step.query,
+                         'weight': 1.0, 'hits': expanded_hits},
+                        {'channel': f'tool_graph_{index}', 'role': step.role, 'query': step.query,
+                         'weight': .5,
+                         'seed_source_ids': [key for doc in role_graph_seeds for key in doc.source_ids],
+                         'hits': expanded_graph},
+                    ])
+                    merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
                     source_ids.update(source_id for document, _ in hits for source_id in document.source_ids)
                 except ProviderUnavailable:
                     step_hits.append([])
                     tool_results.append({"coverage": "supplement_unavailable", "new_documents": 0})
                     degradation.append("supplement_unavailable")
-            # Each channel is already bounded. Rank the whole deduplicated union so one query's
-            # incomparable hybrid scores cannot erase another query's answer candidates.
+            # Every channel is bounded and contributes ranks on the same RRF scale.
+            merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
+            baseline_order = {doc.id: index for index, (doc, _) in enumerate(merged)}
             cards = [self._card(request.user_id, document, request.query, self.settings.evidence_bytes) for document, _ in merged]
+            _, source_memories = self._logical_groups(documents)
+            retrieval_objectives = {}
+            for channel in retrieval_channels:
+                objective = (channel['role'], channel.get('query') or request.query)
+                for document, _ in channel['hits']:
+                    key = self._logical_key(document, source_memories)
+                    retrieval_objectives.setdefault(key, set()).add(objective)
+            for card, (document, _) in zip(cards, merged):
+                key = self._logical_key(document, source_memories)
+                card['retrieval_roles'] = sorted(retrieval_roles.get(key, {'direct'}))
+                card['retrieval_objectives'] = [
+                    {'role': role, 'query': query}
+                    for role, query in sorted(retrieval_objectives.get(key, {('direct', request.query)}))
+                ]
             cards_by_source = {document.source_ids[0]: card for (document, _), card in zip(merged, cards) if document.source_ids}
             temporal = {}
             for index, (step, hits) in enumerate(zip(decision.steps, step_hits)):
@@ -454,15 +641,13 @@ class MemoryEngine:
             except (ProviderUnavailable, OutputInvalid):
                 ranking = RankResult()
             scores = ranking.scores
-            # Complete scores compare all channels. Partial scores retain the original question's
-            # baseline order, with supplemental-only turns following it.
+            # Complete scores compare all candidates. Partial scores retain the cross-channel RRF order.
             ranked = (sorted(merged, key=lambda item: (-scores[item[0].id], item[0].id))
                       if len(scores) == len(merged) and merged else sorted(merged, key=lambda item:
-                          baseline_order.get(item[0].source_ids[0] if item[0].source_ids else item[0].id,
-                                             len(baseline_order))))
+                          baseline_order.get(item[0].id, len(baseline_order))))
             if self.reranker and len(scores) < len(merged):
                 degradation.append("rerank_partial_or_unavailable")
-            mandatory = []
+            temporal_selected_ids = []
             for index in reversed(range(len(decision.steps))):
                 step = decision.steps[index]
                 if step.select == "all" or not step_hits[index]:
@@ -477,10 +662,12 @@ class MemoryEngine:
                     tool_results[index]["coverage"] += "_activity_unconfirmed"
                     continue
                 chosen = (min if step.select == "first" else max)(stamp for stamp, _ in candidates)
-                mandatory.extend(card_id for stamp, card_id in candidates if stamp == chosen)
+                selected_card_ids = list(dict.fromkeys(card_id for stamp, card_id in candidates if stamp == chosen))
+                temporal_selected_ids.extend(selected_card_ids)
                 tool_results[index]["selected_time"] = chosen.isoformat()
-                tool_results[index]["selected_document_ids"] = list(dict.fromkeys(card_id for stamp, card_id in candidates if stamp == chosen))
-            order = list(dict.fromkeys(mandatory))
+                tool_results[index]["selected_document_ids"] = selected_card_ids
+            # first/latest are explicit query operators. They apply after Jev verifies the requested activity.
+            order = list(dict.fromkeys(temporal_selected_ids))
             forced = {key: index for index, key in enumerate(order)}
             ranked.sort(key=lambda item: (0, forced[item[0].id]) if item[0].id in forced else (1, 0))
             prefix_lines = [f"[{memory.id}] {memory.current.content} (status={memory.current.status}, scope={('episodic' if memory.record_type == 'event' else 'source_reported')}, observed_at={memory.current.observed_at}, "
@@ -508,17 +695,28 @@ class MemoryEngine:
                     if not memory.last_accessed_at or parse_time(memory.last_accessed_at) < parse_time(as_of):
                         memory.last_accessed_at = as_of
                     self.store.put("memories", memory.owner, memory.id, memory.model_dump())
-            self.last_search = {"base_documents": len(base), "graph_documents": len(graph), "hot_conditions": len(current),
+            channels = [{"channel": channel['channel'], "role": channel['role'], "weight": channel['weight'],
+                "seed_source_ids": channel.get('seed_source_ids', []),
+                "source_ids": sorted({key for doc, _ in channel['hits'] for key in doc.source_ids})}
+                for channel in retrieval_channels]
+            self.last_search = {"base_documents": len(base), "graph_documents": len(graph),
+                "graph_seed_documents": len(graph_seeds), "hot_conditions": len(current),
                 "decision_cards": len(state["evidence"]), "decision_bytes": len(json.dumps(state, ensure_ascii=False).encode()),
                 "selected_conditions": len(selected), "tool_results": tool_results, "rerank_documents": len(cards),
                 "rerank_scored_documents": len(scores),
                 "degradation": degradation, "coverage": "bounded_retrieval_not_exhaustive", "as_of": as_of,
                 "decision": decision.model_dump(), "selected_condition_ids": [memory.id for memory in selected],
                 "decision_errors": decision_errors,
+                "direct_coverage": direct_coverage,
+                "fusion": "logical_memory_rrf",
+                "revision_paths": revision_paths,
+                "memory_bundles": len({document.memory_id for document, _ in merged if document.memory_id}),
                 "candidate_channels": channels,
                 "decision_source_ids": sorted({key for card in state["evidence"] for key in card["source_ids"]}),
-                "candidate_union_limit": (1 + len(decision.steps)) * (self.settings.candidate_limit + self.settings.graph_limit),
-                "temporal_selected_ids": order,
+                "candidate_union_limit": (1 + sum(result.get('coverage') != 'direct_evidence_sufficient'
+                    for result in tool_results)) * (self.settings.candidate_limit
+                        + (self.settings.graph_limit if self.settings.graph_enabled else 0)),
+                "temporal_selected_ids": list(dict.fromkeys(temporal_selected_ids)),
                 "context_omitted_count": len(current) - len(shown),
                 "unavailable_condition_selection_count": unavailable_condition_count,
                 "candidates": [{"document_id": document.id, "source_ids": document.source_ids,

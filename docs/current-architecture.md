@@ -1,14 +1,18 @@
-# 当前实验架构：V52 候选级记忆身份门
+# 当前实验架构：V55 Objective-Aware Jev Search 与 V53 Append First
 
-实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-memory-identity-gate-v52`。
+实验入口为 `experiments.subject_engine.SubjectGraphEngine`，pipeline 为 `G11-append-first-memory-v53`。
 
 当前写入顺序为：保存原文 → 主体维护并固定 scope → 候选记忆提取 → scope 内记忆召回与程序化无主体补搜 → 记忆维护定稿 → 程序差异计算、校验、修订回放和原子提交。正常链路调用主体、候选、维护三个模型阶段。
 
-记忆维护模型只决定候选的 create／update／pending、update 目标和完整最终正文。候选阶段已经确定类型、主体、表达归属、条件、事件状态、日期表达和来源；程序使用这些字段生成修订。update 保留旧参与主体并加入本轮主体，合并来源，保留未更新的历史时间字段。最终视图发生变化时生成 updated；视图一致时生成 supported。
+记忆维护模型只返回 `ref`、可选 `target_id` 和完整正文。有效目标表示候选延续同一 Memory；null 表示独立 Memory。候选遗漏、非法目标和格式错误统一使用候选正文执行独立新增。候选阶段已经确定类型、主体、表达归属、条件、事件状态、日期表达和来源；程序使用这些字段生成修订。有效目标保留旧参与主体并加入本轮已确认主体，合并来源，保留未更新的历史时间字段。最终视图发生变化时生成 updated；视图一致时生成 supported。未确认主体不会阻止记忆保存，已确认主体边照常落库。
 
-召回范围由主体固定：与确认主体相连的记忆进入主通道，相关性不足时补充无主体记忆，只属于其他主体的记忆保持在 scope 外。V52 在召回后按候选正文和记忆身份锚点计算主题连续性，每个候选最多显示三个同类目标。程序校验 update 的 target 属于该候选的目标集合。已完成或取消事件保持终态；不同实际日期的完成事件形成独立 occurrence。模型漏掉的候选会得到 `candidate_omitted_by_model` 处置。
+Add 召回范围由主体固定：与确认主体相连的记忆进入主通道，相关性不足时补充无主体记忆，只属于其他主体的记忆保持在 scope 外。程序按候选正文和记忆身份锚点计算主题连续性，每个候选最多显示三个同类目标。已完成或取消事件保持终态；不同实际日期的完成事件形成独立 occurrence。
 
-Jev 对连接错误、超时、429 和 5xx 每批重试一次，失败批次继续使用基础排序。V52 沿用 sources、memories、objects、edges、requests、search_documents 六个逻辑集合，没有增加数据库表。V51 的五字段维护协议见 [V51 设计](architecture-changes/g11-memory-maintenance-v51.md)，V52 的身份门及完成边界见 [V52 设计](architecture-changes/g11-memory-identity-gate-v52.md)，两轮 Golden 对照见 [V51／V52 结果](golden-v51-v52-results.md)。
+Search 索引所有可见 Version 与原始 Source。任一 Version 或支持它的 Source 命中后激活对应 Memory，程序按 `revises` 路径连接命中版本与查询时间点的当前版本。Planner 先选择 direct、premise_check、constraint、temporal_anchor、answer_detail、latest_state 证据角色，再生成最多两个补搜。每个通道独立保留排序，程序按逻辑 Memory 执行加权 RRF；直接召回权重为 1，一跳图候选权重为 0.5。主体、日期和 as-of 可见性作为范围，状态新旧由查询角色决定。直接词法覆盖只允许跳过 direct／answer_detail 无时间补搜，约束、前提核验、最新状态和时间步骤继续执行。
+
+图扩展从原始查询前二十个有界种子及每个证据角色前八个种子开始，使用该角色自己的查询排序图候选。版本链、来源和会话邻接属于证据补全；主体图排除 canonical user 枢纽。每条候选向 Jev 提供原问题、命中的证据角色及其分支查询。Jev 按证据对最终回答的贡献排序，角色分支不覆盖该顺序。first／latest 属于明确的时间运算：Jev 验证候选活动，程序按时间选择。Jev 部分或全部不可用时保持 RRF 顺序。Planner 不可用时程序执行一次通用 constraint 补搜，并保持 hot conditions 未选择。Search trace 记录通道角色、RRF、时间选择项和图种子数量。
+
+Jev 对连接错误、超时、429 和 5xx 每批重试一次。V55 沿用 sources、memories、objects、edges、requests、search_documents 六个逻辑集合，没有增加数据库表。当前实现已通过 600 项离线测试和双模型 Golden：GPT-4o-mini R@10 为 75.64%、全证据 9/13、任一证据 11/13、MRR 0.7846；DeepSeek Flash 为 65.38%、8/13、9/13、0.6923；两者生命周期 Top1 均为 3/3。完整结果与 bad case 见 [V55 双模型 Golden](golden-v55-model-comparison.md)，V54 基线保留在 [V54 双模型 Golden](golden-v54-model-comparison.md)。
 
 ---
 

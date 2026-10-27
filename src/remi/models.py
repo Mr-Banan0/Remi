@@ -345,7 +345,12 @@ class Document(StrictModel):
     memory_evidence: list[MemoryEvidence] = Field(default_factory=list)
 
 
+EvidenceRole = Literal['direct', 'premise_check', 'constraint', 'temporal_anchor', 'answer_detail', 'latest_state']
+QueryMode = Literal['direct', 'verify_premise', 'action', 'temporal_join', 'current_state']
+
+
 class RecallStep(StrictModel):
+    role: EvidenceRole = 'direct'
     purpose: Literal["history", "scheduled"] = "history"
     query: str = Field(min_length=1, max_length=2000)
     time_expression: str | None
@@ -371,6 +376,7 @@ class RecallStep(StrictModel):
 
 
 class Decision(StrictModel):
+    query_mode: QueryMode = 'direct'
     action_time_expression: str | None = None
     steps: list[RecallStep] = Field(max_length=2)
     relevant_memory_ids: list[str] = Field(max_length=24)

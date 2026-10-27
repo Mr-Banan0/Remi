@@ -1,4 +1,4 @@
-"""V52 protocol closure: candidate coverage, identity targets and compact model input."""
+"""V53 append-first coverage, identity targets and compact model input."""
 import json
 from time import monotonic
 from types import SimpleNamespace
@@ -31,18 +31,18 @@ def test_every_extracted_candidate_receives_a_disposition_including_omissions():
     engine.add(req('Aster plans a picnic and a walk.','coverage'))
     dispositions=unit(engine,'coverage')['candidate_dispositions']
     assert {(entry['candidate_id'],entry['operation']) for entry in dispositions}=={
-        ('C1','created'),('C2','validation_failed')}
+        ('C1','created'),('C2','created_fallback')}
     omitted=next(entry for entry in dispositions if entry['candidate_id']=='C2')
-    assert 'candidate_omitted_by_model' in omitted['reason_codes']
+    assert omitted['reason']=='candidate_omitted_by_model'
 
 
-def test_invalid_returned_candidate_has_specific_validation_disposition():
+def test_invalid_returned_target_has_specific_fallback_disposition():
     model=Model();engine=SubjectGraphEngine(model=model)
-    model.writer=lambda state:[dict(row(state),operation='update',target_id='missing')]
+    model.writer=lambda state:[dict(row(state),target_id='missing')]
     engine.add(req('Aster plans a picnic.','invalid'))
     disposition=unit(engine,'invalid')['candidate_dispositions'][0]
-    assert disposition['candidate_id']=='C1' and disposition['operation']=='validation_failed'
-    assert 'update_requires_eligible_recalled_same_kind' in disposition['reason_codes']
+    assert disposition['candidate_id']=='C1' and disposition['operation']=='created_fallback'
+    assert disposition['reason']=='target_requires_recalled_same_kind_memory'
 
 
 def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
@@ -56,7 +56,7 @@ def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
     props=captured[0]['response_format']['json_schema']['schema']['$defs']['MemoryDecision']['properties']
     assert '# CANDIDATE MEMORIES' in body and 'participants: P0' in body
     assert 'eligible same-kind targets: M1' in body
-    assert set(props)=={'ref','operation','target_id','content','pending_reason'}
+    assert set(props)=={'ref','target_id','content'}
 
 
 def test_program_owned_fields_are_absent_from_all_few_shot_answers():

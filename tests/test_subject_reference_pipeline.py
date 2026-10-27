@@ -132,18 +132,19 @@ def test_new_pipeline_is_callable_through_existing_http_contract():
         assert response.status_code==200 and response.json()['data']
 
 
-def test_invalid_memory_output_has_one_repair_then_preserves_original_without_bad_memory():
+def test_invalid_memory_output_uses_candidate_fallback_without_a_repair_call():
     class InvalidMemory(Model):
         def propose(self,state,*,deadline):
             self.calls.append('memory')
             return {'items':[{'unrecognized':'field'}],'reason':'invalid model fixture'}
     model=InvalidMemory();engine=SubjectGraphEngine(model=model)
     engine.add(request())
-    assert model.calls==['subject','extract','memory','memory']
-    assert not engine.store.memories('reference-owner')
+    assert model.calls==['subject','extract','memory']
+    assert len(engine.store.memories('reference-owner'))==1
     assert engine.store.documents('reference-owner')
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
-    assert unit['memory_rejections'] and unit['repair_stage']=='propose' and unit['phase']=='indexed'
+    assert unit['memory_rejections'] and unit['phase']=='indexed'
+    assert unit['candidate_dispositions'][0]['operation']=='created_fallback'
 
 
 def test_model_validation_cli_forwards_mode_without_abbreviating_model(monkeypatch):

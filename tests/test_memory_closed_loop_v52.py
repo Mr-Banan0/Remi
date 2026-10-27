@@ -1,10 +1,9 @@
-"""V52 closed-loop scenarios for subject scope, unbound supplement and recovery."""
+"""V53 closed-loop scenarios for subject scope and unbound memory maintenance."""
 from copy import deepcopy
 import pytest
 
 from experiments.subject_engine import SubjectGraphEngine
-from experiments.pending_recovery import pending_jobs
-from remi.models import Source, Memory
+from remi.models import Memory
 from remi.heat import visible_memory
 from remi.providers import ProviderUnavailable
 from tests.test_event_maintenance import Model, OWNER, extracted, req, row, unit, lifecycle, update
@@ -72,22 +71,23 @@ def test_all_statement_kinds_update_the_same_memory(kind,text):
     assert memory.id==mid and len(memory.revisions)==2 and memory.record_type==kind
 
 
-def test_pending_identity_keeps_memory_candidate_searchable():
+def test_pending_identity_stores_an_unbound_memory():
     model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
     engine.add(req('Aster planned a workshop.','pending'))
-    assert not engine.store.memories(OWNER)
-    assert any(document.id.startswith('doc_pending_') for document in engine.store.documents(OWNER))
+    memories=engine.store.memories(OWNER)
+    assert len(memories)==1 and memories[0].current.entity_ids==[]
+    assert any(document.memory_id==memories[0].id for document in engine.store.documents(OWNER))
 
 
-def test_recovery_uses_original_event_clock_and_later_identity():
+def test_unbound_memory_keeps_its_original_event_and_observation_clock():
     model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
     engine.add(req('Aster attended the workshop today.','pending'))
     model.pending=False
     engine.add(req('Aster at that workshop is my neighbor.','clarified',5))
     memory=next(memory for memory in engine.store.memories(OWNER) if 'attended' in memory.current.content)
     assert memory.current.event_at.startswith('2030-01-01')
-    assert memory.current.observed_at.startswith('2030-01-06') and len(memory.current.source_ids)==2
-    assert visible_memory(memory,'2030-01-02T00:00:00Z') is None
+    assert memory.current.observed_at.startswith('2030-01-01') and len(memory.current.source_ids)==1
+    assert visible_memory(memory,'2030-01-02T00:00:00Z') is not None
     assert set(engine.store.records)=={'sources','memories','objects','edges','requests','search_documents'}
 
 
@@ -106,9 +106,8 @@ def test_program_recall_snapshot_detects_concurrent_change():
     assert unit(engine,'concurrent')['concurrent_recomputations']==1
 
 
-def test_pending_recovery_job_selects_related_claim_without_keyword_overlap():
+def test_append_first_creates_no_pending_recovery_job():
     model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
     engine.add(req('Aster planned a workshop.','pending'))
-    clarification=Source(id='clarification',owner=OWNER,session_id='session',request_id='later',ordinal=0,
-        role='user',content='Yes, that neighbor.',message_at='2030-01-02T00:00:00Z',created_at='2030-01-02T00:00:00Z')
-    assert len(pending_jobs(engine.store,OWNER,clarification))==1
+    assert engine.store.memories(OWNER)
+    assert not unit(engine,'pending').get('pending_candidates')

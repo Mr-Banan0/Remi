@@ -24,7 +24,7 @@ from experiments.subject_repair import build_repair_state,finish_repair
 from experiments.event_maintenance import validate_plan, candidates, materialize
 from experiments.event_recall import recall_memories
 
-PIPELINE='G11-memory-identity-gate-v52'
+PIPELINE='G11-append-first-memory-v53'
 
 
 class SubjectMemoryStore(MemoryStore):
@@ -154,7 +154,7 @@ class SubjectGraphEngine(MemoryEngine):
             save()
         state=cache['memory_recall'];result['state']=state
         payload={**state,'resolved_subjects':view}
-        protocol_issues=cache.setdefault('extraction_protocol_issues',{})
+        protocol_issues=cache.setdefault('memory_protocol_issues',{})
         def call(key,packet):
             try:outputs[key]=self.model.propose(packet,deadline=deadline)
             except OutputInvalid as error:
@@ -163,38 +163,10 @@ class SubjectGraphEngine(MemoryEngine):
             save()
         if 'propose' not in outputs:call('propose',payload)
         accepted,errors=validate_plan(outputs['propose'],state,view)
-        errors=protocol_issues.get('propose') or errors
+        errors=[*protocol_issues.get('propose',[]),*errors]
         cache['memory_initial_issues']=deepcopy(errors)
-        if errors and not cache.get('repair_used'):
-            cache.update(repair_used=True,repair_stage='propose');save()
-        if errors and cache.get('repair_stage')=='propose':
-            if 'propose_repair' not in outputs:
-                call('propose_repair',{**payload,'repair_errors':errors,'previous_output':outputs['propose']})
-            fixed,remaining=validate_plan(outputs['propose_repair'],state,view,protected=accepted)
-            # Accepted slots own their event targets throughout repair.
-            protected_targets={row['target_id'] for row in accepted.values() if row['operation']=='update'}
-            errors=list(remaining)
-            for index,row in fixed.items():
-                if row['operation']=='update' and row['target_id'] in protected_targets:
-                    row={**row,'operation':'pending','pending_reason':'repair_conflicts_with_accepted_event_update'}
-                    errors.append(dict(path=['items',int(index),'target_id'],code='repair_conflicts_with_accepted_event_update'))
-                accepted[index]=row
         cache.update(memory_plan=accepted,items=candidates(accepted,state))
-        final_output=outputs.get('propose_repair') if cache.get('repair_used') else outputs.get('propose')
-        rows=final_output.get('items',[]) if isinstance(final_output,dict) and isinstance(final_output.get('items'),list) else []
-        accepted_refs={row['ref'] for row in accepted.values()}
-        validation_dispositions=[]
-        for candidate in state['memory_candidates']:
-            if candidate['ref'] in accepted_refs:continue
-            positions=[index for index,row in enumerate(rows)
-                       if isinstance(row,dict) and row.get('ref')==candidate['ref']]
-            codes=list(dict.fromkeys(issue['code'] for issue in errors
-                if not positions or any(issue.get('path',[])[:2]==['items',index] for index in positions)))
-            if not positions:codes=['candidate_omitted_by_model',*codes]
-            validation_dispositions.append(dict(candidate_id=candidate['ref'],
-                item_index=positions[0] if positions else None,status='validation_failed',operation='validation_failed',
-                reason_codes=list(dict.fromkeys(codes)) or ['candidate_decision_invalid']))
-        cache['memory_validation_dispositions']=validation_dispositions
+        cache['memory_validation_dispositions']=[]
         if errors:cache['memory_rejections']=errors
         else:cache.pop('memory_rejections',None)
         save()

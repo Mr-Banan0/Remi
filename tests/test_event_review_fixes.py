@@ -1,12 +1,8 @@
-"""V51 regressions for historical writes, protected repairs and repair transport."""
+"""V53 regressions for historical writes, append-first fallback and concurrency."""
 from copy import deepcopy
-from time import monotonic
-from types import SimpleNamespace
-import json
 import pytest
 
-from experiments.event_maintenance import examples, provider_plan
-from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore
+from experiments.subject_engine import SubjectGraphEngine
 from remi.graph import active_edges
 from remi.heat import visible_memory
 from remi.providers import ProviderUnavailable
@@ -27,61 +23,33 @@ def test_backdated_update_uses_historical_revision_and_preserves_later_view():
     assert any(edge.revision_id==historical.id for edge in active_edges(engine.store,OWNER,'2030-01-02T23:59:59Z'))
 
 
-@pytest.mark.parametrize('protected_index',[0,1])
-def test_repair_preserves_an_accepted_update_when_sibling_is_invalid(protected_index):
-    engine,model=lifecycle()
-    def extractor(state):
-        base=extracted(state)
-        return dict(items=[base,deepcopy(base)],reason='two candidates')
-    model.extractor=extractor
-    def writer(state):
-        good=update(state,ref='C'+str(protected_index+1),content='Aster added refreshments to the workshop.')
-        bad=dict(row(state,ref='C'+str(2-protected_index)),operation='update',target_id='missing')
-        values=[bad,bad];values[protected_index]=good
-        if state.get('repair_errors'):
-            values[protected_index]=row(state,ref='C'+str(protected_index+1),content='protected rewrite attempt')
-            values[1-protected_index]=update(state,ref='C'+str(2-protected_index),content='competing update')
-        return values
-    model.writer=writer;engine.add(req('Aster added refreshments to the workshop.','conflict',1))
-    memory=engine.store.memories(OWNER)[0]
-    assert len(memory.revisions)==2 and memory.current.content=='Aster added refreshments to the workshop.'
-    assert unit(engine,'conflict')['memory_plan'][str(protected_index)]['operation']=='update'
+def test_valid_target_is_kept_while_invalid_sibling_falls_back_to_add():
+    engine,model=lifecycle();target=engine.store.memories(OWNER)[0].id
+    model.extractor=lambda state:dict(items=[extracted(state),deepcopy(extracted(state))],reason='two candidates')
+    model.writer=lambda state:[
+        update(state,ref='C1',content='Aster added refreshments to the workshop.'),
+        row(state,ref='C2',target_id='missing',content='Aster also mentioned another workshop.'),
+    ]
+    engine.add(req('Aster added refreshments and mentioned another workshop.','mixed',1))
+    memories=engine.store.memories(OWNER)
+    updated=next(memory for memory in memories if memory.id==target)
+    assert updated.current.content=='Aster added refreshments to the workshop.' and len(memories)==2
+    assert [entry['operation'] for entry in unit(engine,'mixed')['candidate_dispositions']]==['updated','created_fallback']
 
 
-@pytest.mark.parametrize('field,value',[
-    ('operation',None),('operation',4),('target_id',{}),('target_id',[]),
-    ('content',None),('content',4),('pending_reason',{}),('items',None),('items',4),('items',{'bad':1}),
+@pytest.mark.parametrize('bad_output',[
+    {'items':None,'reason':'bad'},
+    {'items':[{'ref':'C1','target_id':{},'content':'Aster plans a picnic.'}],'reason':'bad'},
+    {'items':[{'ref':'C1','target_id':None,'content':None}],'reason':'bad'},
 ])
-def test_malformed_decision_fields_are_presented_to_repair_without_transport_crash(field,value):
-    packet,answer=list(examples())[0]
-    previous=dict(items=[row(packet)],reason='Malformed prior output')
-    if field=='items':previous[field]=deepcopy(value)
-    else:previous['items'][0][field]=deepcopy(value)
-    packet.update(previous_output=previous,repair_errors=[dict(path=['items',0,field],code='invalid_type')])
-    original=deepcopy(packet);captured=[]
-    def call(**kwargs):
-        captured.append(kwargs);return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(answer),refusal=None))])
-    model=SimpleNamespace(model='test',timeout=10,calls=[],client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=call))))
-    result=provider_plan(model,packet,deadline=monotonic()+10)
-    assert set(result['items'][0])=={'ref','operation','target_id','content','pending_reason'} and len(captured)==1
-    sent=json.loads(captured[0]['messages'][-2]['content'])
-    assert (sent['items'] if field=='items' else sent['items'][0][field])==value
-    assert packet==original
-
-
-def test_repair_checkpoint_resume_reuses_saved_model_reply():
-    class InterruptStore(SubjectMemoryStore):
-        armed=True
-        def put(self,table,owner,key,value):
-            super().put(table,owner,key,value)
-            if table=='requests' and self.armed and any('propose_repair' in unit.get('outputs',{}) for unit in value.get('units',{}).values()):
-                self.armed=False;raise ProviderUnavailable('saved_reply_interrupt')
-    model=Model();engine=SubjectGraphEngine(store=InterruptStore(),model=model)
-    model.writer=lambda state:[row(state) if state.get('repair_errors') else dict(row(state),operation='update',target_id='missing')]
-    request=req('Aster plans a picnic.','saved-repair')
-    with pytest.raises(ProviderUnavailable,match='saved_reply_interrupt'):engine.add(request)
-    engine.add(request)
-    assert model.calls==['subjects','extract','memory','memory'] and len(engine.store.memories(OWNER))==1
+def test_malformed_memory_decision_falls_back_without_repair(bad_output):
+    model=Model();engine=SubjectGraphEngine(model=model)
+    model.propose=lambda state,deadline:bad_output
+    key='malformed-'+str(len(str(bad_output)))
+    engine.add(req('Aster plans a picnic.',key))
+    assert len(engine.store.memories(OWNER))==1
+    assert unit(engine,key)['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert model.calls==['subjects','extract']
 
 
 def test_newer_concurrent_revision_after_recall_is_detected():

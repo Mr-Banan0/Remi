@@ -19,9 +19,14 @@ def test_jev_native_contract_and_invalid_score_rejection():
         body = json.loads(request.content)
         assert body["model"] == "jev-1.13.0"
         assert all(question["type"] == "noul" for question in body["questions"].values())
+        evidence = body['questions']['a']['instructions']['evidence']
+        assert evidence['retrieval_objectives'] == [{'role': 'constraint', 'query': 'conditions limiting exercise'}]
+        assert 'not lexical similarity' in body['questions']['a']['instructions']['question']
         return httpx.Response(200, json={"answers": {"a": {"type": "noul", "noul": .9}, "b": {"type": "noul", "noul": True}}})
     reranker = JevReranker("dummy", transport=httpx.MockTransport(handler))
-    assert reranker.rank("Which device?", [{"id": "a", "original": "Dell"}, {"id": "b", "original": "generic"}],
+    assert reranker.rank("Which device?", [{"id": "a", "original": "Dell", "retrieval_objectives": [
+                                 {'role': 'constraint', 'query': 'conditions limiting exercise'}]},
+                             {"id": "b", "original": "generic", "retrieval_objectives": []}],
                              deadline=monotonic() + 10).scores == {"a": .9}
     reranker.close()
 

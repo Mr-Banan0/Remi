@@ -76,7 +76,7 @@ def test_context_source_does_not_pollute_the_event_anchor():
     assert all(doc.event_at.startswith("2024-06-02") for doc, _ in hits)
 
 
-def test_all_bounded_recall_channels_reach_the_reranker():
+def test_sufficient_direct_channel_skips_unrestricted_supplement():
     class UnionRanker:
         def __init__(self): self.cards = []
         def rank(self, text, cards, *, deadline):
@@ -91,10 +91,11 @@ def test_all_bounded_recall_channels_reach_the_reranker():
     for index, text in enumerate(("PRIMARY answer", "PRIMARY background", "SECONDARY one", "SECONDARY two")):
         engine.add(request(text, request_id=str(index)))
     result = engine.search(query("PRIMARY", top_k=1), "2024-06-04T00:00:00Z")
-    assert len(ranker.cards) == 4
+    assert len(ranker.cards) == 2
+    assert engine.last_search['tool_results'][0]['coverage']=='direct_evidence_sufficient'
     assert "PRIMARY" in result.data[0].content
-    assert engine.last_search["candidate_union_limit"] == 6
-    assert len(engine.last_search["candidate_channels"]) == 4
+    assert engine.last_search["candidate_union_limit"] == 2
+    assert len(engine.last_search["candidate_channels"]) == 2
 
 
 def test_partial_rerank_retains_the_original_question_baseline():
@@ -113,7 +114,7 @@ def test_partial_rerank_retains_the_original_question_baseline():
         if text in doc.text]
     result = engine.search(query("PRIMARY", top_k=1), "2024-06-04T00:00:00Z")
     assert "PRIMARY" in result.data[0].content
-    assert "rerank_partial_or_unavailable" in engine.last_search["degradation"]
+    assert "rerank_partial_or_unavailable" not in engine.last_search["degradation"]
 
 
 def test_fallback_recall_logs_its_actual_new_source():
@@ -131,7 +132,7 @@ def test_fallback_recall_logs_its_actual_new_source():
     assert engine.last_search["unavailable_condition_selection_count"] == 1
 
 
-def test_two_supplements_and_each_graph_channel_reach_the_natural_bound():
+def test_sufficient_direct_and_graph_channels_define_the_natural_bound():
     channels = {name: [Document(id=f"{name}_{index}", owner="u1", text=name,
         source_ids=[f"source_{name}_{index}"], memory_id=None, revision_id=None,
         message_at="2024-06-02T10:00:00Z", event_at=None, created_at="2024-06-02T10:00:00Z")
@@ -152,9 +153,10 @@ def test_two_supplements_and_each_graph_channel_reach_the_natural_bound():
     engine._card = lambda owner, doc, *args: {"id": doc.id, "source_ids": doc.source_ids,
         "original": doc.text, "summary": doc.text, "memories": [], "message_at": doc.message_at, "event_at": None}
     result = engine.search(query("base", top_k=10), "2024-06-04T00:00:00Z")
-    assert ranker.count == engine.last_search["candidate_union_limit"] == 156
+    assert ranker.count == engine.last_search["candidate_union_limit"] == 52
+    assert all(result['coverage']=='direct_evidence_sufficient' for result in engine.last_search['tool_results'])
     assert all("base" in item.content for item in result.data)
-    assert len(engine.last_search["candidate_channels"]) == 6
+    assert len(engine.last_search["candidate_channels"]) == 2
 
 
 def test_genuine_two_event_dates_in_the_same_primary_source_remain_ambiguous():

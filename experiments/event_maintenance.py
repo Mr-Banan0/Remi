@@ -7,8 +7,6 @@ import hashlib
 import json
 import re
 from time import monotonic, sleep
-from typing import Literal
-
 from pydantic import Field, ValidationError
 
 from remi.clock import RELATIVE_DAYS, absolute_content, resolve_time, utcnow
@@ -23,10 +21,8 @@ from experiments.subject_extraction import prepare, render
 
 class MemoryDecision(StrictModel):
     ref: str = Field(pattern=r'^C[1-9][0-9]*$')
-    operation: Literal['create', 'update', 'pending']
     target_id: str | None
     content: str = Field(min_length=1, max_length=4000)
-    pending_reason: str | None = Field(max_length=600)
 
 
 class MemoryPlan(StrictModel):
@@ -36,10 +32,9 @@ class MemoryPlan(StrictModel):
 
 class MaintainedItem(StrictModel):
     ref: str
-    operation: Literal['create', 'update', 'pending']
     target_id: str | None
     content: str
-    pending_reason: str | None
+    fallback_reason: str | None = None
     record_type: MemoryType
     subject_refs: list[int]
     mode: ExpressionMode
@@ -50,8 +45,8 @@ class MaintainedItem(StrictModel):
 
 
 PROMPT = """# Task
-Maintain the extracted candidate memories against the recalled memories. Return MemoryPlan JSON using the supplied schema.
-Each C candidate already has a fixed memory kind, participant set, attribution, condition, event status, time expression and source evidence. The program writes those fixed fields. Your responsibility is limited to choosing the memory operation, choosing an eligible recalled target for an update, and writing the complete readable memory content.
+Resolve each extracted candidate against the recalled memories. Return MemoryPlan JSON using the supplied schema.
+Each C candidate already has a fixed memory kind, participant set, attribution, condition, event status, time expression and source evidence. The program writes those fixed fields. Your responsibility is limited to choosing one eligible recalled target when the candidate continues the same memory, and writing the complete readable content.
 
 # Input
 CURRENT SOURCE is this turn's evidence. SUPPORTING CONTEXT resolves references. CURRENT PARTICIPANTS are already confirmed or explicitly pending. RECALLED MEMORIES are the only records that an update may target. CANDIDATE MEMORIES lists each extracted claim and its eligible same-kind M targets.
@@ -62,19 +57,15 @@ A fact is a state or attribute. A preference is a tendency. An experience is an 
 For events, match the same occurrence. For other kinds, match the same proposition and applicable scope. A shared topic or participant alone does not establish identity. Recurring occurrences and different conditions can remain separate memories.
 An occurred or cancelled event remains a completed occurrence. A later planned occurrence is a separate memory unless CURRENT SOURCE explicitly corrects or reopens that same occurrence.
 
-# Operations
+# Target decision
 Return exactly one item for every C candidate.
-- create: the candidate is an independent new memory. Use target_id=null and pending_reason=null.
-- update: the candidate continues, corrects, completes or adds support to one eligible M target. Select that target and return the complete resulting content. Use pending_reason=null. The program decides whether the revision changes the view or only adds evidence.
-- pending: the current wording clearly depends on an earlier memory, but no eligible target can be selected safely. Use target_id=null or the single plausible supplied target, and give a specific pending_reason.
+- Use target_id=M when the candidate continues, corrects, completes or adds support to that same memory.
+- Use target_id=null when it is an independent memory or the supplied evidence does not identify one eligible target safely.
 
-Each M target receives at most one update. Combine supported changes to the same target in one candidate decision. Keep C refs unchanged. Subject identity, memory kind, participants, attribution, condition, status, time and evidence are fixed by the preceding stage. Event links are maintained outside this decision protocol.
+Every candidate is stored. A null target creates an independent memory. Each M target receives at most one candidate. Keep C refs unchanged. Subject identity, memory kind, participants, attribution, condition, status, time and evidence are fixed by the preceding stage. Event links are maintained outside this decision protocol.
 
 # Content
-For create, write a complete standalone version of the candidate. For update, write the complete current view after applying this turn to the selected memory. Preserve supported conditions, attribution, uncertainty and relevant prior details. Use readable names. Preserve a relative or unresolved date phrase when the source does not support an absolute date.
-
-# Repair
-Return items and reason only. During repair, correct the listed item positions and preserve accepted positions. Use only the supplied C and M handles.
+With target_id=null, preserve a complete standalone version of the candidate. With a selected target, write the complete current view after applying this turn. Preserve supported conditions, attribution, uncertainty and relevant prior details. Use readable names. Preserve a relative or unresolved date phrase when the source does not support an absolute date. Return items and reason only. Use only the supplied C and M handles.
 """
 
 
@@ -140,7 +131,7 @@ def render_event(packet):
     body = render(packet)
     body = body.replace(
         'Return the complete items and reason JSON for CURRENT SOURCE using its current P handles.',
-        'Return MemoryPlan JSON with one create, update or pending decision for every C candidate.'
+        'Return MemoryPlan JSON with one target decision for every C candidate.'
     )
     rows = ['# CANDIDATE MEMORIES']
     for item in packet.get('memory_candidates', []):
@@ -168,18 +159,6 @@ def readable_time(content, source, anchor):
         stamp = resolve_time(match[0], source, anchor)
         return stamp[:10] + ' ' + qualifiers[match[0].casefold()] if stamp else match[0]
     return absolute_content(re.sub(pattern, replace, content, flags=re.IGNORECASE), source, anchor)
-
-
-def repair_output(raw, context):
-    """Translate stored target IDs to the M handles used by the repair prompt."""
-    previous = deepcopy(raw)
-    rows = previous.get('items') if isinstance(previous, dict) else None
-    if not isinstance(rows, list):
-        return previous
-    for row in rows:
-        if isinstance(row, dict) and isinstance(row.get('target_id'), str):
-            row['target_id'] = context['memory_aliases'].get(row['target_id'], row['target_id'])
-    return previous
 
 
 def memory_fingerprint(record):
@@ -220,17 +199,14 @@ def provider_plan(model, state, *, deadline):
             dict(role='assistant', content=json.dumps(answer, ensure_ascii=False)),
         ])
     messages.append(dict(role='user', content='# MEMORY MAINTENANCE INPUT\n' + render_event(packet)))
-    if state.get('repair_errors'):
-        messages.append(dict(role='assistant', content=json.dumps(repair_output(state.get('previous_output', {}), context), ensure_ascii=False)))
-        messages.append(dict(role='user', content='Correct these issues; preserve accepted item positions:\n' + json.dumps(state['repair_errors'], ensure_ascii=False)))
     request = dict(
         model=model.model, temperature=0, max_completion_tokens=3000, messages=messages,
         response_format=dict(type='json_schema', json_schema=dict(name='MemoryPlan', strict=True, schema=schema)),
     )
     for attempt in range(2):
         started = monotonic()
-        trace = dict(kind='add_propose_repair' if state.get('repair_errors') else 'add_propose',
-                     model=model.model, attempt=attempt + 1, pending_recovery=bool(state.get('recovery')))
+        trace = dict(kind='add_propose', model=model.model, attempt=attempt + 1,
+                     pending_recovery=bool(state.get('recovery')))
         try:
             response = model.client.chat.completions.create(**request, timeout=remaining(deadline, model.timeout))
             if response.usage:
@@ -284,19 +260,19 @@ def examples():
     cases = [
         (state('Mira plans another studio visit on June 8.', dict(content='Mira plans another studio visit on June 8.',
             record_type='event', status='planned', time_expression='June 8'), [old_event]),
-         dict(operation='create', target_id=None, content='Mira plans another studio visit on June 8.', pending_reason=None)),
+         dict(target_id=None, content='Mira plans another studio visit on June 8.')),
         (state('Mira moved that studio visit to June 4.', dict(content='Mira moved the studio visit to June 4.',
             record_type='event', status='planned', time_expression='June 4'), [old_event]),
-         dict(operation='update', target_id='M1', content='Mira plans the studio visit on June 4.', pending_reason=None)),
+         dict(target_id='M1', content='Mira plans the studio visit on June 4.')),
         (state('Mira still prefers written agendas at work.', dict(content='Mira still prefers written agendas at work.',
             record_type='preference', status=None, time_expression=None, context='at work'), [old_preference]),
-         dict(operation='update', target_id='M1', content='Mira prefers written agendas at work.', pending_reason=None)),
+         dict(target_id='M1', content='Mira prefers written agendas at work.')),
         (state('Mira booked another studio visit for June 8.', dict(content='Mira booked another studio visit for June 8.',
             record_type='event', status='planned', time_expression='June 8'), [completed_event]),
-         dict(operation='create', target_id=None, content='Mira booked another studio visit for June 8.', pending_reason=None)),
+         dict(target_id=None, content='Mira booked another studio visit for June 8.')),
         (state('Mira changed that appointment, but the recalled visits do not identify which one.', dict(
             content='Mira changed an appointment.', record_type='event', status='planned', time_expression=None), [old_event]),
-         dict(operation='pending', target_id='M1', content='Mira changed an appointment.', pending_reason='The source does not identify which prior occurrence changed.')),
+         dict(target_id=None, content='Mira changed an appointment.')),
     ]
     for packet, decision in cases:
         answer = dict(items=[dict(ref='C1', **decision)], reason='The operation follows the occurrence or proposition identity in the supplied evidence.')
@@ -304,49 +280,45 @@ def examples():
 
 
 def validate_plan(raw, state, view, *, protected=None):
-    """Validate decisions and enrich them from the immutable extracted candidates."""
-    protected = protected or {}
-    accepted = {}
-    issues = []
+    """Validate target selections and fall back to independent Add for every invalid slot."""
+    del view, protected
+    accepted, issues, fallback_reasons = {}, [], {}
     rows = raw.get('items') if isinstance(raw, dict) else None
     if not isinstance(rows, list) or len(rows) > 24:
-        return {}, [dict(path=['items'], code='memory_plan_requires_at_most_24_items')]
-    if state.get('recovery') and len(rows) != 1:
-        return {}, [dict(path=['items'], code='recovery_requires_exactly_one_claim')]
+        issues.append(dict(path=['items'], code='memory_plan_requires_at_most_24_items'))
+        rows = []
     candidate_rows = {row['ref']: row for row in state.get('memory_candidates', [])}
     history = {memory['id']: memory for memory in state.get('history', [])}
     candidate_targets = eligible_targets(state)
     declared = Counter(row.get('ref') for row in rows if isinstance(row, dict) and isinstance(row.get('ref'), str))
-    targets = Counter(row.get('target_id') for index, row in enumerate(rows)
-                      if str(index) not in protected and isinstance(row, dict)
-                      and row.get('operation') == 'update' and isinstance(row.get('target_id'), str))
+    selected_targets = Counter(row.get('target_id') for row in rows if isinstance(row, dict)
+                               and isinstance(row.get('target_id'), str))
+    accepted_refs = set()
     for index, row in enumerate(rows):
-        if str(index) in protected:
-            continue
-        before = len(issues)
+        row_issues = []
         def fail(field, code, **details):
-            issues.append(dict(path=['items', index, field], code=code, **details))
+            issue = dict(path=['items', index, field], code=code, **details)
+            row_issues.append(issue)
+            issues.append(issue)
         try:
             decision = MemoryDecision.model_validate(row)
         except ValidationError as error:
-            issues.extend(dict(path=['items', index, *entry['loc']], code=entry['type']) for entry in error.errors())
+            validation_issues = [dict(path=['items', index, *entry['loc']], code=entry['type']) for entry in error.errors()]
+            issues.extend(validation_issues)
+            if isinstance(row, dict) and row.get('ref') in candidate_rows:
+                fallback_reasons.setdefault(row['ref'], validation_issues[0]['code'])
             continue
         candidate = candidate_rows.get(decision.ref)
         if candidate is None:
             fail('ref', 'select_supplied_candidate_ref')
-        if declared[decision.ref] != 1:
+        elif declared[decision.ref] != 1:
             fail('ref', 'return_each_candidate_once')
-        if decision.operation == 'create':
-            if decision.target_id is not None:
-                fail('target_id', 'create_uses_null_target')
-            if decision.pending_reason is not None:
-                fail('pending_reason', 'resolved_decision_uses_null_pending_reason')
-        elif decision.operation == 'update':
-            target = history.get(decision.target_id)
+        target = history.get(decision.target_id) if decision.target_id else None
+        if decision.target_id is not None:
             if candidate is not None and (target is None or target['record_type'] != candidate['record_type']):
-                fail('target_id', 'update_requires_eligible_recalled_same_kind')
+                fail('target_id', 'target_requires_recalled_same_kind_memory')
             elif candidate is not None and decision.target_id not in candidate_targets.get(decision.ref, []):
-                fail('target_id', 'update_requires_candidate_topic_continuity')
+                fail('target_id', 'target_requires_candidate_topic_continuity')
             elif candidate is not None and candidate['record_type'] == 'event':
                 previous_status = target.get('status')
                 current_status = candidate.get('status')
@@ -359,24 +331,25 @@ def validate_plan(raw, state, view, *, protected=None):
                     previous_time = target.get('event_at')
                     if current_time and previous_time and current_time[:10] != previous_time[:10]:
                         fail('target_id', 'terminal_event_date_identifies_separate_occurrence')
-            if targets[decision.target_id] != 1:
-                fail('target_id', 'combine_changes_to_one_memory')
-            if decision.pending_reason is not None:
-                fail('pending_reason', 'resolved_decision_uses_null_pending_reason')
-        else:
-            if decision.target_id is not None and decision.target_id not in history:
-                fail('target_id', 'pending_target_requires_recalled_memory')
-            if not decision.pending_reason:
-                fail('pending_reason', 'pending_requires_specific_reason')
-        relevant = [state['new_user_source']]
-        if decision.operation == 'update' and decision.target_id in history:
-            relevant.extend(history[decision.target_id].get('sources', []))
+            if selected_targets[decision.target_id] != 1:
+                fail('target_id', 'one_candidate_per_target')
+        relevant = [state['new_user_source'], *(target.get('sources', []) if target else [])]
         for date in re.findall(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)', decision.content):
             if not any(resolve_time(date, source['content'], source.get('message_at')) for source in relevant):
                 fail('content', 'readable_date_requires_source_support', actual=date)
-        if len(issues) == before and candidate is not None:
-            accepted[str(index)] = {**deepcopy(candidate), 'content':decision.content,
-                'operation':decision.operation, 'target_id':decision.target_id, 'pending_reason':decision.pending_reason}
+        if candidate is not None and not row_issues:
+            accepted[str(index)] = {**deepcopy(candidate), 'content': decision.content,
+                'target_id': decision.target_id, 'fallback_reason': None}
+            accepted_refs.add(decision.ref)
+        elif candidate is not None and row_issues:
+            fallback_reasons.setdefault(decision.ref, row_issues[0]['code'])
+    for position, candidate in enumerate(state.get('memory_candidates', []), start=len(rows)):
+        if candidate['ref'] in accepted_refs:
+            continue
+        reason = 'candidate_omitted_by_model' if declared[candidate['ref']] == 0 else (
+            fallback_reasons.get(candidate['ref'], 'candidate_decision_invalid'))
+        accepted[f'fallback:{position}'] = {**deepcopy(candidate), 'content': candidate['content'],
+            'target_id': None, 'fallback_reason': reason}
     return accepted, issues
 
 
@@ -442,16 +415,11 @@ def materialize(store, state, bindings, accepted):
     candidate_rows = {row['id']: row for row in candidates(accepted, state)}
     for ref, item in items.items():
         candidate = Candidate.model_validate(candidate_rows[ref])
-        unresolved = any(str(subject_ref) not in bindings['subject_ids'] for subject_ref in item.subject_refs)
-        if item.operation == 'pending' or unresolved:
-            pending.append(candidate)
-            dispositions.append(dict(candidate_id=candidate.id, status='pending', operation='pending',
-                reason='candidate_identity_unresolved' if unresolved else item.pending_reason))
-            continue
-        current_ids = list(dict.fromkeys(bindings['subject_ids'][str(subject_ref)] for subject_ref in item.subject_refs))
+        current_ids = list(dict.fromkeys(bindings['subject_ids'][str(subject_ref)] for subject_ref in item.subject_refs
+                                         if str(subject_ref) in bindings['subject_ids']))
         evidence = list(candidate.evidence)
         previous = None
-        if item.operation == 'update':
+        if item.target_id is not None:
             raw = store.get('memories', owner, item.target_id)
             if raw is None:
                 raise ProviderUnavailable('event_history_changed_retry')
@@ -511,9 +479,10 @@ def materialize(store, state, bindings, accepted):
         else:
             memory = Memory(id=mid, owner=owner, record_type=item.record_type, revisions=[revision])
         memories.append(memory)
-        disposition = 'supported' if support else 'updated' if previous else 'created'
+        disposition = ('supported' if support else 'updated') if previous else (
+            'created_fallback' if item.fallback_reason else 'created')
         dispositions.append(dict(candidate_id=candidate.id, status='accepted', operation=disposition,
-            memory_id=mid, reason='source_validated_memory_maintenance'))
+            memory_id=mid, reason=item.fallback_reason or 'source_validated_memory_maintenance'))
     from experiments.revision_replay import replay_revisions
     memories, edges = replay_revisions(store, memories, edges)
     return list(bindings['entity_rows']), memories, edges, expected, pending, dispositions

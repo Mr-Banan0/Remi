@@ -1,4 +1,4 @@
-"""V51 memory maintenance: minimal decisions, deterministic fields and revision lifecycle."""
+"""V53 append-first memory maintenance and deterministic revision lifecycle."""
 from copy import deepcopy
 from time import monotonic
 from types import SimpleNamespace
@@ -22,10 +22,8 @@ def req(text,key,day=0,timestamp=True):
 
 
 def row(state,**kwargs):
-    operation='update' if kwargs.get('operation')=='keep' else kwargs.get('operation','create')
-    return dict(ref=kwargs.get('ref','C1'),operation=operation,target_id=kwargs.get('target_id'),
-        content=kwargs.get('content',state['new_user_source']['content']),
-        pending_reason=kwargs.get('pending_reason','association_unresolved' if operation=='pending' else None))
+    return dict(ref=kwargs.get('ref','C1'),target_id=kwargs.get('target_id'),
+        content=kwargs.get('content',state['new_user_source']['content']))
 
 
 def extracted(state,*,content=None,record_type='event',subject_refs=None,status='planned',time_expression=None,context=None):
@@ -69,7 +67,7 @@ def lifecycle():
     return engine,model
 
 
-def update(state,**kwargs):return row(state,operation='update',target_id=state['history'][0]['id'],**kwargs)
+def update(state,**kwargs):return row(state,target_id=state['history'][0]['id'],**kwargs)
 
 
 def test_same_event_reschedule_and_completion_preserve_id_and_planned_time():
@@ -124,20 +122,22 @@ def test_unchanged_view_creates_support_revision_with_new_evidence():
     assert unit(engine,'support')['candidate_dispositions'][0]['operation']=='supported'
 
 
-def test_pending_keeps_source_searchable_without_mutating_target():
+def test_ambiguous_target_creates_independent_searchable_memory():
     engine,model=lifecycle();before=engine.store.list('memories',OWNER)
-    model.writer=lambda state:[row(state,operation='pending',target_id=state['history'][0]['id'])]
+    model.writer=lambda state:[row(state,target_id=None)]
     engine.add(req('Aster mentioned a workshop but its identity is unclear.','pending',1))
-    assert engine.store.list('memories',OWNER)==before
-    assert unit(engine,'pending')['candidate_dispositions'][0]['status']=='pending'
-    assert any(doc.id.startswith('doc_pending_') for doc in engine.store.documents(OWNER))
+    assert len(engine.store.list('memories',OWNER))==len(before)+1
+    assert unit(engine,'pending')['candidate_dispositions'][0]['operation']=='created'
+    assert not any(doc.id.startswith('doc_pending_') for doc in engine.store.documents(OWNER))
 
 
-def test_update_target_must_be_recalled_and_same_kind():
+def test_invalid_target_falls_back_to_independent_add():
     engine,model=lifecycle();model.writer=lambda state:[row(state,operation='update',target_id='foreign')]
     before=engine.store.list('memories',OWNER);engine.add(req('Aster corrected a different meeting.','bad',1))
-    assert engine.store.list('memories',OWNER)==before
-    assert 'update_requires_eligible_recalled_same_kind' in {issue['code'] for issue in unit(engine,'bad')['memory_rejections']}
+    assert len(engine.store.list('memories',OWNER))==len(before)+1
+    disposition=unit(engine,'bad')['candidate_dispositions'][0]
+    assert disposition['operation']=='created_fallback'
+    assert 'target_requires_recalled_same_kind_memory' in {issue['code'] for issue in unit(engine,'bad')['memory_rejections']}
 
 
 def test_update_unions_current_participants_with_historical_participants():
@@ -147,7 +147,7 @@ def test_update_unions_current_participants_with_historical_participants():
     assert engine.store.memories(OWNER)[0].current.entity_ids==pid
 
 
-def test_provider_schema_contains_only_the_five_decision_fields_and_decodes_target():
+def test_provider_schema_contains_only_target_decision_fields_and_decodes_target():
     packet,answer=list(examples())[1];captured=[]
     def call(**kwargs):
         captured.append(kwargs);return SimpleNamespace(usage=None,choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(answer),refusal=None))])
@@ -155,8 +155,8 @@ def test_provider_schema_contains_only_the_five_decision_fields_and_decodes_targ
     result=provider_plan(model,packet,deadline=monotonic()+30)
     assert result['items'][0]['target_id']=='old'
     schema=captured[0]['response_format']['json_schema']['schema']
-    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','operation','target_id','content','pending_reason'}
-    assert all(set(item)=={'ref','operation','target_id','content','pending_reason'} for _,answer in examples() for item in answer['items'])
+    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','content'}
+    assert all(set(item)=={'ref','target_id','content'} for _,answer in examples() for item in answer['items'])
 
 
 def test_examples_match_live_schema_and_validate_without_issues():
@@ -180,20 +180,22 @@ def test_candidate_target_gate_requires_concrete_topic_continuity():
 
 def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
     packet,_=list(examples())[3]
-    answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
-        content='Mira plans another studio visit for June 8.',pending_reason=None)],reason='invalid reuse')
+    answer=dict(items=[dict(ref='C1',target_id='completed',
+        content='Mira plans another studio visit for June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert not accepted
+    assert next(iter(accepted.values()))['target_id'] is None
+    assert next(iter(accepted.values()))['fallback_reason']=='terminal_event_cannot_return_to_planned'
     assert 'terminal_event_cannot_return_to_planned' in {issue['code'] for issue in issues}
 
 
 def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
     packet,_=list(examples())[3]
     packet['memory_candidates'][0].update(status='occurred',content='Mira completed another studio visit on June 8.')
-    answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
-        content='Mira completed another studio visit on June 8.',pending_reason=None)],reason='invalid reuse')
+    answer=dict(items=[dict(ref='C1',target_id='completed',
+        content='Mira completed another studio visit on June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert not accepted
+    assert next(iter(accepted.values()))['target_id'] is None
+    assert next(iter(accepted.values()))['fallback_reason']=='terminal_event_date_identifies_separate_occurrence'
     assert 'terminal_event_date_identifies_separate_occurrence' in {issue['code'] for issue in issues}
 
 
@@ -205,17 +207,13 @@ def test_embedding_failure_resumes_without_repeating_model_stages():
     assert model.calls==['subjects','extract','memory'] and len(engine.store.memories(OWNER))==1
 
 
-def test_repair_network_resume_reuses_identity_and_initial_reply():
-    model=Model();engine=SubjectGraphEngine(model=model);attempts=[]
-    def writer(state):
-        if not state.get('repair_errors'):return [dict(row(state),operation='update',target_id='foreign')]
-        attempts.append(True)
-        if len(attempts)==1:raise ProviderUnavailable('repair_network_outage')
-        return [row(state)]
-    model.writer=writer;request=req('Aster plans a picnic.','network-repair')
-    with pytest.raises(ProviderUnavailable,match='repair_network_outage'):engine.add(request)
-    engine.add(request)
-    assert model.calls==['subjects','extract','memory','memory','memory'] and len(engine.store.memories(OWNER))==1
+def test_invalid_target_uses_fallback_without_memory_repair_call():
+    model=Model();engine=SubjectGraphEngine(model=model)
+    model.writer=lambda state:[dict(row(state),target_id='foreign')]
+    engine.add(req('Aster plans a picnic.','invalid-target'))
+    assert model.calls==['subjects','extract','memory']
+    assert len(engine.store.memories(OWNER))==1
+    assert unit(engine,'invalid-target')['candidate_dispositions'][0]['operation']=='created_fallback'
 
 
 def test_snapshot_restore_requires_existing_six_collections():

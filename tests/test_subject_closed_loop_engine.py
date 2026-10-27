@@ -46,24 +46,20 @@ def test_memory_view_keeps_grounded_pending_referents_and_excludes_ungrounded_hi
     engine.close()
 
 
-def test_wire_rejection_reaches_shared_repair_with_original_output_and_specific_issue():
+def test_wire_rejection_is_recorded_and_candidate_uses_append_fallback():
     raw=dict(items=[dict(participant_handles=['P88'])],reason='Invalid current handle.')
     issues=[dict(path=['items',0,'participant_handles',0],code='unknown_current_handle',
                  requirement='Choose a current participant handle.',actual='P88',allowed_handles=['P0','P7'])]
     class Fault(Capture):
         def propose(self,state,*,deadline):
             self.inputs.append(deepcopy(state))
-            if not state.get('repair_errors'):
-                error=OutputInvalid('invalid_current_handle');error.raw_output=raw;error.issues=issues
-                raise error
-            return proposal()
+            error=OutputInvalid('invalid_current_handle');error.raw_output=raw;error.issues=issues
+            raise error
     model=Fault();engine=SubjectGraphEngine(model=model);cache={};saved=[]
     engine._memory_after_identity(cache,reviewed(),lambda:saved.append(deepcopy(cache)),monotonic()+10)
-    assert len(model.inputs)==2
-    assert model.inputs[1]['previous_output']==raw
-    assert model.inputs[1]['repair_errors']==issues
-    assert cache['outputs']['propose']==raw and cache['extraction_protocol_issues']['propose']==issues
-    assert cache['repair_used'] and cache['repair_stage']=='propose'
+    assert len(model.inputs)==1
+    assert cache['outputs']['propose']==raw and cache['memory_protocol_issues']['propose']==issues
+    assert cache['memory_initial_issues'][:1]==issues
     assert cache['items'][0]['subject_refs']==[0,7]
     assert any(row.get('outputs',{}).get('propose')==raw for row in saved)
     engine.close()

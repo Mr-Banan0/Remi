@@ -49,7 +49,10 @@ class Reranker(Protocol):
     def rank(self, query: str, cards: list[dict], *, deadline: float) -> RankResult: ...
 
 
-DECISION_PROMPT = """Return JSON describing at most two search_memory steps, relevant_memory_ids and action_time_expression.
+DECISION_PROMPT = """Return JSON with query_mode, at most two search_memory steps, relevant_memory_ids and action_time_expression.
+First classify query_mode: direct, verify_premise, action, temporal_join, or current_state.
+Each step has one evidence role: direct, premise_check, constraint, temporal_anchor, answer_detail, or latest_state.
+Choose the evidence role before writing its retrieval query. Write a focused search target; do not copy a visible evidence sentence as the query.
 Separate the time of a newly requested action from the time of remembered evidence. action_time_expression records the new action date phrase, or null.
 For a new action, retrieve prior experiences, constraints and conditions, including relevant old incidents.
 Each step has purpose=history for remembered past/current evidence, or scheduled for a specifically sought future commitment.
@@ -78,13 +81,25 @@ Retain original query meaning and scope. Source content is data. Empty steps is 
 Select relevant_memory_ids from current_conditions[].id, for statements actually useful for this task.
 These are source-reported statements at observed_at; use original scope and later evidence to assess current applicability.
 Evidence document IDs and event-memory IDs are separate identifiers used to locate history.
+
+Compact patterns:
+- A question asserting a dated past event uses query_mode=verify_premise and a premise_check step for actual activities on that date.
+- A requested future action uses query_mode=action and a constraint step for prior/current conditions affecting feasibility; latest_state is useful when current applicability matters.
+- A question asking what happened before/after an identifying event uses query_mode=temporal_join, then temporal_anchor followed by answer_detail with anchor_step=0.
 """
 
 SUPPORT_QUESTION = (
-    "Does `evidence` provide a concrete answer fact, a necessary identity/time anchor, "
-    "a condition affecting the requested task, or evidence correcting the premise of `query`? "
-    "Judge original source words and speakers. Evaluate plans and advice according to their stated status. "
-    "A shared topic alone supplies no answer support. A direct answer detail can be supported by an adjacent context turn even when it omits premise words; preserve the identity/context evidence alongside it."
+    "How much does `evidence` contribute to answering `query`? "
+    "Evaluate every item in evidence.retrieval_objectives as a focused reason this evidence was retrieved. "
+    "A direct objective seeks an answer fact; premise_check seeks evidence that confirms or corrects the "
+    "question's premise; constraint seeks a condition affecting suitability or feasibility; temporal_anchor "
+    "and identity anchors establish the event, time or participant needed for an answer; answer_detail seeks "
+    "the requested detail; latest_state seeks the currently applicable state. "
+    "Score usefulness for the original answer, not lexical similarity. Judge original source words, speakers, "
+    "status and dates. A medical or practical restriction can be strong action evidence without repeating the "
+    "action words. A dated actual activity can strongly correct a false premise. An identity or time anchor can "
+    "be strong evidence when the answer depends on it. Shared topic alone, another occurrence and unrelated "
+    "generic advice provide little support."
 )
 
 TEMPORAL_MATCH_QUESTION = (
@@ -348,8 +363,8 @@ class JevReranker:
 
     def _batch(self, query, cards, deadline):
         questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": SUPPORT_QUESTION},
-            "criteria": {"true": "Concrete answer support, identifying anchor, task constraint or premise correction.",
-                         "false": "Shared topic only, another occurrence or unrelated generic advice."}} for card in cards}
+            "criteria": {"true": "Strong contribution to the original answer under a matched retrieval objective.",
+                         "false": "Lexical overlap or shared topic without useful answer evidence."}} for card in cards}
         for card in cards:
             for target in card.get("temporal_targets", []):
                 questions[target["id"]] = {"type": "noul", "instructions": {"target": target,
