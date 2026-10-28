@@ -283,7 +283,8 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
         def decide(self, state, *, deadline):
             counters["decide"] += 1
             self.calls.append({"kind": "search_decision", "model": "offline", "seconds": 0})
-            return {"steps": [], "relevant_memory_ids": []}
+            return {"query_mode": "direct", "action_time_expression": None,
+                    "searches": [], "relevant_memory_ids": []}
         def close(self):
             pass
     class Embedder:

@@ -32,10 +32,10 @@ def test_as_of_search_does_not_expose_a_later_revision():
 
 
 def test_strong_direct_evidence_skips_unrestricted_supplement_execution():
-    model=ScriptedModel(decide=lambda state:{'steps':[{
-        'query':'Dell evidence','time_expression':None,'anchor_source_id':None,'anchor_step':None,
-        'time_basis':'message','relation':'independent','select':'all','window_days':0,
-    }],'relevant_memory_ids':[]})
+    model=ScriptedModel(decide=lambda state:{'query_mode':'direct','action_time_expression':None,
+        'searches':[{'role':'direct','query':'Dell evidence','time_expression':None,
+        'anchor_source_id':None,'anchor_step':None,'relation':'independent'}],
+        'relevant_memory_ids':[]})
     from tests.helpers import TestEngine
     engine=TestEngine(model=model)
     engine.add(request('Dell evidence supports remote work.'))

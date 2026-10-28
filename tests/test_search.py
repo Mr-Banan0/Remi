@@ -52,7 +52,8 @@ def test_source_turn_dedupes_raw_and_memory_paths():
 
 def test_current_conditions_are_bounded_and_selected_in_one_decision():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, kind="fact")]},
-                          lambda state: {"steps": [], "relevant_memory_ids": [state["current_conditions"][0]["id"]]})
+                          lambda state: {"query_mode": "direct", "action_time_expression": None,
+                                         "searches": [], "relevant_memory_ids": [state["current_conditions"][0]["id"]]})
     engine = MemoryEngine(model=model, settings=Settings(hot_limit=3, context_bytes=1500))
     for index in range(8):
         engine.add(request("Project constraint " + str(index), request_id=str(index)))
@@ -82,14 +83,14 @@ def test_no_graph_ablation_keeps_global_search():
 
 
 def test_invalid_reference_date_plan_falls_back_and_retains_base():
-    model = ScriptedModel(decide=lambda state: {"steps": [{"query": "Dell", "time_expression": "2024-06-13",
-         "anchor_source_id": None, "time_basis": "message", "relation": "independent", "select": "all", "window_days": 0}],
-         "relevant_memory_ids": []})
+    model = ScriptedModel(decide=lambda state: {"query_mode": "direct", "action_time_expression": None,
+         "searches": [{"role": "direct", "query": "Dell", "time_expression": "2024-06-13",
+         "anchor_source_id": None, "anchor_step": None, "relation": "independent"}], "relevant_memory_ids": []})
     engine = MemoryEngine(model=model)
     engine.add(request("Dell evidence."))
-    result = engine.search(query("What device did I use?"), "2024-06-13T12:00:00+00:00")
+    result = engine.search(query("Which Dell device did I use?"), "2024-06-13T12:00:00+00:00")
     assert "Dell" in result.data[0].content
-    assert engine.last_search["tool_results"][0]["coverage"] == "time_scope_unresolved"
+    assert "decision_invalid" in engine.last_search["degradation"]
 
 
 def test_question_date_and_plus_minus_three_day_range():

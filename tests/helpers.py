@@ -64,7 +64,8 @@ class ScriptedModel:
     """Test-only source extraction fixtures for the two-call append contract."""
     def __init__(self, extract=None, decide=None):
         self.extractor = extract or (lambda state, errors: {'commands': [command(state)]})
-        self.decider = decide or (lambda state: {'steps': [], 'relevant_memory_ids': []})
+        self.decider = decide or (lambda state: {'query_mode': 'direct', 'action_time_expression': None,
+                                                  'searches': [], 'relevant_memory_ids': []})
         self.extractions, self.decisions = [], []
         self.oracle_candidates, self.raw_commands = [], []
         self.subject_calls=[]

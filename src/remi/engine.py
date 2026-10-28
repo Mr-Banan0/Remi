@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from .clock import absolute_content, in_view, message_time, parse_time, resolve_time, utcnow
 from .heat import hot_view, visible_memory
-from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, RecallStep,
+from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
 from .retrieval import clip_bytes, hybrid, tokenize, validate_vector
@@ -315,38 +315,107 @@ class MemoryEngine:
 
     @staticmethod
     def _decode_decision(raw):
-        """Validate independent decision fields and isolate each unusable tool step."""
+        """Validate the semantic planner contract and retain actionable field errors."""
         if not isinstance(raw, dict):
             raise OutputInvalid("decision_requires_object")
         errors = []
+        modes = {'direct', 'verify_premise', 'action', 'temporal_join', 'current_state'}
+        if 'query_mode' not in raw:
+            errors.append({'field': 'query_mode', 'error': 'query_mode_required'})
+        query_mode = raw.get('query_mode', 'direct')
+        if query_mode not in modes:
+            errors.append({'field': 'query_mode', 'error': 'query_mode_invalid', 'value': query_mode})
+            query_mode = 'direct'
         identifiers = raw.get("relevant_memory_ids", [])
         if not isinstance(identifiers, list) or len(identifiers) > 24 or any(not isinstance(item, str) for item in identifiers):
             identifiers = []
             errors.append({"field": "relevant_memory_ids", "error": "condition_ids_invalid"})
-        proposed = raw.get("steps", [])
+        if 'searches' not in raw:
+            errors.append({'field': 'searches', 'error': 'searches_required'})
+        proposed = raw.get("searches", [])
         if not isinstance(proposed, list):
             proposed = []
-            errors.append({"field": "steps", "error": "steps_invalid"})
+            errors.append({"field": "searches", "error": "searches_invalid"})
         if len(proposed) > 2:
-            errors.append({"field": "steps", "error": "extra_steps_disposed"})
-        steps, positions = [], {}
+            errors.append({"field": "searches", "error": "extra_searches_disposed"})
+        searches, positions = [], {}
         for position, item in enumerate(proposed[:2]):
             try:
-                step = RecallStep.model_validate(item)
-                if step.anchor_step is not None:
-                    if step.anchor_step >= position or step.anchor_step not in positions:
+                search = PlannedSearch.model_validate(item)
+                if search.anchor_step is not None:
+                    if search.anchor_step >= position or search.anchor_step not in positions:
                         raise ValueError("anchor_step_not_a_valid_prior_step")
-                    step = step.model_copy(update={"anchor_step": positions[step.anchor_step]})
-                positions[position] = len(steps)
-                steps.append(step)
-            except (ValidationError, ValueError):
-                errors.append({"position": position, "error": "tool_step_invalid"})
-        if set(raw) - {"query_mode", "steps", "relevant_memory_ids", "action_time_expression"}:
+                    search = search.model_copy(update={"anchor_step": positions[search.anchor_step]})
+                positions[position] = len(searches)
+                searches.append(search)
+            except ValidationError as error:
+                for issue in error.errors(include_url=False):
+                    errors.append({'field': '.'.join(['searches', str(position), *map(str, issue['loc'])]),
+                                   'error': issue['type'], 'message': issue['msg']})
+            except ValueError as error:
+                errors.append({'field': f'searches.{position}.anchor_step', 'error': str(error)})
+        required = {
+            'direct': set(),
+            'verify_premise': {'premise_check'},
+            'action': {'constraint', 'latest_state'},
+            'temporal_join': {'temporal_anchor', 'answer_detail'},
+            'current_state': {'latest_state'},
+        }[query_mode]
+        missing = sorted(required - {search.role for search in searches})
+        if missing:
+            errors.append({'field': 'searches', 'error': 'required_roles_missing', 'roles': missing})
+        if set(raw) - {"query_mode", "searches", "relevant_memory_ids", "action_time_expression"}:
             errors.append({"field": "decision", "error": "extra_fields_disposed"})
-        action_time = raw.get("action_time_expression")
-        return Decision(query_mode=raw.get('query_mode', 'direct'), steps=steps,
-                        relevant_memory_ids=identifiers,
-                        action_time_expression=action_time if isinstance(action_time, str) else None), errors
+        action_time = raw.get('action_time_expression')
+        if action_time == 'null':
+            action_time = None
+        if action_time is not None and not isinstance(action_time, str):
+            errors.append({'field': 'action_time_expression', 'error': 'action_time_invalid'})
+            action_time = None
+        decision = Decision(query_mode=query_mode, searches=searches, relevant_memory_ids=identifiers,
+                            action_time_expression=action_time)
+        return decision, errors, len(proposed)
+
+    @staticmethod
+    def _plan_error(errors):
+        return any(error.get('field') == 'query_mode' or error.get('field') == 'searches'
+                   or str(error.get('field', '')).startswith('searches.') for error in errors)
+
+    @staticmethod
+    def _requested_ordering(question, role):
+        if role == 'latest_state':
+            return 'latest'
+        if role not in {'direct', 'temporal_anchor', 'answer_detail'}:
+            return 'all'
+        normalized = question.casefold()
+        if re.search(r'\b(first|earliest|initial)\b|最早|第一次', normalized):
+            return 'first'
+        if re.search(r'\b(latest|most recent|currently|current)\b|最近|最新|当前|现在', normalized):
+            return 'latest'
+        return 'all'
+
+    @classmethod
+    def _compile_searches(cls, decision, question, as_of):
+        """Fill deterministic retrieval mechanics after the model chooses semantic searches."""
+        steps, errors = [], []
+        for position, search in enumerate(decision.searches):
+            supported_time = None
+            if search.time_expression:
+                supported_time = resolve_time(search.time_expression, question, as_of)
+                if supported_time is None:
+                    errors.append({'field': f'searches.{position}.time_expression',
+                                   'error': 'time_not_supported_by_question'})
+                    continue
+            purpose = ('scheduled' if supported_time and
+                       parse_time(supported_time).date() > parse_time(as_of).date() else 'history')
+            temporal_role = search.role in {'premise_check', 'temporal_anchor', 'answer_detail'}
+            steps.append(RecallStep(
+                role=search.role, purpose=purpose, query=search.query,
+                time_expression=search.time_expression, anchor_source_id=search.anchor_source_id,
+                anchor_step=search.anchor_step, time_basis='event' if temporal_role else 'message',
+                relation=search.relation, select=cls._requested_ordering(question, search.role),
+                window_days=0))
+        return steps, errors
 
     def _recall_step(self, owner, question, step, allowed_sources, documents, as_of, deadline,
                      prior_results=(), vector=None, allow_embedding=True):
@@ -481,14 +550,62 @@ class MemoryEngine:
         return cls._merge(hits, documents), roles
 
     @staticmethod
-    def _fallback_decision(query):
-        """One bounded semantic supplement keeps Search useful when the planner is unavailable."""
-        return Decision(query_mode='direct', relevant_memory_ids=[], steps=[RecallStep(
-            role='constraint', purpose='history',
-            query=('Past or current conditions, constraints, changes, risks, and experiences '
-                   'that affect whether this request is suitable or feasible: ' + query),
-            time_expression=None, anchor_source_id=None, anchor_step=None,
-            time_basis='message', relation='independent', select='all', window_days=0)])
+    def _fallback_query_mode(query):
+        normalized = query.casefold()
+        if re.search(r'\b(before|after|following|preceding)\b|之前|之后|后来', normalized):
+            return 'temporal_join'
+        if re.search(r'\b(should|could i|can i|plan|recommend|resume|return to|start)\b|适合|能不能|可以.*吗|计划|恢复', normalized):
+            return 'action'
+        if re.search(r'\b(current|currently|now|latest|most recent)\b|当前|现在|最近|最新', normalized):
+            return 'current_state'
+        if re.search(r'\b(i recall|i remember|did i|was it)\b|我记得|是否.*发生', normalized):
+            return 'verify_premise'
+        return 'direct'
+
+    @staticmethod
+    def _fallback_decision(query, query_mode='direct'):
+        """Build a complete bounded plan from the validated mode when planner output is unusable."""
+        templates = {
+            'direct': [],
+            'verify_premise': [('premise_check',
+                'Actual dated activities, participants and locations that confirm or correct this premise: ' + query)],
+            'action': [
+                ('constraint', 'Past or current medical, physical, practical, scheduling, commitment and safety conditions affecting feasibility: ' + query),
+                ('latest_state', 'Later changes showing whether the conditions affecting this action still apply: ' + query)],
+            'temporal_join': [
+                ('temporal_anchor', 'The identifying incident, participants and occurrence time in this question: ' + query),
+                ('answer_detail', 'The requested outcome or detail connected to that identifying incident: ' + query)],
+            'current_state': [('latest_state', 'The most recent evidence determining the currently applicable state: ' + query)],
+        }
+        mode = query_mode if query_mode in templates else 'direct'
+        searches = []
+        for index, (role, text) in enumerate(templates[mode]):
+            anchored = mode == 'temporal_join' and index == 1
+            relation = ('before' if re.search(r'\bbefore\b|之前', query, re.I) else
+                        'after' if re.search(r'\bafter\b|之后|后来', query, re.I) else
+                        'same_day') if anchored else 'independent'
+            searches.append(PlannedSearch(role=role, query=text, time_expression=None,
+                anchor_source_id=None, anchor_step=0 if anchored else None, relation=relation))
+        return Decision(query_mode=mode, relevant_memory_ids=[], searches=searches,
+                        action_time_expression=None)
+
+    @staticmethod
+    def _broad_role_query(role, question):
+        templates = {
+            'direct': 'Facts, events and original statements that directly answer: ',
+            'premise_check': 'Actual activities, events, participants, places and dates that confirm or correct: ',
+            'constraint': 'Medical, physical, practical, scheduling, commitment, safety and feasibility conditions relevant to: ',
+            'latest_state': 'Later changes, recovery, replacement, cancellation, completion and current status relevant to: ',
+            'temporal_anchor': 'The identifying incident, participants, place and occurrence time for: ',
+            'answer_detail': 'The outcome, consequence, response or detail connected to the identified incident in: ',
+        }
+        return templates[role] + question
+
+    def _role_recall_sufficient(self, query, hits):
+        if not hits:
+            return False
+        coverage = self._retrieval_coverage(query, hits)
+        return hits[0][1] >= self.settings.role_recall_min_score or coverage['sufficient']
 
     @staticmethod
     def _role_graph_seeds(step, hits, limit=8):
@@ -533,14 +650,33 @@ class MemoryEngine:
             direct_coverage = self._retrieval_coverage(request.query, base)
             current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
-            decision = Decision(steps=[], relevant_memory_ids=[])
+            decision = Decision(searches=[], relevant_memory_ids=[])
+            compiled_steps = []
             decision_errors = []
+            planner_attempts = []
             if self.model:
                 try:
-                    decision, decision_errors = self._decode_decision(self.model.decide(state, deadline=deadline))
+                    raw_decision = self.model.decide(state, deadline=deadline)
+                    decision, decision_errors, _ = self._decode_decision(raw_decision)
+                    compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of)
+                    decision_errors.extend(compile_errors)
+                    planner_attempts.append({'raw': raw_decision, 'errors': list(decision_errors)})
+                    if self._plan_error(decision_errors):
+                        repair_state = {**state, 'previous_output': raw_decision,
+                                        'repair_errors': decision_errors}
+                        repaired_raw = self.model.decide(repair_state, deadline=deadline)
+                        decision, decision_errors, _ = self._decode_decision(repaired_raw)
+                        compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of)
+                        decision_errors.extend(compile_errors)
+                        planner_attempts.append({'raw': repaired_raw, 'errors': list(decision_errors)})
+                    if self._plan_error(decision_errors):
+                        degradation.append('decision_invalid')
+                        decision = self._fallback_decision(request.query, decision.query_mode)
+                        compiled_steps, _ = self._compile_searches(decision, request.query, as_of)
                 except (ProviderUnavailable, OutputInvalid, ValidationError):
                     degradation.append("decision_unavailable")
-                    decision = self._fallback_decision(request.query)
+                    decision = self._fallback_decision(request.query, self._fallback_query_mode(request.query))
+                    compiled_steps, _ = self._compile_searches(decision, request.query, as_of)
             shown = {item["id"] for item in state["current_conditions"]}
             selected = [memory for memory in current if memory.id in shown and memory.id in decision.relevant_memory_ids]
             unavailable_condition_count = len(set(decision.relevant_memory_ids) - shown)
@@ -549,7 +685,7 @@ class MemoryEngine:
             source_ids = {source_id for card in state["evidence"] for source_id in card["source_ids"]}
             source_ids.update(source_id for item in state["current_conditions"] for source_id in item["source_ids"])
             tool_results, step_hits = [], []
-            for index, step in enumerate(decision.steps):
+            for index, step in enumerate(compiled_steps):
                 temporal_step = bool(step.time_expression or step.anchor_source_id or step.anchor_step is not None
                                      or step.relation != 'independent' or step.select != 'all')
                 if (direct_coverage['sufficient'] and not temporal_step
@@ -566,37 +702,73 @@ class MemoryEngine:
                         except ProviderUnavailable:
                             allow_step_embedding = False
                             degradation.append(f'tool_{index}_embedding_unavailable')
-                    hits, recall_coverage = self._recall_step(request.user_id, request.query, step, source_ids, documents,
+                    initial_hits, recall_coverage = self._recall_step(request.user_id, request.query, step, source_ids, documents,
                         as_of, deadline, step_hits, step_vector, allow_step_embedding)
-                    scoped_new = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
+                    scoped_new = len({document.id for document, _ in initial_hits} - {document.id for document, _ in merged})
                     result = {"coverage": recall_coverage, "scoped_new_documents": scoped_new, "fallback_executed": False}
                     tool_results.append(result)
-                    if not hits and recall_coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
+                    if not initial_hits and recall_coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
                         # An invalid temporal constraint still permits a clearly diagnosed unrestricted supplemental search.
-                        supplemental = self._hybrid(request.user_id, step.query, documents, vector=step_vector,
+                        initial_hits = self._hybrid(request.user_id, step.query, documents, vector=step_vector,
                                                     limit=self.settings.candidate_limit)
-                        hits = supplemental
                         result["fallback_executed"] = True
+                    initial_signal = self._retrieval_coverage(step.query, initial_hits)
+                    result['initial_top_score'] = initial_hits[0][1] if initial_hits else 0.0
+                    result['initial_token_coverage'] = initial_signal['token_coverage']
+                    broad_hits, broad_query, broad_vector = [], None, None
+                    if not self._role_recall_sufficient(step.query, initial_hits):
+                        broad_query = self._broad_role_query(step.role, request.query)
+                        allow_broad_embedding = True
+                        if self.embedder:
+                            try:
+                                broad_vector = self._embed([broad_query], deadline)[0]
+                            except ProviderUnavailable:
+                                allow_broad_embedding = False
+                                degradation.append(f'tool_{index}_broad_embedding_unavailable')
+                        broad_step = step.model_copy(update={'query': broad_query})
+                        broad_hits, broad_coverage = self._recall_step(request.user_id, request.query, broad_step,
+                            source_ids, documents, as_of, deadline, step_hits, broad_vector, allow_broad_embedding)
+                        if not broad_hits and broad_coverage in {"time_scope_unresolved", "anchor_unknown",
+                                "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
+                            broad_hits = self._hybrid(request.user_id, broad_query, documents, vector=broad_vector,
+                                                      limit=self.settings.candidate_limit)
+                        result.update(broadening_executed=True, broad_query=broad_query,
+                                      broad_coverage=broad_coverage,
+                                      broad_top_score=broad_hits[0][1] if broad_hits else 0.0)
+                    else:
+                        result['broadening_executed'] = False
+                    hit_scores = {}
+                    for document, score in [*initial_hits, *broad_hits]:
+                        hit_scores[document.id] = (document, max(score, hit_scores.get(document.id, (document, 0))[1]))
+                    hits = sorted(hit_scores.values(), key=lambda item: (-item[1], item[0].id))
                     step_hits.append(hits)
                     result["new_documents"] = len({document.id for document, _ in hits} - {document.id for document, _ in merged})
                     result["new_source_turns"] = len({doc.source_ids[0] for doc, _ in hits if doc.source_ids}
                                                     - {doc.source_ids[0] for doc, _ in merged if doc.source_ids})
                     role_graph_seeds = self._role_graph_seeds(step, hits)
-                    extra_graph = self._graph_candidates(request.user_id, step.query,
+                    graph_query = broad_query or step.query
+                    graph_vector = broad_vector if broad_query else step_vector
+                    extra_graph = self._graph_candidates(request.user_id, graph_query,
                         role_graph_seeds, documents,
-                        step_vector, as_of) \
+                        graph_vector, as_of) \
                         if self.settings.graph_enabled else []
-                    expanded_hits, extra_paths = self._expand_revision_chains(request.user_id, hits, documents, as_of)
+                    expanded_hits, extra_paths = self._expand_revision_chains(request.user_id, initial_hits, documents, as_of)
+                    expanded_broad, broad_paths = self._expand_revision_chains(request.user_id, broad_hits, documents, as_of)
                     expanded_graph, graph_step_paths = self._expand_revision_chains(request.user_id, extra_graph, documents, as_of)
-                    revision_paths.extend([*extra_paths,*graph_step_paths])
-                    retrieval_channels.extend([
+                    revision_paths.extend([*extra_paths, *broad_paths, *graph_step_paths])
+                    new_channels = [
                         {'channel': f'tool_{index}', 'role': step.role, 'query': step.query,
                          'weight': 1.0, 'hits': expanded_hits},
                         {'channel': f'tool_graph_{index}', 'role': step.role, 'query': step.query,
                          'weight': .5,
                          'seed_source_ids': [key for doc in role_graph_seeds for key in doc.source_ids],
                          'hits': expanded_graph},
-                    ])
+                    ]
+                    if broad_query:
+                        new_channels.append({'channel': f'tool_broad_{index}', 'role': step.role,
+                                             'query': broad_query, 'weight': 1.0, 'hits': expanded_broad})
+                        new_channels[-2]['query'] = graph_query
+                    retrieval_channels.extend(new_channels)
                     merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
                     source_ids.update(source_id for document, _ in hits for source_id in document.source_ids)
                 except ProviderUnavailable:
@@ -623,7 +795,7 @@ class MemoryEngine:
                 ]
             cards_by_source = {document.source_ids[0]: card for (document, _), card in zip(merged, cards) if document.source_ids}
             temporal = {}
-            for index, (step, hits) in enumerate(zip(decision.steps, step_hits)):
+            for index, (step, hits) in enumerate(zip(compiled_steps, step_hits)):
                 if step.select == "all":
                     continue
                 for document, _ in hits:
@@ -648,8 +820,8 @@ class MemoryEngine:
             if self.reranker and len(scores) < len(merged):
                 degradation.append("rerank_partial_or_unavailable")
             temporal_selected_ids = []
-            for index in reversed(range(len(decision.steps))):
-                step = decision.steps[index]
+            for index in reversed(range(len(compiled_steps))):
+                step = compiled_steps[index]
                 if step.select == "all" or not step_hits[index]:
                     continue
                 candidates = [(parse_time(stamp), card_id) for key, (number, document, stamp, card_id) in temporal.items()
@@ -706,16 +878,19 @@ class MemoryEngine:
                 "rerank_scored_documents": len(scores),
                 "degradation": degradation, "coverage": "bounded_retrieval_not_exhaustive", "as_of": as_of,
                 "decision": decision.model_dump(), "selected_condition_ids": [memory.id for memory in selected],
+                "compiled_steps": [step.model_dump() for step in compiled_steps],
                 "decision_errors": decision_errors,
+                "planner_attempts": planner_attempts,
                 "direct_coverage": direct_coverage,
                 "fusion": "logical_memory_rrf",
                 "revision_paths": revision_paths,
                 "memory_bundles": len({document.memory_id for document, _ in merged if document.memory_id}),
                 "candidate_channels": channels,
                 "decision_source_ids": sorted({key for card in state["evidence"] for key in card["source_ids"]}),
-                "candidate_union_limit": (1 + sum(result.get('coverage') != 'direct_evidence_sufficient'
-                    for result in tool_results)) * (self.settings.candidate_limit
-                        + (self.settings.graph_limit if self.settings.graph_enabled else 0)),
+                "candidate_union_limit": sum(
+                    self.settings.graph_limit if 'graph' in channel['channel'] and self.settings.graph_enabled
+                    else 0 if 'graph' in channel['channel'] else self.settings.candidate_limit
+                    for channel in retrieval_channels),
                 "temporal_selected_ids": list(dict.fromkeys(temporal_selected_ids)),
                 "context_omitted_count": len(current) - len(shown),
                 "unavailable_condition_selection_count": unavailable_condition_count,

@@ -8,8 +8,8 @@ import httpx
 import pytest
 
 from remi.clock import resolve_time
-from remi.models import CardDecision
-from remi.providers import JevReranker
+from remi.models import CardDecision, Decision
+from remi.providers import DECISION_EXAMPLES, DECISION_PROMPT, JevReranker, strict_schema
 from remi.storage import MemoryStore, SQLiteStore, TABLES
 
 
@@ -57,6 +57,18 @@ def test_static_schema_has_no_dynamic_source_or_memory_enums():
     assert len(json.dumps(schema)) < 10000
     assert schema["additionalProperties"] is False
     assert schema["properties"]["target_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+
+def test_search_planner_contract_is_compact_explicit_and_covered_by_examples():
+    schema = strict_schema(Decision)
+    search = schema['$defs']['PlannedSearch']
+    assert search['required'] == list(search['properties'])
+    assert set(search['properties']) == {
+        'role', 'query', 'time_expression', 'anchor_source_id', 'anchor_step', 'relation'}
+    assert '"searches"' in DECISION_PROMPT and 'verify_premise: include premise_check' in DECISION_PROMPT
+    assert 'action: include constraint and latest_state' in DECISION_PROMPT
+    roles = [{item['role'] for item in output['searches']} for _, output in DECISION_EXAMPLES]
+    assert roles == [{'premise_check'}, {'constraint', 'latest_state'}, {'temporal_anchor', 'answer_detail'}]
 
 
 @pytest.mark.parametrize("expression,text,anchor,expected", [

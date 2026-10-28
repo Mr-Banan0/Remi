@@ -40,6 +40,7 @@ class Settings:
     decision_bytes: int = 24000
     evidence_bytes: int = 6000
     context_bytes: int = 4000
+    role_recall_min_score: float = 0.02
     add_timeout: float = 180
     search_timeout: float = 45
     graph_enabled: bool = True
@@ -52,6 +53,8 @@ class Settings:
             raise ValueError("context_budget_invalid")
         if not 512 <= self.evidence_bytes <= 16000 or not 0 < self.add_timeout <= 1770 or not 0 < self.search_timeout <= 180:
             raise ValueError("call_budget_invalid")
+        if not 0 <= self.role_recall_min_score <= 1:
+            raise ValueError("role_recall_threshold_invalid")
 
     @classmethod
     def from_environment(cls):
@@ -60,6 +63,7 @@ class Settings:
         values = {field: int(os.getenv("REMI_" + env, getattr(cls(), field))) for field, env in mapping.items()}
         values.update(add_timeout=float(os.getenv("REMI_ADD_TIMEOUT", "180")),
                       search_timeout=float(os.getenv("REMI_SEARCH_TIMEOUT", "45")),
+                      role_recall_min_score=float(os.getenv("REMI_ROLE_RECALL_MIN_SCORE", "0.02")),
                       graph_enabled=os.getenv("REMI_GRAPH_ENABLED", "1") == "1",
                       hot_enabled=os.getenv("REMI_HOT_ENABLED", "1") == "1")
         return cls(**values)

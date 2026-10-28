@@ -82,9 +82,11 @@ def test_sufficient_direct_channel_skips_unrestricted_supplement():
         def rank(self, text, cards, *, deadline):
             self.cards = cards
             return RankResult({card["id"]: .99 if "PRIMARY" in card["original"] else .1 for card in cards})
-    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {"steps": [{
-        "query": "SECONDARY", "time_expression": None, "anchor_source_id": None, "time_basis": "message",
-        "relation": "independent", "select": "all", "window_days": 0, "anchor_step": None}], "relevant_memory_ids": []})
+    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {
+        "query_mode": "direct", "action_time_expression": None, "searches": [{
+        "role": "direct", "query": "SECONDARY", "time_expression": None,
+        "anchor_source_id": None, "relation": "independent", "anchor_step": None}],
+        "relevant_memory_ids": []})
     ranker = UnionRanker()
     engine = MemoryEngine(model=model, reranker=ranker,
         settings=Settings(candidate_limit=2, graph_limit=1, graph_enabled=False))
@@ -102,9 +104,11 @@ def test_partial_rerank_retains_the_original_question_baseline():
     class PartialRanker:
         def rank(self, text, cards, *, deadline):
             return RankResult({cards[0]["id"]: .9})
-    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {"steps": [{
-        "query": "SECONDARY", "time_expression": None, "anchor_source_id": None, "time_basis": "message",
-        "relation": "independent", "select": "all", "window_days": 0, "anchor_step": None}], "relevant_memory_ids": []})
+    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {
+        "query_mode": "direct", "action_time_expression": None, "searches": [{
+        "role": "direct", "query": "SECONDARY", "time_expression": None,
+        "anchor_source_id": None, "relation": "independent", "anchor_step": None}],
+        "relevant_memory_ids": []})
     engine = MemoryEngine(model=model, reranker=PartialRanker(), settings=Settings(graph_enabled=False))
     engine.add(request("PRIMARY answer"))
     engine.add(request("SECONDARY unrelated", request_id="r2"))
@@ -118,9 +122,11 @@ def test_partial_rerank_retains_the_original_question_baseline():
 
 
 def test_fallback_recall_logs_its_actual_new_source():
-    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {"steps": [{
-        "query": "SECONDARY", "time_expression": None, "anchor_source_id": "unknown", "time_basis": "message",
-        "relation": "same_day", "select": "all", "window_days": 0, "anchor_step": None}], "relevant_memory_ids": ["unknown_condition"]})
+    model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {
+        "query_mode": "direct", "action_time_expression": None, "searches": [{
+        "role": "direct", "query": "SECONDARY", "time_expression": None,
+        "anchor_source_id": "unknown", "relation": "same_day", "anchor_step": None}],
+        "relevant_memory_ids": ["unknown_condition"]})
     engine = MemoryEngine(model=model, settings=Settings(graph_enabled=False))
     engine.add(request("PRIMARY answer"))
     engine.add(request("SECONDARY detail", request_id="r2"))
@@ -137,9 +143,10 @@ def test_sufficient_direct_and_graph_channels_define_the_natural_bound():
         source_ids=[f"source_{name}_{index}"], memory_id=None, revision_id=None,
         message_at="2024-06-02T10:00:00Z", event_at=None, created_at="2024-06-02T10:00:00Z")
         for index in range(52)] for name in ("base", "one", "two")}
-    model = ScriptedModel(decide=lambda state: {"steps": [{"query": name, "time_expression": None,
-        "anchor_source_id": None, "time_basis": "message", "relation": "independent", "select": "all",
-        "window_days": 0, "anchor_step": None} for name in ("one", "two")], "relevant_memory_ids": []})
+    model = ScriptedModel(decide=lambda state: {"query_mode": "direct", "action_time_expression": None,
+        "searches": [{"role": "direct", "query": name, "time_expression": None,
+        "anchor_source_id": None, "relation": "independent", "anchor_step": None}
+        for name in ("one", "two")], "relevant_memory_ids": []})
     class Ranker:
         def rank(self, text, cards, *, deadline):
             self.count = len(cards)

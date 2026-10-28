@@ -349,6 +349,30 @@ EvidenceRole = Literal['direct', 'premise_check', 'constraint', 'temporal_anchor
 QueryMode = Literal['direct', 'verify_premise', 'action', 'temporal_join', 'current_state']
 
 
+class PlannedSearch(StrictModel):
+    """The semantic part of one supplemental search chosen by the planner."""
+    role: EvidenceRole
+    query: str = Field(min_length=1, max_length=2000)
+    time_expression: str | None = None
+    anchor_source_id: str | None = None
+    anchor_step: int | None = Field(default=None, ge=0, le=0)
+    relation: Literal["independent", "same_day", "before", "after"] = "independent"
+
+    @field_validator("time_expression", "anchor_source_id", "anchor_step", mode="before")
+    @classmethod
+    def optional_arguments(cls, value):
+        return nullable(value)
+
+    @model_validator(mode="after")
+    def anchor_contract(self):
+        if self.anchor_step is not None and (self.anchor_source_id or self.time_expression):
+            raise ValueError("step_anchor_uses_prior_result_time")
+        if self.relation != "independent" and not (
+                self.anchor_step is not None or self.anchor_source_id or self.time_expression):
+            raise ValueError("time_relation_requires_anchor")
+        return self
+
+
 class RecallStep(StrictModel):
     role: EvidenceRole = 'direct'
     purpose: Literal["history", "scheduled"] = "history"
@@ -378,5 +402,7 @@ class RecallStep(StrictModel):
 class Decision(StrictModel):
     query_mode: QueryMode = 'direct'
     action_time_expression: str | None = None
-    steps: list[RecallStep] = Field(max_length=2)
+    searches: list[PlannedSearch] = Field(max_length=2)
     relevant_memory_ids: list[str] = Field(max_length=24)
+
+    _null_action_time = field_validator('action_time_expression', mode='before')(nullable)

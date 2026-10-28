@@ -61,9 +61,9 @@ class TemporalRanker:
 
 
 def temporal_model(select="first"):
-    return ScriptedModel(decide=lambda state: {"steps": [{"query": "email Alicia", "time_expression": "2024-06-06",
-        "anchor_source_id": None, "time_basis": "message", "relation": "after", "select": select,
-        "window_days": 0, "anchor_step": None}], "relevant_memory_ids": []})
+    return ScriptedModel(decide=lambda state: {"query_mode": "direct", "action_time_expression": None,
+        "searches": [{"role": "direct", "query": "email Alicia", "time_expression": "2024-06-06",
+        "anchor_source_id": None, "relation": "after", "anchor_step": None}], "relevant_memory_ids": []})
 
 
 def test_first_survives_final_rerank_and_excludes_different_activity():
@@ -85,16 +85,19 @@ def test_partial_activity_check_reports_uncertainty_and_preserves_base():
 
 
 def test_second_step_binds_the_new_first_step_time():
-    model = ScriptedModel(lambda state, errors: {"commands": []})
+    def dated_event(state, errors):
+        text = state["new_user_source"]["content"]
+        return {"commands": [command(state, time="2024-06-06" if "Anchor" in text else "2024-06-09")]}
+    model = ScriptedModel(dated_event)
     engine = MemoryEngine(model=model)
-    engine.add(request("Anchor communication alpha", when="2024-06-06T10:00:00Z"))
-    engine.add(request("Followup message beta", request_id="r2", when="2024-06-09T10:00:00Z"))
-    model.decider = lambda state: {"steps": [
-        {"query": "communication alpha", "time_expression": None, "anchor_source_id": None,
-         "time_basis": "message", "relation": "independent", "select": "all", "window_days": 0, "anchor_step": None},
-        {"query": "message beta", "time_expression": None, "anchor_source_id": None,
-         "time_basis": "message", "relation": "after", "select": "first", "window_days": 0, "anchor_step": 0}],
-        "relevant_memory_ids": []}
+    engine.add(request("On 2024-06-06 I sent Anchor communication alpha", when="2024-06-06T10:00:00Z"))
+    engine.add(request("On 2024-06-09 I sent Followup message beta", request_id="r2", when="2024-06-09T10:00:00Z"))
+    model.decider = lambda state: {"query_mode": "temporal_join", "action_time_expression": None,
+        "searches": [
+        {"role": "temporal_anchor", "query": "communication alpha", "time_expression": None,
+         "anchor_source_id": None, "relation": "independent", "anchor_step": None},
+        {"role": "answer_detail", "query": "message beta", "time_expression": None,
+         "anchor_source_id": None, "relation": "after", "anchor_step": 0}], "relevant_memory_ids": []}
     result = engine.search(query("What happened afterwards?"), "2024-07-01T00:00:00Z")
     assert not model.decisions[-1]["evidence"]
     assert "Followup" in "\n".join(item.content for item in result.data)
@@ -292,16 +295,16 @@ def test_sqlite_restart_retains_date_and_original_hit_windows(tmp_path):
 
 
 def test_one_bad_tool_step_preserves_independent_step_and_condition_selection():
-    raw = {"steps": [
-        {"query": "invalid", "time_expression": "2024-06-02", "anchor_source_id": None,
-         "anchor_step": 0, "time_basis": "message", "relation": "after", "select": "first", "window_days": 0},
-        {"query": "valid", "time_expression": None, "anchor_source_id": None,
-         "anchor_step": None, "time_basis": "message", "relation": "independent", "select": "all", "window_days": 0}],
+    raw = {"query_mode": "direct", "action_time_expression": None, "searches": [
+        {"role": "answer_detail", "query": "invalid", "time_expression": "2024-06-02",
+         "anchor_source_id": None, "anchor_step": 0, "relation": "after"},
+        {"role": "direct", "query": "valid", "time_expression": None,
+         "anchor_source_id": None, "anchor_step": None, "relation": "independent"}],
         "relevant_memory_ids": ["condition"]}
-    decision, errors = MemoryEngine._decode_decision(raw)
-    assert [step.query for step in decision.steps] == ["valid"]
+    decision, errors, proposed = MemoryEngine._decode_decision(raw)
+    assert [search.query for search in decision.searches] == ["valid"] and proposed == 2
     assert decision.relevant_memory_ids == ["condition"]
-    assert errors == [{"position": 0, "error": "tool_step_invalid"}]
+    assert errors and errors[0]["field"].startswith("searches.0")
 
 
 def test_message_anchor_clock_is_grounded_in_selected_source_metadata():
@@ -332,14 +335,14 @@ def test_encoded_null_arguments_commit_without_a_repair_call():
 
 
 def test_encoded_null_keeps_a_dependent_tool_step_valid():
-    raw = {"steps": [
-        {"query": "anchor", "time_expression": "null", "anchor_source_id": "null", "anchor_step": "null",
-         "time_basis": "message", "relation": "independent", "select": "all", "window_days": 0},
-        {"query": "answer", "time_expression": "null", "anchor_source_id": "null", "anchor_step": 0,
-         "time_basis": "message", "relation": "after", "select": "first", "window_days": 0}], "relevant_memory_ids": []}
-    decision, errors = MemoryEngine._decode_decision(raw)
-    assert len(decision.steps) == 2 and not errors
-    assert decision.steps[1].anchor_step == 0 and decision.steps[0].time_expression is None
+    raw = {"query_mode": "temporal_join", "action_time_expression": "null", "searches": [
+        {"role": "temporal_anchor", "query": "anchor", "time_expression": "null",
+         "anchor_source_id": "null", "anchor_step": "null", "relation": "independent"},
+        {"role": "answer_detail", "query": "answer", "time_expression": "null",
+         "anchor_source_id": "null", "anchor_step": 0, "relation": "after"}], "relevant_memory_ids": []}
+    decision, errors, proposed = MemoryEngine._decode_decision(raw)
+    assert len(decision.searches) == 2 and proposed == 2 and not errors
+    assert decision.searches[1].anchor_step == 0 and decision.searches[0].time_expression is None
 
 
 @pytest.mark.parametrize("expression,text,expected", [

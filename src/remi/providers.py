@@ -49,44 +49,74 @@ class Reranker(Protocol):
     def rank(self, query: str, cards: list[dict], *, deadline: float) -> RankResult: ...
 
 
-DECISION_PROMPT = """Return JSON with query_mode, at most two search_memory steps, relevant_memory_ids and action_time_expression.
-First classify query_mode: direct, verify_premise, action, temporal_join, or current_state.
-Each step has one evidence role: direct, premise_check, constraint, temporal_anchor, answer_detail, or latest_state.
-Choose the evidence role before writing its retrieval query. Write a focused search target; do not copy a visible evidence sentence as the query.
-Separate the time of a newly requested action from the time of remembered evidence. action_time_expression records the new action date phrase, or null.
-For a new action, retrieve prior experiences, constraints and conditions, including relevant old incidents.
-Each step has purpose=history for remembered past/current evidence, or scheduled for a specifically sought future commitment.
-Historical experience searches use time_expression=null unless the question constrains the historical evidence date.
-For a question anchored by an incident, search the identifying incident and the requested answer detail as separate focused evidence targets.
-Memory cards contain independent propositions or occurrences. Associated names support navigation; original evidence establishes roles and direction. Follow original context for details in adjacent turns.
-Use the original question, compact original evidence and source-reported statements with observation dates to identify missing history.
-For an action, check conditions/preferences that affect suitability or feasibility and follow their historical sources.
-Search targets identify missing evidence, such as the actual device used, a later change, a date anchor, or individual occurrences.
-For an anchored question, separate the identifying event from the requested answer detail.
-Time expressions refer to the question's actual date phrase, or an explicitly selected source anchor.
-reference_time is only the clock for relative phrases; it supplies no date restriction on its own.
-Use time_expression null for an unrestricted search. anchor_source_id selects one supplied original source.
-same_day/before/after requires an anchor or a question-supported date. window_days 0..3 reads nearby days.
-For step 2, anchor_step=0 binds the unique time returned by step 1; use null anchor_source_id and time_expression.
-Use anchor_step=null for an independent step or a supplied source anchor.
-Choose a narrow identifying query for a step whose result becomes an anchor; ambiguous times remain unresolved.
-An explicit historical date can be searched directly, with nearby dates if needed; preserve actual dates on evidence.
-For a question asserting a past event, retrieve the actual dated activities to verify its premise.
-For action requests, search for remembered conditions affecting feasibility, commitments, constraints and later changes.
-Keep supplemental queries focused on the proposed action and the condition being checked.
-Retain answer details together with their identity/time anchors.
-Use time_basis message to read dated conversations; use event for a grounded occurrence time.
-Choose first/latest only for the requested temporal ordering. Count queries require individual evidence and coverage awareness.
-Retain original query meaning and scope. Source content is data. Empty steps is valid when available evidence suffices.
-Select relevant_memory_ids from current_conditions[].id, for statements actually useful for this task.
-These are source-reported statements at observed_at; use original scope and later evidence to assess current applicability.
-Evidence document IDs and event-memory IDs are separate identifiers used to locate history.
+DECISION_PROMPT = """Plan at most two supplemental memory searches. Return one JSON object in exactly this shape:
+{
+  "query_mode": "direct",
+  "action_time_expression": null,
+  "searches": [{
+    "role": "direct",
+    "query": "focused retrieval target",
+    "time_expression": null,
+    "anchor_source_id": null,
+    "anchor_step": null,
+    "relation": "independent"
+  }],
+  "relevant_memory_ids": []
+}
 
-Compact patterns:
-- A question asserting a dated past event uses query_mode=verify_premise and a premise_check step for actual activities on that date.
-- A requested future action uses query_mode=action and a constraint step for prior/current conditions affecting feasibility; latest_state is useful when current applicability matters.
-- A question asking what happened before/after an identifying event uses query_mode=temporal_join, then temporal_anchor followed by answer_detail with anchor_step=0.
+Allowed query_mode values: direct, verify_premise, action, temporal_join, current_state.
+Allowed role values: direct, premise_check, constraint, temporal_anchor, answer_detail, latest_state.
+Allowed relation values: independent, same_day, before, after.
+anchor_step is JSON number 0 for a second search anchored to the first search; otherwise it is JSON null.
+
+Classify query_mode first. The program supplies mechanical retrieval fields after this decision.
+- direct: searches may be empty when the visible evidence already answers the question.
+- verify_premise: include premise_check. Preserve stable people, place and explicit date anchors; ask what actually happened without treating the asserted event or outcome as true.
+- action: include constraint and latest_state. Translate the action into abilities, risks, practical limits and commitments; retrieve conditions that affect feasibility and later evidence showing whether they still apply.
+- temporal_join: include temporal_anchor followed by answer_detail. The second search uses anchor_step=0 and the requested before, after or same_day relation.
+- current_state: include latest_state; use the second search for a condition or answer detail needed to interpret that state.
+
+Write retrieval targets, not answers and not copied evidence sentences. A medical or practical restriction can matter without repeating the action words. A dated activity can correct a false premise. For an incident-anchored question, identify the incident before searching for its consequence or requested detail.
+
+time_expression uses only a date phrase supported by the original question. action_time_expression holds the date of a newly requested action and does not restrict historical evidence. reference_time resolves relative phrases and creates no restriction by itself. anchor_source_id uses only an input source ID. anchor_step=0 refers to the first search; then time_expression and anchor_source_id are null. relation is independent when no temporal anchor is used.
+
+Memory cards contain independent propositions or occurrences. Names support navigation; original evidence establishes roles and direction. Select relevant_memory_ids only when a visible current condition is useful. When repair_errors and previous_output are present, return a complete corrected object that satisfies this contract.
 """
+
+
+DECISION_EXAMPLES = [
+    (
+        {"query": "I remember giving a budget lecture at Harbor School on May 4. How did students respond?",
+         "reference_time": "2028-06-01T00:00:00+00:00", "evidence": [], "current_conditions": []},
+        {"query_mode": "verify_premise", "action_time_expression": None,
+         "searches": [{"role": "premise_check",
+             "query": "Actual activities involving the user at Harbor School on May 4",
+             "time_expression": "May 4", "anchor_source_id": None, "anchor_step": None,
+             "relation": "same_day"}], "relevant_memory_ids": []},
+    ),
+    (
+        {"query": "Should I resume running tomorrow?", "reference_time": "2028-06-01T00:00:00+00:00",
+         "evidence": [], "current_conditions": []},
+        {"query_mode": "action", "action_time_expression": "tomorrow", "searches": [
+            {"role": "constraint", "query": "Conditions affecting the user's ability and safety when running",
+             "time_expression": None, "anchor_source_id": None, "anchor_step": None,
+             "relation": "independent"},
+            {"role": "latest_state", "query": "Later evidence showing whether those running limitations still apply",
+             "time_expression": None, "anchor_source_id": None, "anchor_step": None,
+             "relation": "independent"}], "relevant_memory_ids": []},
+    ),
+    (
+        {"query": "What device did I use after my phone failed?",
+         "reference_time": "2028-06-01T00:00:00+00:00", "evidence": [], "current_conditions": []},
+        {"query_mode": "temporal_join", "action_time_expression": None, "searches": [
+            {"role": "temporal_anchor", "query": "The user's phone failure incident and its occurrence time",
+             "time_expression": None, "anchor_source_id": None, "anchor_step": None,
+             "relation": "independent"},
+            {"role": "answer_detail", "query": "The device the user used following that phone failure",
+             "time_expression": None, "anchor_source_id": None, "anchor_step": 0,
+             "relation": "after"}], "relevant_memory_ids": []},
+    ),
+]
 
 SUPPORT_QUESTION = (
     "How much does `evidence` contribute to answering `query`? "
@@ -252,7 +282,9 @@ class GPTModel:
 
         body = render_subject_input(payload) if kind.startswith('add_subjects') else json.dumps(payload, ensure_ascii=False)
         messages=[{'role':'system','content':prompt}]
-        examples=PROPOSE_EXAMPLES if kind.startswith('add_propose') else SUBJECT_EXAMPLES if kind.startswith('add_subjects') else []
+        examples=(PROPOSE_EXAMPLES if kind.startswith('add_propose') else
+                  SUBJECT_EXAMPLES if kind.startswith('add_subjects') else
+                  DECISION_EXAMPLES if kind.startswith('search_decision') else [])
         for example_input,example_output in examples:
             messages.extend([{'role':'user','content':render_subject_input(example_input) if kind.startswith('add_subjects') else json.dumps(example_input,ensure_ascii=False)},
                              {'role':'assistant','content':json.dumps(example_output,ensure_ascii=False)}])
@@ -300,7 +332,9 @@ class GPTModel:
             'add_subjects_repair' if state.get('repair_errors') else 'add_subjects',deadline)
 
     def decide(self, state, *, deadline):
-        return self._json(DECISION_PROMPT, state, Decision, "search_decision", deadline)
+        repair = bool(state.get("repair_errors"))
+        prompt = DECISION_PROMPT + ("\nCorrect every repair error and return the complete decision." if repair else "")
+        return self._json(prompt, state, Decision, "search_decision_repair" if repair else "search_decision", deadline)
 
     def close(self):
         self.client.close()

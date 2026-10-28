@@ -32,7 +32,8 @@ class SubjectModel:
             record_type='fact',mode='asserted',context=None,status=None,time_expression=None)
             for content,refs,endpoints,quote in self.items if not endpoints],'reason':'independent typed fixture'}
         return self.transform(state,result) if self.transform else result
-    def decide(self,state,*,deadline):return {'steps':[],'relevant_memory_ids':[]}
+    def decide(self,state,*,deadline):return {'query_mode':'direct','action_time_expression':None,
+                                               'searches':[],'relevant_memory_ids':[]}
 
 
 def setup_model():
