@@ -9,14 +9,14 @@ import re
 from time import monotonic, sleep
 from pydantic import Field, ValidationError
 
-from remi.clock import RELATIVE_DAYS, absolute_content, resolve_time, utcnow
-from remi.heat import visible_memory
-from remi.identity import stable_id
-from remi.models import Candidate, EvidenceRef, ExpressionMode, EventStatus, Memory, MemoryType, Revision, StrictModel
-from remi.providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
-from remi.retrieval import tokenize
-from experiments.maintenance_clock import maintenance_clock, maintenance_identity_scope
-from experiments.subject_extraction import prepare, render
+from .clock import RELATIVE_DAYS, absolute_content, resolve_time, utcnow
+from .heat import visible_memory
+from .identity import stable_id
+from .models import Candidate, EvidenceRef, ExpressionMode, EventStatus, Memory, MemoryType, Revision, StrictModel
+from .providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
+from .retrieval import tokenize
+from .maintenance_clock import maintenance_clock, maintenance_identity_scope
+from .subject_extraction import prepare, render
 
 
 class MemoryDecision(StrictModel):
@@ -357,6 +357,8 @@ def candidates(accepted, state):
     result = []
     for row in accepted.values():
         citations = sorted(row['evidence'], key=lambda evidence: evidence['source_id'] != state['new_user_source']['id'])
+        if any(evidence['source_id'] not in state['source_catalog'] for evidence in citations):
+            raise ProviderUnavailable('memory_evidence_requires_supplied_source')
         result.append(Candidate(id=row['ref'], connection=None, content=row['content'], subject_refs=row['subject_refs'],
             record_type=row['record_type'], mode=row['mode'], context=row.get('context'), status=row.get('status'),
             time_expression=row.get('time_expression'), evidence=[EvidenceRef(
@@ -483,6 +485,6 @@ def materialize(store, state, bindings, accepted):
             'created_fallback' if item.fallback_reason else 'created')
         dispositions.append(dict(candidate_id=candidate.id, status='accepted', operation=disposition,
             memory_id=mid, reason=item.fallback_reason or 'source_validated_memory_maintenance'))
-    from experiments.revision_replay import replay_revisions
+    from .revision_replay import replay_revisions
     memories, edges = replay_revisions(store, memories, edges)
     return list(bindings['entity_rows']), memories, edges, expected, pending, dispositions

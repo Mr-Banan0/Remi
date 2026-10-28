@@ -2,14 +2,17 @@
 from copy import deepcopy
 from types import SimpleNamespace
 
-from experiments.maintenance_clock import maintenance_clock
-from experiments.subject_identity import visible_subject
-from experiments.subject_recall import pack_history
-from experiments.event_maintenance import memory_fingerprint
-from remi.clock import parse_time
-from remi.engine import source_visible
-from remi.heat import visible_memory
-from remi.retrieval import bm25
+from .maintenance_clock import maintenance_clock
+from .subject_identity import visible_subject
+from .subject_recall import pack_history
+from .memory_maintenance import memory_fingerprint
+from .clock import parse_time
+from .heat import visible_memory
+from .retrieval import bm25
+
+
+def source_visible(source, as_of):
+    return parse_time(source.message_at or source.created_at) <= parse_time(as_of)
 
 
 MEMORY_LIMIT = 6

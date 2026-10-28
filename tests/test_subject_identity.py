@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from experiments.subject_identity import matching_subjects
-from experiments.subject_maintenance import commit, maintain, render, review
+from remi.subject_identity import matching_subjects
+from remi.subject_maintenance import commit, maintain, render, review
 from scripts.validate_subject_identities import step_state
-from tests.test_subject_maintenance_experiment import initial
+from tests.test_subject_maintenance import initial
 
 
 def plan(name='Tansy',kind='person',operation='create',target=None,aliases=None,

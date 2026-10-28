@@ -5,13 +5,15 @@ from types import SimpleNamespace
 import json
 import pytest
 
-from experiments.subject_identity import matching_subjects
-from experiments.subject_recall import prepare_candidates, pack_history, subject_stage_state, recall_bytes, RECALL_BYTES
-from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore, shared_recall
-from experiments.subject_maintenance import render, review, maintain
+from remi.subject_identity import matching_subjects
+from remi.subject_recall import prepare_candidates, pack_history, subject_stage_state, recall_bytes, RECALL_BYTES
+from remi.engine import MemoryEngine
+from remi.storage import MemoryStore
+from remi.add_pipeline import shared_recall
+from remi.subject_maintenance import render, review, maintain
 from remi.identity import stable_id
 from remi.models import Source
-from tests.test_individual_subjects_experiment import plan
+from tests.test_subject_identity import plan
 from tests.test_subject_reference_pipeline import Model, request
 
 OWNER = 'keyword-owner'
@@ -46,7 +48,7 @@ def ids(hits):
 
 
 def test_canonical_names_and_aliases_are_both_recalled():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     named=add_subject(store,'Nila')
     alias=add_subject(store,'Riven',aliases=['Sol'])
     described=add_subject(store,'Tova',aliases=['Tov'])
@@ -55,13 +57,13 @@ def test_canonical_names_and_aliases_are_both_recalled():
 
 
 def test_current_alias_and_context_names_are_all_recalled():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     first=add_subject(store,'Aster');second=add_subject(store,'Briar');third=add_subject(store,'Cairn',aliases=['Cai'])
     assert set(ids(matching_subjects(store,OWNER,['Aster met Cai.','Briar replied.'],CLOCK)))=={first['id'],second['id'],third['id']}
 
 
 def test_repeated_evidence_does_not_change_ranking_or_expand_the_identity_card():
-    store=SubjectMemoryStore();row=add_subject(store,'Tavi',aliases=['Tav'])
+    store=MemoryStore();row=add_subject(store,'Tavi',aliases=['Tav'])
     before=ids(matching_subjects(store,OWNER,['Tavi is here.'],CLOCK))
     for index in range(60):
         original=source('repeat-'+str(index),'Tavi is also called Tav.')
@@ -75,7 +77,7 @@ def test_repeated_evidence_does_not_change_ranking_or_expand_the_identity_card()
 
 
 def test_late_alias_is_searchable_and_its_basis_survives_compaction_and_reuse():
-    store=SubjectMemoryStore();row=add_subject(store,'Eryn',aliases=[*[f'Handle{i}' for i in range(40)],'Zeya'])
+    store=MemoryStore();row=add_subject(store,'Eryn',aliases=[*[f'Handle{i}' for i in range(40)],'Zeya'])
     packet,_=prepare_candidates(store,state('Zeya also goes by Zee.'))
     assert [o['id'] for o in packet['subject_catalog']]==[row['id']]
     basis=next(b for b in packet['identity_bases'] if b['text']=='Zeya')
@@ -88,14 +90,14 @@ def test_late_alias_is_searchable_and_its_basis_survives_compaction_and_reuse():
 
 
 def test_keyword_matching_respects_latin_word_boundaries_and_chinese_names():
-    store=SubjectMemoryStore();a=add_subject(store,'Min');b=add_subject(store,'秋禾')
+    store=MemoryStore();a=add_subject(store,'Min');b=add_subject(store,'秋禾')
     assert ids(matching_subjects(store,OWNER,['The administrator called 秋禾.'],CLOCK))==[b['id']]
     assert ids(matching_subjects(store,OWNER,['MIN arrived.'],CLOCK))==[a['id']]
 
 
 @pytest.mark.parametrize('has_user',[False,True])
 def test_candidate_count_is_five_other_subjects_plus_the_existing_user(has_user):
-    store=SubjectMemoryStore();names=[f'Person{i}' for i in range(9)]
+    store=MemoryStore();names=[f'Person{i}' for i in range(9)]
     for name in names:add_subject(store,name)
     if has_user:user=add_subject(store,'Owner',user=True)
     packet,trace=prepare_candidates(store,state(' '.join(names)))
@@ -107,7 +109,7 @@ def test_candidate_count_is_five_other_subjects_plus_the_existing_user(has_user)
 
 
 def test_same_name_candidates_keep_separate_ids_in_the_available_slots():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     for index,role in enumerate(['my neighbor','my colleague']):
         add_subject(store,'Lior',key='person-'+str(index),aliases=[role])
     packet,_=prepare_candidates(store,state('Lior sent a message.'))
@@ -116,7 +118,7 @@ def test_same_name_candidates_keep_separate_ids_in_the_available_slots():
 
 
 def test_only_the_latest_supporting_message_contributes_keyword_candidates():
-    store=SubjectMemoryStore();old=add_subject(store,'Orla');recent=add_subject(store,'Soren')
+    store=MemoryStore();old=add_subject(store,'Orla');recent=add_subject(store,'Soren')
     context=[source('old','Orla called.'),source('recent','Soren called.'),source('reply','What did he say?',role='assistant')]
     packet,trace=prepare_candidates(store,state('He will arrive soon.',context))
     assert trace['context_source_ids']==['reply']
@@ -125,7 +127,7 @@ def test_only_the_latest_supporting_message_contributes_keyword_candidates():
 
 
 def test_foreign_future_subjects_and_context_are_outside_keyword_recall():
-    store=SubjectMemoryStore();a=add_subject(store,'Lumi');add_subject(store,'Keir',owner='elsewhere')
+    store=MemoryStore();a=add_subject(store,'Lumi');add_subject(store,'Keir',owner='elsewhere')
     add_subject(store,'Nori',when='2030-01-01T00:00:00+00:00')
     context=[source('foreign','Lumi called.',owner='elsewhere'),source('future','Lumi called.',when='2030-01-01T00:00:00+00:00')]
     packet,_=prepare_candidates(store,state('Keir and Nori called.',context))
@@ -133,7 +135,7 @@ def test_foreign_future_subjects_and_context_are_outside_keyword_recall():
 
 
 def test_navigation_neighbors_do_not_expand_keyword_subject_candidates():
-    store=SubjectMemoryStore();a=add_subject(store,'Fara');b=add_subject(store,'Iven')
+    store=MemoryStore();a=add_subject(store,'Fara');b=add_subject(store,'Iven')
     store.put('edges',OWNER,'link',dict(id='link',owner=OWNER,endpoint_ids=[a['id'],b['id']],source_ids=[a['references'][0]['source_id']]))
     packet,_=prepare_candidates(store,state('Fara called.'))
     assert [o['id'] for o in packet['subject_catalog']]==[a['id']]
@@ -141,7 +143,7 @@ def test_navigation_neighbors_do_not_expand_keyword_subject_candidates():
 
 
 def test_long_identity_evidence_is_excerpted_without_changing_stored_original():
-    store=SubjectMemoryStore();text='unrelated start '*2000+'Neris is also called Neri.'+' unrelated end'*2000
+    store=MemoryStore();text='unrelated start '*2000+'Neris is also called Neri.'+' unrelated end'*2000
     row=add_subject(store,'Neris',aliases=['Neri'],text=text);snapshot=deepcopy(store.records)
     packet,_=prepare_candidates(store,state('Neris called.'));body=render(packet)
     assert 'Neris is also called Neri.' in body and text not in body
@@ -150,7 +152,7 @@ def test_long_identity_evidence_is_excerpted_without_changing_stored_original():
 
 
 def test_large_history_is_skipped_and_later_small_history_fills_remaining_space():
-    store=SubjectMemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
+    store=MemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
     large=dict(id='large',content='padding '*10000,record_type='fact',entity_ids=[],sources=[source('large-source','old content')])
     small=dict(id='small',content='A small fact.',record_type='fact',entity_ids=[],sources=[source('small-source','A small fact.')])
     filled,trace=pack_history(store,packet,[large,small])
@@ -160,7 +162,7 @@ def test_large_history_is_skipped_and_later_small_history_fills_remaining_space(
 
 
 def test_subject_model_view_keeps_identity_evidence_and_excludes_memory_history():
-    store=SubjectMemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
+    store=MemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
     memory=dict(id='old-memory',content='UNRELATED_MEMORY_MARKER',record_type='fact',entity_ids=[],sources=[source('old-memory-source','UNRELATED_ORIGINAL_MARKER')])
     filled,_=pack_history(store,packet,[memory]);view=subject_stage_state(filled);body=render(filled)
     assert not view['history'] and 'old-memory-source' not in view['source_catalog']
@@ -173,7 +175,7 @@ def test_subject_model_view_keeps_identity_evidence_and_excludes_memory_history(
 
 
 def test_subject_wire_schema_and_body_use_the_same_compact_source_scope():
-    store=SubjectMemoryStore();add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
+    store=MemoryStore();add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
     memory=dict(id='old-memory',content='UNRELATED_MEMORY_MARKER',record_type='fact',entity_ids=[],sources=[source('old-memory-source','UNRELATED_ORIGINAL_MARKER')])
     filled,_=pack_history(store,packet,[memory]);captured=[]
     def create(**body):
@@ -188,7 +190,7 @@ def test_subject_wire_schema_and_body_use_the_same_compact_source_scope():
 
 
 def test_subject_validation_rejects_a_memory_only_source_as_identity_evidence():
-    store=SubjectMemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
+    store=MemoryStore();row=add_subject(store,'Edda');packet,_=prepare_candidates(store,state('Edda called.'))
     memory=dict(id='old-memory',content='Edda is called Invented.',record_type='fact',entity_ids=[],sources=[source('old-memory-source','Edda is called Invented.')])
     filled,_=pack_history(store,packet,[memory]);raw=plan(name='Edda',operation='reuse',target=row['id'],sid='now',basis=filled['identity_bases'][0]['id'])
     raw['subjects'][0]['aliases']=[dict(name='Invented',source_id='old-memory-source')]
@@ -198,7 +200,7 @@ def test_subject_validation_rejects_a_memory_only_source_as_identity_evidence():
 
 
 def test_experimental_add_context_has_the_latest_preceding_message_and_excludes_following_reply():
-    engine=SubjectGraphEngine();owner=OWNER
+    engine=MemoryEngine();owner=OWNER
     values=[source('old','Old message.',when='2028-02-01T10:00:00+00:00'),
             source('antecedent','Neris called.',when='2028-02-01T10:01:00+00:00'),
             source('question','What did she say?',when='2028-02-01T10:02:00+00:00',role='assistant'),
@@ -212,7 +214,7 @@ def test_experimental_add_context_has_the_latest_preceding_message_and_excludes_
 
 
 def test_subject_recall_keeps_keyword_identity_and_defers_memory_selection(monkeypatch):
-    engine=SubjectGraphEngine(model=Model());engine.add(request());owner='reference-owner'
+    engine=MemoryEngine(model=Model());engine.add(request());owner='reference-owner'
     person=add_subject(engine.store,'Vela',owner=owner,when='2027-01-01T10:00:00+00:00')
     # Force a semantic-memory hit independently of literal names in the current message.
     document=next(d for d in engine.store.documents(owner) if d.memory_id)
@@ -224,7 +226,7 @@ def test_subject_recall_keeps_keyword_identity_and_defers_memory_selection(monke
 
 
 def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_views(monkeypatch):
-    from experiments import subject_engine as module
+    from remi import add_pipeline as module
     class Capture(Model):
         def __init__(self):super().__init__();self.subject_states=[];self.memory_states=[]
         def maintain_subjects(self,state,*,deadline):
@@ -234,7 +236,7 @@ def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_vie
     calls=[];original=module.shared_recall
     def recall(*args):calls.append(True);return original(*args)
     monkeypatch.setattr(module,'shared_recall',recall)
-    model=Capture();engine=SubjectGraphEngine(model=model)
+    model=Capture();engine=MemoryEngine(model=model)
     engine.add(request());engine.add(request('The teammate likes jasmine tea.','r2'))
     assert len(calls)==2 and model.calls==['subject','extract','memory','subject','extract','memory']
     assert not model.subject_states[-1]['history'] and model.memory_states[-1]['history']
@@ -242,7 +244,7 @@ def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_vie
 
 
 def test_identity_basis_uses_full_original_when_its_recent_message_view_is_clipped():
-    store=SubjectMemoryStore();text='Opening material. '*1000+'Veyra is also called Vey.'
+    store=MemoryStore();text='Opening material. '*1000+'Veyra is also called Vey.'
     row=add_subject(store,'Veyra',aliases=['Vey'],text=text)
     original=store.get('sources',OWNER,row['aliases'][0]['source_id'])
     context={**original,'content':original['content'][:100]}

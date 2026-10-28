@@ -5,6 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from remi.api import create_app
+from remi import __version__
+from remi.version import PIPELINE
 from remi.settings import Settings
 from .helpers import TestEngine as MemoryEngine
 from .helpers import ScriptedModel, request
@@ -13,8 +15,12 @@ from .helpers import ScriptedModel, request
 def test_contract_health_auth_add_search():
     app = create_app(MemoryEngine(model=ScriptedModel()), api_key="test-secret")
     with TestClient(app) as client:
-        assert client.get("/health").status_code == 200
-        assert app.title == "Remi" and client.get("/health").json()["service"] == "remi"
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert app.title == "Remi" and app.version == __version__ == "0.2.0"
+        assert health.json() == {
+            "status": "ok", "service": "remi", "version": "0.2.0",
+            "pipeline": PIPELINE, "initialized": True}
         assert client.post("/add", json=request("Dell event").model_dump()).status_code == 401
         headers = {"authorization": "Bearer test-secret"}
         result = client.post("/add", json=request("Dell event").model_dump(), headers=headers)

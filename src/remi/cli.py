@@ -6,6 +6,7 @@ import os
 
 from .settings import load_environment, private_key
 from .storage import SQLiteStore, TABLES
+from .version import PIPELINE, VERSION
 
 
 def main():
@@ -25,7 +26,8 @@ def main():
         SQLiteStore.initialize(args.path, allow_create_schema=args.allow_create_schema)
         print(json.dumps({"created": args.path, "tables": sorted(TABLES)}))
     elif args.command == "check-config":
-        print(json.dumps({"llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
+        print(json.dumps({"version": VERSION, "pipeline": PIPELINE,
+            "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
             "embedding_model": "text-embedding-v4", "reranker_model": os.getenv("TYPESAFE_MODEL", "jev-1.13.0"),
             "text_key_present": bool(private_key("LLM_API_KEY", "LLM_API_KEY_FILE")),
             "embedding_key_present": bool(private_key("DASHSCOPE_API_KEY", "DASHSCOPE_API_KEY_FILE")),

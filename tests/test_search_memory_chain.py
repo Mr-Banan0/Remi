@@ -1,7 +1,7 @@
-"""V53 search activates a logical Memory from any visible revision or source."""
+"""Search activates a logical Memory from any visible revision or source."""
 from remi.models import SearchRequest
 from tests.helpers import ScriptedModel, query, request
-from tests.test_event_maintenance import OWNER, lifecycle, req, update
+from tests.test_memory_lifecycle import OWNER, lifecycle, req, update
 
 
 def test_old_version_hit_activates_current_version_and_revision_path():

@@ -8,7 +8,8 @@ import httpx
 import pytest
 
 from remi.clock import resolve_time
-from remi.models import CardDecision, Decision
+from remi.models import Decision
+from remi.memory_maintenance import MemoryPlan
 from remi.providers import DECISION_EXAMPLES, DECISION_PROMPT, JevReranker, strict_schema
 from remi.storage import MemoryStore, SQLiteStore, TABLES
 
@@ -53,10 +54,11 @@ def test_jev_transient_retry_can_recover_the_batch():
 
 
 def test_static_schema_has_no_dynamic_source_or_memory_enums():
-    schema = CardDecision.model_json_schema()
+    schema = MemoryPlan.model_json_schema()
     assert len(json.dumps(schema)) < 10000
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["target_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    decision = schema["$defs"]["MemoryDecision"]
+    assert decision["properties"]["target_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
 
 
 def test_search_planner_contract_is_compact_explicit_and_covered_by_examples():
@@ -138,7 +140,8 @@ def test_gpt_configuration_error_has_one_attempt():
             httpx.Response(400, json={"error": {"message": "bad schema", "type": "invalid_request_error"}}))))
     model = GPTModel("dummy-test", "https://test.invalid/v1", client=sdk)
     with pytest.raises(ProviderUnavailable):
-        model.propose({}, deadline=monotonic() + 5)
+        model.decide({'query':'test','reference_time':'2026-10-28T00:00:00Z',
+                      'evidence':[],'current_conditions':[]}, deadline=monotonic() + 5)
     assert len(model.calls) == 1 and model.calls[0]["http_status"] == 400
     model.close()
 
@@ -199,21 +202,26 @@ def test_extraction_provider_exposes_fixed_refs_and_original_sources():
         http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     model=GPTModel('dummy-test','https://test.invalid/v1',client=sdk)
     state={'new_user_source':{'id':'src_actual','role':'user','content':'Original','message_at':'2024-06-02T10:00:00Z'},
-        'resolved_subjects':[{'ref':3,'status':'resolved'},{'ref':8,'status':'pending'}],
-        'history':[{'id':'mem_actual','sources':[]}]}
-    model.propose(state,deadline=monotonic()+5)
-    body=json.loads(calls[0]['messages'][-1]['content'])
-    props=calls[0]['response_format']['json_schema']['schema']['$defs']['CandidateDraft']['properties']
-    assert body['history'][0]['id']=='M1' and props['subject_refs']['items']['enum']==[3,8]
+        'resolved_subjects':[{'ref':3,'id':'person-3','name':'Mira','kind':'person','status':'resolved','aliases':[],
+                              'current_evidence_id':'C1'},
+                             {'ref':8,'id':None,'name':'Nora','kind':'person','status':'pending','aliases':[],
+                              'current_evidence_id':'C1'}],
+        'current_evidence':[{'id':'C1','text':'Original'}], 'history':[]}
+    model.extract_memories(state,deadline=monotonic()+5)
+    body=calls[0]['messages'][-1]['content']
+    props=calls[0]['response_format']['json_schema']['schema']['$defs']['ExtractionItem']['properties']
+    assert 'Original' in body and 'P3' in body and 'P8' in body
+    assert props['participant_handles']['items']['enum']==['P3','P8']
     assert 'operation' not in props and 'target_id' not in props
     assert not hasattr(model,'maintain')
     model.close()
 
 
 def test_identity_and_extraction_contracts_have_separate_write_authority():
-    from remi.models import SubjectMaintenanceDraft, ProposalDraft
+    from remi.subject_maintenance import SubjectPlan
+    from remi.subject_extraction import ExtractionPlan
     from remi.providers import strict_schema
-    identity=strict_schema(SubjectMaintenanceDraft);memory=strict_schema(ProposalDraft)
-    assert set(identity['properties'])=={'subjects','connections'}
+    identity=strict_schema(SubjectPlan);memory=strict_schema(ExtractionPlan)
+    assert set(identity['properties'])=={'subjects'}
     assert set(memory['properties'])=={'items','reason'}
     assert 'SubjectDraft' in identity['$defs'] and 'SubjectDraft' not in memory['$defs']

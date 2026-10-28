@@ -1,7 +1,6 @@
 """One Add path and one Search path, with record-scoped commits and bounded inference."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from contextlib import contextmanager
@@ -10,7 +9,7 @@ from time import monotonic
 
 from pydantic import ValidationError
 
-from .clock import absolute_content, in_view, message_time, parse_time, resolve_time, utcnow
+from .clock import in_view, parse_time, resolve_time, utcnow
 from .heat import hot_view, visible_memory
 from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
@@ -18,11 +17,7 @@ from .providers import OutputInvalid, ProviderUnavailable, RankResult
 from .retrieval import clip_bytes, hybrid, tokenize, validate_vector
 from .settings import Settings
 from .storage import MemoryStore
-from .add_pipeline import AddPipeline
-
-
-class DuplicateRequestConflict(ValueError):
-    pass
+from .add_pipeline import AddPipeline, DuplicateRequestConflict
 
 
 from .identity import stable_id
@@ -70,6 +65,18 @@ class MemoryEngine:
     def add(self, request):
         return AddPipeline(self).add(request)
 
+    def _add_state(self, source, unit, sources, deadline):
+        """Build the single production Add state for validation and replay tools."""
+        return AddPipeline(self)._add_state(source, unit, sources, deadline)
+
+    def _shared_recall(self, state, deadline):
+        """Run the single production subject recall step."""
+        return AddPipeline(self)._shared_recall(state, deadline)
+
+    def _memory_after_identity(self, cache, result, save, deadline):
+        """Run the single production memory stage for validation tooling."""
+        return AddPipeline(self)._memory_after_identity(cache, result, save, deadline)
+
     @staticmethod
     def _units(sources):
         units = []
@@ -79,18 +86,6 @@ class MemoryEngine:
             units[-1].append(source)
         return units
 
-    def _add_state(self, source, unit, sources, deadline):
-        previous = self.store.context_before(source.owner, source.session_id, source, limit=2)
-        context_map = {item.id: item for item in [*previous, *unit]
-                       if item.id != source.id and item.role in {"user", "assistant"}}
-        context = list(context_map.values())[:3]
-        return {"owner": source.owner,
-                "new_user_source": {"id": source.id, "role": source.role,
-                    "content": source.content, "message_at": source.message_at,
-                    "created_at": source.created_at},
-                "context_sources": [{"id": item.id, "role": item.role,
-                    "content": clip_bytes(item.content, 4000), "message_at": item.message_at, "created_at": item.created_at} for item in context],
-                }
 
     def _documents(self, unit, memories, entities=(), *, pending_candidates=(), owner=None):
         documents = []
@@ -233,43 +228,56 @@ class MemoryEngine:
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
         return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic)
 
-    def _graph_candidates(self, owner, query, seed_documents, documents, vector, as_of):
-        from .graph import active_edges
-        from .identity import normalized_name, visible_entity
-        edges = active_edges(self.store, owner, as_of)
-        ids = {d.memory_id for d in seed_documents if d.memory_id}
-        source_ids = {key for d in seed_documents for key in d.source_ids}
+    def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of):
+        from .graph import active_edges, active_connections
+        from .subject_identity import visible_subject, matching_subjects
+        edges=active_edges(self.store,owner,as_of);mids={d.memory_id for d in seed_documents if d.memory_id}
+        source_ids={sid for d in seed_documents for sid in d.source_ids}
         for original in self.store.memories(owner):
-            memory = visible_memory(original, as_of)
-            if memory and source_ids.intersection(memory.current.source_ids):
-                ids.add(memory.id)
-        user_ids = {raw['id'] for raw in self.store.list('objects', owner) if raw.get('is_user')}
-        entities = {e.target for e in edges if e.origin in ids} - user_ids
-        from .identity import subject_hits
-        from .graph import active_connections
-        entities.update(obj.id for obj in subject_hits(self.store,owner,query,as_of))
-        related = [e for e in active_connections(self.store,owner,as_of) if e.origin in entities or e.target in entities]
-        neighbors = {node for e in related for node in [e.origin,e.target]} - user_ids
-        entities.update(neighbors)
-        record_ids = {e.origin for e in edges if e.target in entities} | {e.memory_id for e in related}
-        adjacent = set()
-        sessions = {}
-        for raw in self.store.list('sources', owner):
-            source = Source.model_validate(raw)
-            if source.role == 'user' and source_visible(source, as_of):
-                sessions.setdefault(source.session_id, []).append(source)
+            memory=visible_memory(original,as_of)
+            if memory and source_ids.intersection(memory.current.source_ids):mids.add(memory.id)
+        objects={obj.id:obj for raw in self.store.list('objects',owner) if (obj:=visible_subject(raw,owner,as_of))}
+        users={obj.id for obj in objects.values() if obj.is_user}
+        entities={e.target for e in edges if e.origin in mids}-users
+        entities.update(obj.id for obj,matches in matching_subjects(self.store,owner,[query],as_of,limit=24) if matches and not obj.is_user)
+        record_ids={edge.origin for edge in edges if edge.target in entities}
+        visible_events={m.id for original in self.store.memories(owner)
+                        if (m:=visible_memory(original,as_of)) and m.record_type=='event'}
+        frontier=set(sorted(mids & visible_events)[:24]);event_ids=set(frontier)
+        navigation=[edge for edge in active_connections(self.store,owner,as_of)
+                    if edge.origin in visible_events and edge.target in visible_events]
+        for _ in range(2):
+            adjacent_ids=set()
+            for edge in navigation:
+                if edge.origin in frontier:adjacent_ids.add(edge.target)
+                if edge.target in frontier:adjacent_ids.add(edge.origin)
+            frontier=set(sorted(adjacent_ids-event_ids)[:max(0,24-len(event_ids))])
+            event_ids.update(frontier)
+            if not frontier:break
+        record_ids.update(event_ids)
+
+        sessions={};adjacent=set()
+        for raw in self.store.list('sources',owner):
+            source=Source.model_validate(raw)
+            if source.role=='user' and source_visible(source,as_of):sessions.setdefault(source.session_id,[]).append(source)
         for group in sessions.values():
-            group.sort(key=lambda source: (parse_time(source.message_at or source.created_at), source.created_at, source.ordinal))
-            for index, source in enumerate(group):
-                if source.id in source_ids:
-                    adjacent.update(s.id for s in group[max(0, index - 1):index + 2])
-        pool = [d for d in documents if d.memory_id in record_ids
-                or d.memory_id is None and d.source_ids and d.source_ids[0] in adjacent]
-        return self._hybrid(owner, query, pool, vector, limit=self.settings.graph_limit)
+            group.sort(key=lambda s:(parse_time(s.message_at or s.created_at),s.created_at,s.ordinal))
+            for index,source in enumerate(group):
+                if source.id in source_ids:adjacent.update(s.id for s in group[max(0,index-1):index+2])
+        pool=[d for d in documents if d.memory_id in record_ids or d.memory_id is None and d.source_ids and d.source_ids[0] in adjacent]
+        return self._hybrid(owner,query,pool,vector,limit=self.settings.graph_limit)
 
     def _card(self, owner, document, query, budget):
         sources = self.store.sources(owner, document.source_ids)
-        sources = sorted(sources, key=lambda source: (source.message_at or source.created_at, source.ordinal))
+        window_ids = {span.source_id for span in document.source_windows}
+        terms = set(tokenize(query))
+        sources = sorted(sources, key=lambda source: (
+            source.id in window_ids,
+            len(terms & set(tokenize(source.content))),
+            source.message_at or source.created_at,
+            source.ordinal,
+        ), reverse=True)
+        sources = sources[:max(1, min(8, budget // 500))]
         headers = [f"[{source.id}] {source.role} at {source.message_at or 'unknown'}:\n" for source in sources]
         overhead = sum(len(header.encode()) + 2 for header in headers)
         allowance = max(0, (budget - overhead) // max(1, len(sources)))
@@ -308,9 +316,13 @@ class MemoryEngine:
                 state["current_conditions"] = trial
         for document, _ in hits:
             card = self._card(owner, document, query, 700)
-            trial = {**state, "evidence": [*state["evidence"], card]}
-            if len(json.dumps(trial, ensure_ascii=False).encode()) <= self.settings.decision_bytes:
-                state = trial
+            memories = sorted(card["memories"], key=lambda row: row.get("observed_at") or "", reverse=True)
+            for limit in (4, 2, 1, 0):
+                bounded = {**card, "memories": memories[:limit]}
+                trial = {**state, "evidence": [*state["evidence"], bounded]}
+                if len(json.dumps(trial, ensure_ascii=False).encode()) <= self.settings.decision_bytes:
+                    state = trial
+                    break
         return state
 
     @staticmethod

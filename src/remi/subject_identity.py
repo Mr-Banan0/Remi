@@ -1,13 +1,13 @@
 """Source-backed people, animals and organizations for the current subject experiment."""
 from __future__ import annotations
 from collections import Counter
-from experiments.maintenance_clock import maintenance_clock, maintenance_identity_scope
+from .maintenance_clock import maintenance_clock, maintenance_identity_scope
 from copy import deepcopy
 from typing import Literal
 from pydantic import Field, model_validator
-from remi.models import StrictModel, SubjectRef, SubjectNameDraft, AliasEvidence
-from remi.identity import normalized_name, source_name_present, stable_id
-from remi.clock import parse_time
+from .models import StrictModel, SubjectRef, SubjectNameDraft, AliasEvidence, SCHEMA_VERSION
+from .identity import normalized_name, source_name_present, stable_id
+from .clock import parse_time
 
 SubjectKind = Literal['person', 'animal', 'organization']
 
@@ -32,6 +32,7 @@ class ReferenceEvidence(StrictModel):
 
 
 class SubjectRecord(StrictModel):
+    schema_version: Literal[13] = SCHEMA_VERSION
     id: str
     owner: str
     name: str | None
@@ -91,7 +92,7 @@ def matching_subjects(store, owner, texts, clock, limit=SUBJECT_LIMIT):
 
 def recall_state(store, owner, source, context):
     """Use the shared keyword candidate builder in standalone subject validation."""
-    from experiments.subject_recall import prepare_candidates, pack_history
+    from .subject_recall import prepare_candidates, pack_history
     state, _ = prepare_candidates(store, dict(owner=owner, new_user_source=source, context_sources=context))
     selected = {obj['id'] for obj in state['subject_catalog']}
     history = [deepcopy(row) for row in store.list('memories', owner)
@@ -102,7 +103,7 @@ def recall_state(store, owner, source, context):
 def resolve_subjects(raw, state, store):
     """Collect independent field failures, then materialize only validated identities and additions."""
     from pydantic import ValidationError
-    from experiments.subject_validation import issue, schema_issues
+    from .subject_validation import issue, schema_issues
     state['proposal'] = dict(subjects=[], items=[], reason='named_subjects')
     state['subject_alias_issues'] = []
     rows = raw.get('subjects', [])
@@ -112,7 +113,7 @@ def resolve_subjects(raw, state, store):
     catalog = {obj['id']: obj for obj in state['subject_catalog']}
     primary = state['new_user_source']; owner = state['owner']
     clock = maintenance_clock(state)
-    from experiments.subject_references import current_evidence
+    from .subject_references import current_evidence
     fragments = {row['id']: row for row in current_evidence(primary)}
     state['current_evidence'] = list(fragments.values())
     decisions, issues = {}, []

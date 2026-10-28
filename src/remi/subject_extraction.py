@@ -9,9 +9,9 @@ from typing import Annotated
 
 from pydantic import Field, ValidationError
 
-from remi.models import ExpressionMode, EventStatus, MemoryType, ProposalDraft, SourceCitation, StrictModel
-from remi.providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
-from experiments.subject_identity import CONTEXT_LIMIT
+from .models import ExpressionMode, EventStatus, MemoryType, ProposalDraft, SourceCitation, StrictModel
+from .providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
+from .subject_identity import CONTEXT_LIMIT
 
 
 class ExtractionInvalid(OutputInvalid):

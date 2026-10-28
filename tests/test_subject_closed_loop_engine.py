@@ -2,7 +2,7 @@
 from copy import deepcopy
 from time import monotonic
 
-from experiments.subject_engine import SubjectGraphEngine
+from remi.engine import MemoryEngine
 from remi.providers import OutputInvalid
 
 
@@ -10,7 +10,7 @@ def reviewed():
     primary=dict(id='source-now',role='user',content='I called the courier.',
                  message_at='2029-08-01T10:00:00+00:00',created_at='2029-08-01T10:00:00+00:00')
     def subject(ref,name,valid):
-        return dict(ref=ref,name=name,kind='individual',is_user=ref==0,aliases=[],
+        return dict(ref=ref,name=name,kind='person',is_user=ref==0,aliases=[],
                     current_reference_valid=valid,current_evidence_id='C1' if valid else None)
     state=dict(owner='boundary-owner',new_user_source=primary,source_catalog={primary['id']:primary},
                context_sources=[],history=[],subject_catalog=[],proposal=dict(
@@ -20,7 +20,7 @@ def reviewed():
 
 
 def proposal():
-    from tests.test_event_maintenance import row
+    from tests.test_memory_lifecycle import row
     state=dict(new_user_source=dict(id='source-now',content='I called the courier.'))
     return dict(items=[row(state,content='I called the courier.',record_type='event',subject_refs=[0,7],
                            status='occurred')],reason='Current participants only.')
@@ -36,7 +36,7 @@ class Capture:
 
 
 def test_memory_view_keeps_grounded_pending_referents_and_excludes_ungrounded_historical_rows():
-    model=Capture();engine=SubjectGraphEngine(model=model);cache={}
+    model=Capture();engine=MemoryEngine(model=model);cache={}
     engine._memory_after_identity(cache,reviewed(),lambda:None,monotonic()+10)
     view=model.inputs[0]['resolved_subjects']
     assert [(row['ref'],row['status']) for row in view]==[(0,'resolved'),(7,'pending')]
@@ -55,7 +55,7 @@ def test_wire_rejection_is_recorded_and_candidate_uses_append_fallback():
             self.inputs.append(deepcopy(state))
             error=OutputInvalid('invalid_current_handle');error.raw_output=raw;error.issues=issues
             raise error
-    model=Fault();engine=SubjectGraphEngine(model=model);cache={};saved=[]
+    model=Fault();engine=MemoryEngine(model=model);cache={};saved=[]
     engine._memory_after_identity(cache,reviewed(),lambda:saved.append(deepcopy(cache)),monotonic()+10)
     assert len(model.inputs)==1
     assert cache['outputs']['propose']==raw and cache['memory_protocol_issues']['propose']==issues

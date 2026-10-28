@@ -1,15 +1,15 @@
 """Small keyword identity candidates and source-backed identity evidence from one owned snapshot."""
-from experiments.maintenance_clock import maintenance_clock
+from .maintenance_clock import maintenance_clock
 from copy import deepcopy
 import re
 import json
 
-from remi.clock import parse_time
-from remi.identity import normalized_name, source_name_present
-from remi.providers import ProviderUnavailable
-from remi.retrieval import clip_bytes
-from experiments.subject_identity import CONTEXT_LIMIT, SUBJECT_LIMIT, keyword_score, matching_subjects
-from experiments.subject_references import prepare_reference_state
+from .clock import parse_time
+from .identity import normalized_name, source_name_present
+from .providers import ProviderUnavailable
+from .retrieval import clip_bytes
+from .subject_identity import CONTEXT_LIMIT, SUBJECT_LIMIT, keyword_score, matching_subjects
+from .subject_references import prepare_reference_state
 
 RECALL_BYTES = 24000
 HISTORY_LIMIT = 8
@@ -71,7 +71,7 @@ def recall_bytes(state):
 
     Current source, its latest supporting message and the fixed instructions have separate input sizes.
     """
-    from experiments.subject_maintenance import render
+    from .subject_maintenance import render
     payload = {**state, 'new_user_source': {**state['new_user_source'], 'content': ''},
                'context_sources': [{**row, 'content': ''} for row in state.get('context_sources', [])]}
     return len(render(payload).encode()) + len(json.dumps(state.get('history', []), ensure_ascii=False).encode())

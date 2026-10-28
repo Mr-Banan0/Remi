@@ -29,8 +29,9 @@ def command(state, content=None, *, kind="event", quote=None, objects=None, time
 
 def direct_subjects_fixture(state,names,*,aliases=None,kinds=None,force_new=False,pending=()):
     from remi.identity import normalized_name
+    from remi.subject_references import current_evidence
     aliases=aliases or {};kinds=kinds or {};source=state['new_user_source']
-    evidence=[{'source_id':source['id']}]
+    fragments=current_evidence(source)
     subjects=[]
     for ref,name in enumerate(names):
         user=name in {'user','@user'};name='@user' if user else name
@@ -40,9 +41,15 @@ def direct_subjects_fixture(state,names,*,aliases=None,kinds=None,force_new=Fals
         if force_new:matches=[]
         uncertain=ref in pending or len(matches)>1
         target=matches[0]['id'] if len(matches)==1 and not uncertain else None
+        operation='pending' if uncertain else 'reuse' if target else 'create'
+        basis=next((row['id'] for row in state.get('identity_bases',[])
+                    if row['target_id']==target),None) if target else None
+        fragment=next((row['id'] for row in fragments
+                       if normalized_name(name) in normalized_name(row['text'])),fragments[0]['id'])
         subjects.append(dict(ref=ref,operation='pending' if uncertain else 'reuse' if target else 'create',target_id=target,
-            name=name,kind=kind,aliases=[dict(name=a,source_id=source['id']) for a in added],evidence=deepcopy(evidence)))
-    return dict(subjects=subjects,connections=[])
+            name=name,kind=kind,aliases=[dict(name=a,source_id=source['id']) for a in added],
+            reference=dict(evidence_id=fragment,basis_id=basis if operation=='reuse' else None)))
+    return dict(subjects=subjects)
 
 
 
@@ -61,7 +68,7 @@ def subject_decisions_fixture(state):
 
 
 class ScriptedModel:
-    """Test-only source extraction fixtures for the two-call append contract."""
+    """Test-only fixtures for subject, extraction and memory-maintenance calls."""
     def __init__(self, extract=None, decide=None):
         self.extractor = extract or (lambda state, errors: {'commands': [command(state)]})
         self.decider = decide or (lambda state: {'query_mode': 'direct', 'action_time_expression': None,
@@ -71,15 +78,36 @@ class ScriptedModel:
         self.subject_calls=[]
         self.base_state = None
 
-    def propose(self, state, *, deadline):
+    def extract_memories(self, state, *, deadline):
         self.base_state = {**state, 'candidates': self.oracle_candidates}
         self.extractions.append((self.base_state, state.get('repair_errors')))
         result = self.extractor(self.base_state, state.get('repair_errors'))
         self.raw_commands = result.get('commands', [])
-        return proposal_fixture([{'record_type':r['kind'],'mode':r.get('mode','asserted'),'context':r.get('context','personal'),
+        plan=proposal_fixture([{'record_type':r['kind'],'mode':r.get('mode','asserted'),'context':r.get('context','personal'),
             'status':r['status'] if r['kind']=='event' else None,'time_expression':r.get('time_expression') if r['kind']=='event' else None,
             'content':r['content'],'names':[o['name'] for o in r.get('objects',[]) if o['kind'] in {'user','person','animal','organization','team'}],
             'evidence':[{'source_id':sid} for sid in [r['source_id'],*r.get('context_source_ids',[])]]} for r in self.raw_commands],state)
+        allowed=set(state.get('source_catalog',{}))
+        invalid=[e['source_id'] for row in plan['items'] for e in row['evidence'] if e['source_id'] not in allowed]
+        if invalid:
+            from remi.providers import OutputInvalid
+            error=OutputInvalid('extraction_requires_supplied_source')
+            error.raw_output=plan
+            error.issues=[{'path':['items'],'code':'extraction_requires_supplied_source',
+                           'actual':invalid,'allowed_source_ids':sorted(allowed)}]
+            raise error
+        return plan
+
+    def propose(self, state, *, deadline):
+        from remi.memory_maintenance import eligible_targets
+        targets=eligible_targets(state)
+        text=state.get('new_user_source',{}).get('content','').casefold()
+        continuation=bool(re.search(r'\b(that|still|moved|cancelled|canceled|completed|corrected|changed|withdraw|remains|no longer)\b|改到|取消|仍然|还是|不再',text))
+        return {'items':[{'ref':row['ref'],
+                          'target_id':targets[row['ref']][0] if continuation and len(targets.get(row['ref'],[]))==1 else None,
+                          'content':row['content']}
+                         for row in state.get('memory_candidates',[])],
+                'reason':'offline fixture selects the only eligible recalled target'}
 
     def maintain_subjects(self,state,*,deadline):
         self.subject_calls.append(deepcopy(state))

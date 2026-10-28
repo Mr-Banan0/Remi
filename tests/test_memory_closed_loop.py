@@ -1,13 +1,13 @@
-"""V53 closed-loop scenarios for subject scope and unbound memory maintenance."""
+"""Closed-loop scenarios for subject scope and unbound memory maintenance."""
 from copy import deepcopy
 import pytest
 
-from experiments.subject_engine import SubjectGraphEngine
+from remi.engine import MemoryEngine
 from remi.models import Memory
 from remi.heat import visible_memory
 from remi.providers import ProviderUnavailable
-from tests.test_event_maintenance import Model, OWNER, extracted, req, row, unit, lifecycle, update
-from tests.test_individual_subjects_experiment import plan
+from tests.test_memory_lifecycle import Model, OWNER, extracted, req, row, unit, lifecycle, update
+from tests.test_subject_identity import plan
 
 
 class FlowModel(Model):
@@ -26,7 +26,7 @@ class FlowModel(Model):
 
 
 def test_unbound_event_gains_subject_without_changing_memory_id():
-    model=FlowModel();engine=SubjectGraphEngine(model=model)
+    model=FlowModel();engine=MemoryEngine(model=model)
     model.extractor=lambda state:dict(items=[extracted(state,subject_refs=[])],reason='unbound')
     engine.add(req('A workshop is planned.','unbound'));original=engine.store.memories(OWNER)[0]
     model.people=['Aster'];model.extractor=None
@@ -38,7 +38,7 @@ def test_unbound_event_gains_subject_without_changing_memory_id():
 
 
 def test_relationship_statement_is_a_fact_with_both_subjects():
-    model=FlowModel();model.people=['Mara','Cedar Lab'];engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Mara','Cedar Lab'];engine=MemoryEngine(model=model)
     base=model.maintain_subjects
     def subjects(state,*,deadline):
         result=base(state,deadline=deadline);result['subjects'][1]['kind']='organization';return result
@@ -51,7 +51,7 @@ def test_relationship_statement_is_a_fact_with_both_subjects():
 
 
 def test_program_supplement_excludes_memories_owned_only_by_other_subjects():
-    model=FlowModel();model.people=['Aster'];engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Aster'];engine=MemoryEngine(model=model)
     engine.add(req('Aster planned a workshop.','first'));old=engine.store.memories(OWNER)[0]
     model.people=['Beryl'];model.writer=lambda state:[row(state,content='Beryl joined a workshop.')]
     engine.add(req('Beryl joined the workshop.','new-person',1))
@@ -62,7 +62,7 @@ def test_program_supplement_excludes_memories_owned_only_by_other_subjects():
 
 @pytest.mark.parametrize('kind,text',[('fact','Aster works at Cedar Lab.'),('preference','Aster prefers written notes.'),('experience','Aster learned to confirm handoffs.')])
 def test_all_statement_kinds_update_the_same_memory(kind,text):
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     model.extractor=lambda state:dict(items=[extracted(state,record_type=kind,status=None)],reason='statement')
     engine.add(req(text,'first'));mid=engine.store.memories(OWNER)[0].id
     model.writer=lambda state:[update(state,content=text+' Confirmed.')]
@@ -72,7 +72,7 @@ def test_all_statement_kinds_update_the_same_memory(kind,text):
 
 
 def test_pending_identity_stores_an_unbound_memory():
-    model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Aster'];model.pending=True;engine=MemoryEngine(model=model)
     engine.add(req('Aster planned a workshop.','pending'))
     memories=engine.store.memories(OWNER)
     assert len(memories)==1 and memories[0].current.entity_ids==[]
@@ -80,7 +80,7 @@ def test_pending_identity_stores_an_unbound_memory():
 
 
 def test_unbound_memory_keeps_its_original_event_and_observation_clock():
-    model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Aster'];model.pending=True;engine=MemoryEngine(model=model)
     engine.add(req('Aster attended the workshop today.','pending'))
     model.pending=False
     engine.add(req('Aster at that workshop is my neighbor.','clarified',5))
@@ -92,7 +92,7 @@ def test_unbound_memory_keeps_its_original_event_and_observation_clock():
 
 
 def test_program_recall_snapshot_detects_concurrent_change():
-    model=FlowModel();model.people=['Aster'];engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Aster'];engine=MemoryEngine(model=model)
     engine.add(req('Aster planned a workshop.','first'));mid=engine.store.memories(OWNER)[0].id;mutated=[]
     def propose(state,*,deadline):
         if not mutated:
@@ -107,7 +107,7 @@ def test_program_recall_snapshot_detects_concurrent_change():
 
 
 def test_append_first_creates_no_pending_recovery_job():
-    model=FlowModel();model.people=['Aster'];model.pending=True;engine=SubjectGraphEngine(model=model)
+    model=FlowModel();model.people=['Aster'];model.pending=True;engine=MemoryEngine(model=model)
     engine.add(req('Aster planned a workshop.','pending'))
     assert engine.store.memories(OWNER)
     assert not unit(engine,'pending').get('pending_candidates')

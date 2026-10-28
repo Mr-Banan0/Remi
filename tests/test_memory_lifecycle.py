@@ -1,4 +1,4 @@
-"""V53 append-first memory maintenance and deterministic revision lifecycle."""
+"""Current memory maintenance and deterministic revision lifecycle."""
 from copy import deepcopy
 from time import monotonic
 from types import SimpleNamespace
@@ -6,11 +6,12 @@ import json
 import re
 import pytest
 
-from experiments.event_maintenance import MemoryPlan, eligible_targets, examples, provider_plan, validate_plan
-from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore
+from remi.memory_maintenance import MemoryPlan, eligible_targets, examples, provider_plan, validate_plan
+from remi.engine import MemoryEngine
+from remi.storage import MemoryStore
 from remi.models import AddRequest, AddMessage
 from remi.providers import ProviderUnavailable
-from tests.test_individual_subjects_experiment import plan
+from tests.test_subject_identity import plan
 
 OWNER='event-test-owner'
 STAMP=1893456000000
@@ -61,7 +62,7 @@ def unit(engine,key):return engine.store.get('requests',OWNER,key)['units']['0']
 
 
 def lifecycle():
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[row(state,content='Aster plans a workshop on 2030-01-03.')]
     engine.add(req('Aster plans a workshop on January 3.','start'))
     return engine,model
@@ -91,7 +92,7 @@ def test_new_recurring_event_creates_distinct_memory():
 
 
 def test_unknown_clock_preserves_relative_expression_and_unknown_structured_time():
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     engine.add(req('Aster plans a picnic tomorrow.','import',timestamp=False))
     current=engine.store.memories(OWNER)[0].current
     assert current.planned_at is None and current.time_precision=='unknown'
@@ -201,14 +202,14 @@ def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
 
 def test_embedding_failure_resumes_without_repeating_model_stages():
     from tests.test_subject_reference_pipeline import FlakyEmbedder
-    model=Model();engine=SubjectGraphEngine(model=model,embedder=FlakyEmbedder());request=req('Aster plans a picnic.','retry')
+    model=Model();engine=MemoryEngine(model=model,embedder=FlakyEmbedder());request=req('Aster plans a picnic.','retry')
     with pytest.raises(ProviderUnavailable):engine.add(request)
     engine.add(request)
     assert model.calls==['subjects','extract','memory'] and len(engine.store.memories(OWNER))==1
 
 
 def test_invalid_target_uses_fallback_without_memory_repair_call():
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id='foreign')]
     engine.add(req('Aster plans a picnic.','invalid-target'))
     assert model.calls==['subjects','extract','memory']
@@ -217,5 +218,5 @@ def test_invalid_target_uses_fallback_without_memory_repair_call():
 
 
 def test_snapshot_restore_requires_existing_six_collections():
-    store=SubjectMemoryStore();snapshot=store.snapshot()
+    store=MemoryStore();snapshot=store.snapshot()
     assert set(snapshot)=={'sources','memories','objects','edges','requests','search_documents'}

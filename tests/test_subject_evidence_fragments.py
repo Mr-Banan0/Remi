@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import json
 import pytest
 
-from experiments.subject_maintenance import SubjectPlan, maintain, review, commit, examples
-from experiments.subject_engine import SubjectMemoryStore
-from experiments.subject_identity import SubjectRecord, matching_subjects, visible_subject
-from experiments.subject_references import current_evidence, prepare_reference_state
-from experiments.subject_repair import build_repair_state, finish_repair
+from remi.subject_maintenance import SubjectPlan, maintain, review, commit, examples
+from remi.storage import MemoryStore
+from remi.subject_identity import SubjectRecord, matching_subjects, visible_subject
+from remi.subject_references import current_evidence, prepare_reference_state
+from remi.subject_repair import build_repair_state, finish_repair
 from remi.identity import stable_id
 from remi.models import Source
 
@@ -19,7 +19,7 @@ NOW='2028-01-02T10:00:00+00:00'
 
 
 def packet(text, store=None, *, sid='current', role='user', when=NOW):
-    store=store or SubjectMemoryStore()
+    store=store or MemoryStore()
     source=Source(id=sid,owner=OWNER,request_id=sid,session_id='test',ordinal=0,role=role,
                   content=text,message_at=when,created_at=when).model_dump()
     state=dict(owner=OWNER,new_user_source=source,context_sources=[],history=[],relation_catalog=[],existing_connections=[],

@@ -1,7 +1,7 @@
 """A bounded repair keeps validated decisions while correcting the failed fields."""
 from collections import Counter
 from copy import deepcopy
-from experiments.subject_validation import issue
+from .subject_validation import issue
 
 
 IDENTITY_FIELDS = ('ref', 'operation', 'target_id', 'name', 'kind', 'reference')
@@ -103,7 +103,7 @@ def merge_repair(repair_state, returned):
 
 
 def finish_repair(repair_state, returned, state, store):
-    from experiments.subject_maintenance import review
+    from .subject_maintenance import review
     effective, audit = merge_repair(repair_state, returned)
     # The repair state carries the field errors that authorize an explicit
     # second-pass confirmation, while preserving the original evidence view.

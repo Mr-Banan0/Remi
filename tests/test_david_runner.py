@@ -207,7 +207,8 @@ def test_validation_acceptance_has_a_separate_count_from_errors():
 
 
 def test_complete_resume_finishes_before_provider_creation(tmp_path, monkeypatch):
-    dataset = {"character": "David_R._Ellis", "input_turns": [], "cases": [sample_case(f"q{i}") for i in range(86)]}
+    dataset = {"character": "David_R._Ellis", "input_turns": [],
+               "cases": [sample_case(f"q{i}") for i in range(86)]}
     metadata = {"known_regression_ids": [f"q{i}" for i in range(13)], "source_files": [], "excluded": {},
         "dataset_sha256": "data", "source_manifest_sha256": "sources", "golden_sha256": "known"}
     plan = [("add", {"request_id": f"r{i}", "turns": []}) for i in range(215)] + [("search", case) for case in dataset["cases"]]
@@ -232,12 +233,13 @@ def test_complete_resume_finishes_before_provider_creation(tmp_path, monkeypatch
 
 
 @pytest.mark.skipif(not LOCAL_DATA.exists() or not LOCAL_GOLDEN.is_file(), reason="local full David input unavailable")
-def test_complete_david_plan_is_215_adds_86_searches_and_13_known():
+def test_complete_david_plan_matches_aml_full_chunking_and_question_scope():
     dataset, metadata = runner.load_dataset(LOCAL_DATA, "David_R._Ellis", LOCAL_GOLDEN)
     plan = list(actions(dataset))
     preview = runner.plan_preview(dataset, metadata, plan)
-    assert preview["add_calls"] == 215 and preview["questions"] == 86
+    assert preview["add_calls"] == 278 and preview["questions"] == 86
     assert preview["turns"] == preview["processing_units"] == 1486
+    assert preview["max_add_messages"] <= 20 and preview["max_add_words"] <= 2000
     assert preview["known_regression_questions"] == 13 and preview["remaining_same_person_questions"] == 73
     assert preview["excluded"] == {"external_or_mixed_question": 72}
     assert preview["paid_calls"] == 0
@@ -249,10 +251,10 @@ def test_complete_david_plan_is_215_adds_86_searches_and_13_known():
 
 
 @pytest.mark.skipif(not LOCAL_DATA.exists() or not TRACE_BASELINE.is_file(), reason="historical baseline unavailable")
-def test_historical_david_baseline_strict_raw_scoring_has_parity():
+def test_historical_david_baseline_with_old_adapter_is_rejected():
     dataset, _ = runner.load_dataset(LOCAL_DATA, "David_R._Ellis", LOCAL_GOLDEN)
-    comparison = runner.compare_baseline({"questions": []}, dataset, TRACE_BASELINE)
-    assert comparison["baseline_scoring_parity"] is True and comparison["traceweave"]["question_count"] == 86
+    with pytest.raises(ValueError, match="historical_baseline_aml_full_contract_mismatch"):
+        runner.compare_baseline({"questions": []}, dataset, TRACE_BASELINE)
 
 
 @pytest.mark.skipif(os.getenv("REMI_TEST_SCHEMA_APPROVED") != "1", reason="explicit six-table offline approval flag required")
@@ -275,10 +277,12 @@ def test_http_runner_resumes_after_committed_search_and_reuses_add_checkpoint(tm
         def __init__(self):
             self.calls = deque()
         def maintain_subjects(self, state, *, deadline):
-            return {'subjects': [], 'connections': []}
-        def propose(self, state, *, deadline):
+            return {'subjects': []}
+        def extract_memories(self, state, *, deadline):
             counters["extract"] += 1
             self.calls.append({"kind": "add", "model": "offline", "seconds": 0})
+            return {"items": [], "reason": "no memory"}
+        def propose(self, state, *, deadline):
             return {"items": [], "reason": "no memory"}
         def decide(self, state, *, deadline):
             counters["decide"] += 1

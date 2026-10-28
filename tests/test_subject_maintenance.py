@@ -1,11 +1,11 @@
-"""Evidence-backed identity maintenance invariants for the current experiment."""
+"""Evidence-backed identity maintenance invariants for the production pipeline."""
 from copy import deepcopy
 
-from experiments.subject_maintenance import SubjectPlan,examples,review,commit,render,PROMPT
-from experiments.event_maintenance import PROMPT as EVENT_PROMPT
-from experiments.subject_extraction import PROMPT as EXTRACTION_PROMPT
-from experiments.subject_references import prepare_reference_state
-from experiments.subject_repair import build_repair_state, finish_repair
+from remi.subject_maintenance import SubjectPlan,examples,review,commit,render,PROMPT
+from remi.memory_maintenance import PROMPT as EVENT_PROMPT
+from remi.subject_extraction import PROMPT as EXTRACTION_PROMPT
+from remi.subject_references import prepare_reference_state
+from remi.subject_repair import build_repair_state, finish_repair
 from scripts.validate_subject_identities import prepare_state
 from scripts.validate_subject_identities import step_state
 from tests.helpers import direct_subjects_fixture

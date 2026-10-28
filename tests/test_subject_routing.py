@@ -3,12 +3,12 @@ from copy import deepcopy
 
 import pytest
 
-from experiments.subject_engine import SubjectMemoryStore
-from experiments.subject_maintenance import review
-from experiments.subject_recall import prepare_candidates
-from experiments.subject_repair import build_repair_state, finish_repair
+from remi.storage import MemoryStore
+from remi.subject_maintenance import review
+from remi.subject_recall import prepare_candidates
+from remi.subject_repair import build_repair_state, finish_repair
 from remi.providers import ProviderUnavailable
-from tests.test_individual_subjects_experiment import plan
+from tests.test_subject_identity import plan
 from tests.test_keyword_subject_recall import OWNER, add_subject, source, state
 
 
@@ -17,12 +17,12 @@ def recalled(store, text, context=()):
 
 
 def test_no_stored_subject_uses_subject_first():
-    packet, _ = recalled(SubjectMemoryStore(), 'A new colleague arrived.')
+    packet, _ = recalled(MemoryStore(), 'A new colleague arrived.')
     assert packet['maintenance_route'] == dict(order='subject_first', name_matches=[], collision_groups=[])
 
 
 def test_one_name_match_uses_subject_first_and_reports_its_id():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     person = add_subject(store, 'Lior')
     packet, _ = recalled(store, 'Lior arrived.')
     assert packet['maintenance_route'] == dict(order='subject_first',
@@ -30,7 +30,7 @@ def test_one_name_match_uses_subject_first_and_reports_its_id():
 
 
 def test_same_name_on_two_ids_keeps_subject_first_with_both_candidates():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for key in ['person-a', 'person-b']:
         add_subject(store, 'Lior', key=key)
     packet, _ = recalled(store, 'Lior arrived.')
@@ -39,7 +39,7 @@ def test_same_name_on_two_ids_keeps_subject_first_with_both_candidates():
 
 
 def test_name_and_alias_on_different_ids_form_one_collision():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Lior', key='person-a')
     add_subject(store, 'Haven', key='person-b', aliases=['Lior'])
     packet, _ = recalled(store, 'Lior arrived.')
@@ -47,7 +47,7 @@ def test_name_and_alias_on_different_ids_form_one_collision():
 
 
 def test_repeated_names_aliases_and_sources_count_one_identity_once():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     row = add_subject(store, 'Lior', key='person-a', aliases=['Lior', 'LIOR', 'Lee'])
     row['aliases'].extend(deepcopy(row['aliases']))
     store.put('objects', OWNER, row['id'], row)
@@ -58,7 +58,7 @@ def test_repeated_names_aliases_and_sources_count_one_identity_once():
 
 
 def test_different_names_with_one_id_each_keep_subject_first():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Lior', key='person-a')
     add_subject(store, 'Haven', key='person-b')
     packet, _ = recalled(store, 'Lior and Haven arrived.')
@@ -67,7 +67,7 @@ def test_different_names_with_one_id_each_keep_subject_first():
 
 
 def test_shared_name_alias_exposes_every_namesake_candidate():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Lior', key='person-a', aliases=['Lee'])
     add_subject(store, 'Haven', key='person-b', aliases=['Lee'])
     packet, _ = recalled(store, 'I met Lee.')
@@ -77,7 +77,7 @@ def test_shared_name_alias_exposes_every_namesake_candidate():
 
 
 def test_context_only_name_collision_keeps_subject_first():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for key in ['person-a', 'person-b']:
         add_subject(store, 'Lior', key=key)
     packet, _ = recalled(store, 'They arrived.', [source('previous', 'Lior sent a message.')])
@@ -86,7 +86,7 @@ def test_context_only_name_collision_keeps_subject_first():
 
 
 def test_implicit_canonical_user_does_not_count_as_name_hit():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Owner', user=True)
     add_subject(store, 'user', key='person-a')
     packet, _ = recalled(store, 'The user arrived.')
@@ -96,7 +96,7 @@ def test_implicit_canonical_user_does_not_count_as_name_hit():
 
 
 def test_canonical_user_explicit_alias_counts_as_a_real_name_hit():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     user = add_subject(store, 'Owner', user=True, aliases=['Lior'])
     add_subject(store, 'Lior', key='person-a')
     packet, _ = recalled(store, 'Lior arrived.')
@@ -106,7 +106,7 @@ def test_canonical_user_explicit_alias_counts_as_a_real_name_hit():
 
 @pytest.mark.parametrize('text', ['LIOR arrived.', 'Lior arrived.'])
 def test_name_collision_is_case_normalized(text):
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Lior', key='person-a')
     add_subject(store, 'LIOR', key='person-b')
     packet, _ = recalled(store, text)
@@ -115,7 +115,7 @@ def test_name_collision_is_case_normalized(text):
 
 
 def test_latin_word_boundaries_and_chinese_collision():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for key in ['min-a', 'min-b']:
         add_subject(store, 'Min', key=key)
     for key in ['qiu-a', 'qiu-b']:
@@ -125,7 +125,7 @@ def test_latin_word_boundaries_and_chinese_collision():
 
 
 def test_collision_group_survives_top_candidate_limit():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store, 'Owner', user=True)
     long_names = ['Alexandria', 'Constantine', 'Maximilian', 'Theophilus', 'Valentina']
     for name in long_names:
@@ -142,7 +142,7 @@ def test_collision_group_survives_top_candidate_limit():
 
 
 def test_exactly_six_colliding_identities_fill_all_slots_without_user():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for index in range(6):
         add_subject(store, 'Lior', key='person-'+str(index))
     packet, _ = recalled(store, 'Lior arrived.')
@@ -153,7 +153,7 @@ def test_exactly_six_colliding_identities_fill_all_slots_without_user():
 
 @pytest.mark.parametrize('has_user,count', [(False, 7), (True, 6)])
 def test_collision_overflow_is_explicit_and_keeps_store_unchanged(has_user, count):
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     if has_user:
         add_subject(store, 'Owner', user=True)
     for index in range(count):
@@ -165,7 +165,7 @@ def test_collision_overflow_is_explicit_and_keeps_store_unchanged(has_user, coun
 
 
 def test_multiple_collision_groups_are_preserved_together():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for name in ['Lior', 'Haven']:
         for index in range(2):
             add_subject(store, name, key=name+'-'+str(index))
@@ -175,7 +175,7 @@ def test_multiple_collision_groups_are_preserved_together():
 
 
 def test_same_name_same_kind_reuse_requires_unique_identity_evidence():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     for key in ['person-a', 'person-b']:
         add_subject(store, 'Lior', key=key)
     packet, _ = recalled(store, 'Lior arrived.')
@@ -187,7 +187,7 @@ def test_same_name_same_kind_reuse_requires_unique_identity_evidence():
 
 
 def test_collision_reuse_is_allowed_when_kind_leaves_one_compatible_identity():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store,'Vale',key='person-vale',kind='person')
     add_subject(store,'Vale',key='animal-vale',kind='animal')
     packet, _ = recalled(store, 'Vale needs a walk.')
@@ -199,7 +199,7 @@ def test_collision_reuse_is_allowed_when_kind_leaves_one_compatible_identity():
 
 
 def test_unique_alias_allows_reuse_when_canonical_names_collide():
-    store = SubjectMemoryStore()
+    store = MemoryStore()
     add_subject(store,'Lior',key='person-a',aliases=['Lee'])
     add_subject(store,'Lior',key='person-b')
     packet, _ = recalled(store, 'Lee arrived.')
@@ -211,7 +211,7 @@ def test_unique_alias_allows_reuse_when_canonical_names_collide():
 
 
 def test_unique_current_name_supplies_its_reuse_basis_programmatically():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     add_subject(store,'Lior',key='person-a')
     packet,_=recalled(store,'Lior is also called Lee.')
     raw=plan(name='Lior',kind='person',operation='reuse',target='person-a',aliases=['Lee'],sid='now',basis=None)
@@ -222,7 +222,7 @@ def test_unique_current_name_supplies_its_reuse_basis_programmatically():
 
 @pytest.mark.parametrize('stored_count',[0,1])
 def test_named_pending_requires_at_least_two_matching_candidates(stored_count):
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     for index in range(stored_count):add_subject(store,'Lior',key='person-'+str(index))
     packet,_=recalled(store,'Lior arrived.')
     raw=plan(name='Lior',kind='person',operation='pending',target=None,sid='now',basis=None)
@@ -232,7 +232,7 @@ def test_named_pending_requires_at_least_two_matching_candidates(stored_count):
 
 
 def test_named_pending_accepts_an_unresolved_same_kind_collision():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     for key in ['person-a','person-b']:add_subject(store,'Lior',key=key)
     packet,_=recalled(store,'Lior arrived.')
     raw=plan(name='Lior',kind='person',operation='pending',target=None,sid='now',basis=None)
@@ -242,7 +242,7 @@ def test_named_pending_accepts_an_unresolved_same_kind_collision():
 
 
 def test_create_overlapping_a_recalled_name_requires_one_confirmation():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     add_subject(store,'Lior',key='existing-lior')
     packet,_=recalled(store,'I met a different Lior, also called Lee, today.')
     raw=plan(name='Lior',kind='person',operation='create',target=None,aliases=['Lee'],sid='now',basis=None)
@@ -257,7 +257,7 @@ def test_create_overlapping_a_recalled_name_requires_one_confirmation():
 
 
 def test_create_overlapping_a_collision_can_be_repaired_to_pending():
-    store=SubjectMemoryStore()
+    store=MemoryStore()
     for key in ['person-a','person-b']:add_subject(store,'Lior',key=key,aliases=['Lee'])
     packet,_=recalled(store,'Lee arrived.')
     raw=plan(name='Lee',kind='person',operation='create',target=None,sid='now',basis=None)

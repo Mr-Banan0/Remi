@@ -4,10 +4,10 @@ Original narratives live in maintenance_patch. A branched narrative becomes an e
 chronicle; structural slots replay independently. This preserves evidence without guessing prose edits.
 """
 from copy import deepcopy
-from remi.clock import parse_time
-from remi.models import Memory, Revision, EvidenceRef, Edge
+from .clock import parse_time
+from .models import Memory, Revision, EvidenceRef, Edge
 from remi.graph import project_edges
-from remi.identity import stable_id
+from .identity import stable_id
 
 FIELDS=('content','entity_ids','mode','context','status','planned_at','event_at','time_evidence')
 

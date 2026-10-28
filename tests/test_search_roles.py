@@ -1,4 +1,4 @@
-"""V54 Search roles, logical-memory RRF, graph seeds and deterministic degradation."""
+"""Search roles, logical-memory RRF, graph seeds and deterministic degradation."""
 from remi.models import Document
 from remi.providers import ProviderUnavailable, RankResult
 from remi.settings import Settings

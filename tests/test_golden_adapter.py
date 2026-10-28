@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
+from scripts.golden_adapter import (AML_MESSAGE_LIMIT, AML_TOP_K, AML_WORD_LIMIT, actions, add_payload,
+    input_catalog, metrics, score_case)
 from scripts.run_golden import summaries, progress_counts, completed_lifecycle
 import pytest
 
@@ -53,6 +54,25 @@ def test_action_order_matches_the_frozen_reference_builder():
     assert [kind for kind, _ in plan] == ["add", "search", "add", "search"]
     assert add_payload(plan[0][1], "u")["messages"] == [
         {"role": "user", "content": "hello", "timestamp": 1}, {"role": "assistant", "content": "reply", "timestamp": 1}]
+
+
+def test_aml_full_chunking_obeys_message_and_word_boundaries():
+    turns = [{"ref": f"2024-06-02:{index + 1}", "day": "2024-06-02", "timestamp_ms": index,
+              "user": "word " * 300, "assistant": "reply " * 300} for index in range(12)]
+    dataset = {"character": "person", "input_turns": turns,
+               "cases": [{"question": {"day": "2024-06-02"}}]}
+    additions = [action for kind, action in actions(dataset) if kind == "add"]
+    assert len(additions) > 1
+    assert all(action["message_count"] <= AML_MESSAGE_LIMIT for action in additions)
+    assert all(action["word_count"] <= AML_WORD_LIMIT for action in additions)
+    assert sum(action["message_count"] for action in additions) == len(turns) * 2
+    assert [ref for action in additions for ref in action["message_refs"]].count(turns[0]["ref"]) == 2
+
+
+def test_default_metric_cutoff_matches_aml_full_top_k():
+    result = {"gold_evidence": ["turn"], "evidence_ranks": {"turn": AML_TOP_K},
+              "all_evidence_hit": True, "any_evidence_hit": True}
+    assert metrics([result])["mean_evidence_recall"] == 1
 
 
 def test_report_aggregation_accepts_non_http_failures_and_unknown_status():

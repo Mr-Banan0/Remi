@@ -18,7 +18,7 @@ import uvicorn
 from remi.api import create_app, environment_engine
 from remi.settings import load_environment
 from remi.storage import TABLES
-from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
+from scripts.golden_adapter import AML_METRIC_CUTOFFS, AML_TOP_K, actions, add_payload, input_catalog, metrics, score_case
 from scripts.run_golden import compare, diagnostics, fingerprint, latency, verify_baseline
 
 
@@ -44,7 +44,7 @@ def execute(args):
     mapping, catalog = {}, {}
     for kind, action in actions(dataset):
         if kind == "add":
-            refs, originals = input_catalog(add_payload(action, owner), action["turns"])
+            refs, originals = input_catalog(add_payload(action, owner), action["turns"], action.get("message_refs"))
             mapping.update(refs)
             catalog.update(originals)
     token = uuid4().hex
@@ -71,7 +71,7 @@ def execute(args):
     def save(status):
         calls = diagnostics(engine)
         report["diagnostic_calls"] = calls
-        report["summary"] = {"retrieval": {str(k): metrics(report["questions"], k) for k in (1, 3, 5, 10)},
+        report["summary"] = {"retrieval": {str(k): metrics(report["questions"], k) for k in AML_METRIC_CUTOFFS},
             "add_latency": original["summary"]["add_latency"], "search_latency": latency(report["questions"]),
             "calls_scope": "Search replay only; Add was reused without new model calls"}
         (args.output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
@@ -84,8 +84,8 @@ def execute(args):
             for case in dataset["cases"]:
                 question = case["question"]
                 started = time.monotonic()
-                response = client.post("/search", json={"user_id": owner, "query": question["text"], "top_k": 10},
-                    headers={"x-memory-reference-time": question["day"] + "T23:59:59Z"})
+                response = client.post("/search", json={
+                    "user_id": owner, "query": question["text"], "top_k": AML_TOP_K})
                 candidates = response.json()["data"] if response.status_code == 200 else []
                 record = score_case(case, candidates, mapping, catalog)
                 record.update(seconds=round(time.monotonic() - started, 3), candidates=candidates,
@@ -97,7 +97,8 @@ def execute(args):
                 save("running")
             for old in original["lifecycle_searches"]:
                 started = time.monotonic()
-                response = client.post("/search", json={"user_id": life_owner, "query": old["query"], "top_k": 5})
+                response = client.post("/search", json={
+                    "user_id": life_owner, "query": old["query"], "top_k": AML_TOP_K})
                 candidates = response.json()["data"] if response.status_code == 200 else []
                 expected = ("搬家今天已完成", "2026-09-24") if "最终" in old["query"] else (
                     "李明现在住上海", "2026-09-24") if "2026年9月24日" in old["query"] else ("李明现在住杭州", "2026-10-01")
@@ -116,7 +117,8 @@ def execute(args):
         server.should_exit = True
         thread.join(timeout=5)
         listener.close()
-    print(json.dumps({"result": str(args.output / "result.json"), "metrics": report["summary"]["retrieval"]["10"]}), flush=True)
+    print(json.dumps({"result": str(args.output / "result.json"),
+                      "metrics": report["summary"]["retrieval"][str(AML_TOP_K)]}), flush=True)
 
 
 def main():

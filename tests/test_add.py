@@ -44,22 +44,24 @@ def test_invalid_identity_keeps_good_sibling_and_indexes_pending_evidence():
         command(state, 'meeting cancelled.', objects=[{'kind': 'person', 'name': 'Unmentioned'}])]})
     engine = MemoryEngine(model=model)
     engine.add(request('Move completed; meeting cancelled.'))
-    assert [m.current.content for m in engine.store.memories('u1')] == ['Move completed']
+    memories=engine.store.memories('u1')
+    assert [m.current.content for m in memories] == ['Move completed','meeting cancelled.']
+    assert memories[1].current.entity_ids==[]
     progress = engine.store.get('requests', 'u1', 'r1')
     assert progress['status'] == 'complete'
-    assert [d['status'] for d in progress['units']['0']['candidate_dispositions']] == ['accepted','pending']
-    assert any(d.id.startswith('doc_pending_') for d in engine.store.documents('u1'))
+    assert [d['status'] for d in progress['units']['0']['candidate_dispositions']] == ['accepted','accepted']
     assert engine.store.list('sources', 'u1')
 
 
 def test_invalid_output_keeps_sources_and_a_retryable_checkpoint():
     model=ScriptedModel(lambda state,errors: (_ for _ in ()).throw(OutputInvalid('invalid')))
     engine=MemoryEngine(model=model)
-    with pytest.raises(ProviderUnavailable): engine.add(request('My original evidence survives.'))
-    assert len(model.extractions)==0 and len(model.subject_calls)==2
+    assert engine.add(request('My original evidence survives.')).success
+    assert len(model.extractions)==1 and len(model.subject_calls)==2
     assert not engine.store.memories('u1')
-    assert engine.store.get('requests','u1','r1')['status']=='pending'
+    assert engine.store.get('requests','u1','r1')['status']=='complete'
     assert engine.store.list('sources','u1')[0]['content']=='My original evidence survives.'
+    assert engine.search(query('original evidence survives')).data
 
 
 def test_provider_failure_preserves_raw_and_retry_checkpoint():
@@ -102,13 +104,13 @@ def test_updates_append_and_distinct_occurrences_stay_distinct():
     model.extractor = lambda state, errors: {"commands": [command(state, )]}
     engine.add(request("Project launch completed.", request_id="r2"))
     updated = engine.store.memories("u1", [old.id])[0]
-    assert updated == old
-    assert updated.current.content == "Project launch planned."
-    assert len(engine.store.memories("u1")) == 2
+    assert updated.id == old.id and len(updated.revisions)==2
+    assert updated.current.content == "Project launch completed."
+    assert len(engine.store.memories("u1")) == 1
     model.extractor = lambda state, errors: {"commands": [command(state)]}
     engine.add(request("Another project launch happened.", request_id="r3"))
-    assert len(engine.store.memories("u1")) == 3
-    assert not any(edge.relation == "revises" for edge in engine.store.edges_for("u1"))
+    assert len(engine.store.memories("u1")) == 2
+    assert any(edge.relation == "revises" for edge in engine.store.edges_for("u1"))
 
 
 def test_preference_and_new_event_remain_independent():
@@ -137,7 +139,8 @@ def test_final_time_failure_preserves_content_with_unknown_time():
     model = ScriptedModel(lambda state, errors: {"commands": [command(state, time="next solstice")]})
     engine = MemoryEngine(model=model)
     assert engine.add(request("I completed the move.")).success
-    assert not engine.store.memories("u1")
+    memory=engine.store.memories("u1")[0]
+    assert memory.current.event_at is None and memory.current.planned_at is None
     assert "completed the move" in engine.search(query("move")).data[0].content
     assert len(model.extractions) == 1 and len(model.subject_calls) == 1
 
@@ -148,11 +151,13 @@ def test_separate_events_get_their_own_dates_and_absolute_references():
                              command(state, "今天搬家", quote="今天搬家", time="今天")]}
     engine = MemoryEngine(model=ScriptedModel(extract))
     engine.add(request("昨天取消了明天的聚会，今天搬家。", when="2026-10-12T10:00:00+00:00"))
-    memories = sorted(engine.store.memories("u1"), key=lambda memory: memory.current.event_at or memory.current.planned_at)
+    memories = engine.store.memories("u1")
     assert len(memories) == 2
-    assert memories[0].current.planned_at.startswith("2026-10-11")
-    assert "2026-10-13" in memories[0].current.content
-    assert memories[1].current.event_at.startswith("2026-10-12")
+    cancelled=next(memory for memory in memories if memory.current.status=='cancelled')
+    moved=next(memory for memory in memories if memory.current.status=='occurred')
+    assert cancelled.current.event_at is None and cancelled.current.planned_at is None
+    assert "2026-10-13" in cancelled.current.content
+    assert moved.current.event_at.startswith("2026-10-12")
 
 
 @pytest.mark.parametrize("kind", ["preference", "fact", "event", "experience"])

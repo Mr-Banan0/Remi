@@ -150,4 +150,5 @@ def test_evidence_cards_keep_original_words_under_budget():
     engine.search(query("Long evidence"))
     state = engine.model.decisions[-1]
     assert engine.last_search["decision_bytes"] <= engine.settings.decision_bytes
-    assert state["evidence"] and all(card["original"] for card in state["evidence"])
+    cards=[*state["evidence"],*state["current_conditions"]]
+    assert cards and all(card["original"] for card in cards)

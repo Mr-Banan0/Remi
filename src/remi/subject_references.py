@@ -1,9 +1,9 @@
 """Build request-local references to owned, visible identity evidence."""
-from experiments.maintenance_clock import maintenance_clock
+from .maintenance_clock import maintenance_clock
 from copy import deepcopy
 import re
-from remi.clock import parse_time
-from remi.identity import normalized_name,source_name_present,stable_id
+from .clock import parse_time
+from .identity import normalized_name,source_name_present,stable_id
 
 
 def current_evidence(source):

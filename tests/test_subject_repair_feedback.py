@@ -4,12 +4,12 @@ from types import SimpleNamespace
 from time import monotonic
 import json
 import pytest
-from experiments.subject_maintenance import review, commit, maintain
-from experiments.subject_repair import build_repair_state, finish_repair
-from experiments.subject_engine import SubjectGraphEngine
+from remi.subject_maintenance import review, commit, maintain
+from remi.subject_repair import build_repair_state, finish_repair
+from remi.engine import MemoryEngine
 from tests.test_subject_reference_pipeline import nurse_state, Model, request
-from tests.test_subject_maintenance_experiment import initial, raw_subjects
-from tests.test_individual_subjects_experiment import plan
+from tests.test_subject_maintenance import initial, raw_subjects
+from tests.test_subject_identity import plan
 from remi.providers import ProviderUnavailable, OutputInvalid
 from scripts.validate_subject_identities import step_state
 
@@ -136,7 +136,7 @@ class RepairModel(Model):
 
 
 def test_full_engine_uses_one_detailed_subject_repair_and_shared_budget():
-    model=RepairModel();engine=SubjectGraphEngine(model=model);engine.add(request())
+    model=RepairModel();engine=MemoryEngine(model=model);engine.add(request())
     assert model.calls==['subject','subject_repair','extract','memory']
     repair=model.payloads[-1]
     assert repair['previous_output']['subjects'][0]['name']=='absent'
@@ -145,7 +145,7 @@ def test_full_engine_uses_one_detailed_subject_repair_and_shared_budget():
 
 
 def test_failed_repair_resumes_same_saved_request_without_repeating_initial_model():
-    model=RepairModel(fail_repair=True);engine=SubjectGraphEngine(model=model)
+    model=RepairModel(fail_repair=True);engine=MemoryEngine(model=model)
     with pytest.raises(ProviderUnavailable):engine.add(request())
     engine.add(request())
     assert model.calls==['subject','subject_repair','subject_repair','extract','memory']
@@ -159,14 +159,14 @@ def test_alias_only_failure_uses_same_repair_budget_with_identity_retained():
             row=plan(name='Nolan',sid=state['new_user_source']['id'])
             if not state.get('repair_errors'):row['subjects'][0]['aliases']=[dict(name='invented',source_id=state['new_user_source']['id'])]
             return row
-    model=AliasModel();engine=SubjectGraphEngine(model=model);engine.add(request())
+    model=AliasModel();engine=MemoryEngine(model=model);engine.add(request())
     assert model.calls==['subject','repair','extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
 
 def test_subject_repair_budget_is_separate_from_append_first_memory_fallback():
     class BothInvalid(RepairModel):
         def propose(self,state,*,deadline):self.calls.append('memory');return dict(items=[dict(invalid=True)],reason='fixture')
-    model=BothInvalid();engine=SubjectGraphEngine(model=model);engine.add(request())
+    model=BothInvalid();engine=MemoryEngine(model=model);engine.add(request())
     assert model.calls==['subject','subject_repair','extract','memory']
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
     assert unit['memory_rejections'] and unit['phase']=='indexed'
@@ -177,7 +177,7 @@ def test_subject_repair_budget_is_separate_from_append_first_memory_fallback():
 def test_invalid_subject_json_is_repaired_once_and_then_remains_rejected():
     class Invalid(Model):
         def maintain_subjects(self,state,*,deadline):self.calls.append('subject');raise OutputInvalid('invalid_json')
-    model=Invalid();engine=SubjectGraphEngine(model=model);engine.add(request())
+    model=Invalid();engine=MemoryEngine(model=model);engine.add(request())
     assert model.calls==['subject','subject','extract','memory'] and not engine.store.list('objects','reference-owner')
 
 

@@ -80,15 +80,6 @@ class SourceCitation(StrictModel):
     source_id: str
 
 
-class Subject(StrictModel):
-    kind: SubjectKind
-    ref: int = Field(ge=0, le=95)
-    name: str
-    is_user: bool
-    aliases: list[str]
-    evidence: list[EvidenceRef]
-
-
 class ConnectionDraft(StrictModel):
     subject_refs: list[int] = Field(min_length=2, max_length=2)
     source_id: str
@@ -125,69 +116,8 @@ class ProposalDraft(StrictModel):
     reason: str
 
 
-class ProposalPlan(StrictModel):
-    subjects: list[Subject]
-    items: list[Candidate]
-    reason: str
-
-
 class SubjectNameDraft(SourceCitation):
     name: str = Field(min_length=1, max_length=200)
-
-
-class SubjectNameEvidence(EvidenceRef):
-    name: str = Field(min_length=1, max_length=200)
-
-
-class SubjectDecision(StrictModel):
-    subject_ref: int
-    target_id: str | None
-    alias_additions: list[SubjectNameEvidence] = Field(default_factory=list, max_length=24)
-    kind: SubjectKind | None = None
-    reason: str = Field(max_length=600)
-
-
-class SubjectDraft(StrictModel):
-    ref: SubjectRef
-    operation: Literal['create', 'reuse', 'pending']
-    target_id: str | None
-    name: str = Field(min_length=1, max_length=200)
-    kind: SubjectKind
-    aliases: list[SubjectNameDraft] = Field(max_length=24)
-    evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
-
-
-class ConnectionChangeDraft(StrictModel):
-    ref: SubjectRef
-    operation: Literal['create', 'update', 'keep', 'pending']
-    target_id: str | None
-    subject_refs: list[SubjectRef] = Field(min_length=2, max_length=2)
-    source_id: str
-    quote: str = Field(min_length=1, max_length=2000)
-    mode: ExpressionMode
-    previous_quote: str | None = Field(max_length=4000)
-
-
-class SubjectMaintenanceDraft(StrictModel):
-    subjects: list[SubjectDraft] = Field(max_length=96)
-    connections: list[ConnectionChangeDraft] = Field(max_length=48)
-
-
-class CardDecision(StrictModel):
-    """Program write plan; relationship operations come from the subject writer."""
-    candidate_id: str
-    operation: Literal['create', 'patch_relation', 'keep', 'pending']
-    target_id: str | None = None
-    record_type: RecordType | None = None
-    content: str | None = Field(default=None, max_length=4000)
-    subject_refs: list[int] | None = Field(default=None,max_length=12)
-    mode: ExpressionMode | None = None
-    context: str | None = Field(default=None, max_length=300)
-    status: EventStatus | None = None
-    time_expression: str | None = Field(default=None, max_length=300)
-    reason: str = Field(max_length=600)
-
-    _null_arguments = field_validator('target_id', 'time_expression', mode='before')(nullable)
 
 
 class EventTimeEvidence(StrictModel):

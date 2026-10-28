@@ -11,7 +11,10 @@ from remi.api import create_app
 from remi.clock import absolute_content, message_time, resolve_time
 from .helpers import TestEngine as MemoryEngine
 from remi.heat import hot_view
-from remi.models import Decision, RecallStep, ProposalPlan, ProposalDraft
+from remi.models import Decision, RecallStep, ProposalDraft
+from remi.memory_maintenance import MemoryPlan
+from remi.subject_extraction import ExtractionPlan
+from remi.subject_maintenance import SubjectPlan
 from remi.providers import JevReranker, OutputInvalid, RankResult, strict_schema
 from remi.settings import Settings
 from remi.storage import MemoryStore, SQLiteStore
@@ -141,10 +144,9 @@ def test_multiple_source_reported_dates_append_without_changing_the_old_plan():
     model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
     engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
     unit=next(iter(engine.store.get('requests','u1','r2')['units'].values()))
-    assert all(d['operation']=='create' for d in unit['candidate_dispositions'])
+    assert [d['operation'] for d in unit['candidate_dispositions']]==['created_fallback','created_fallback']
     assert len(engine.store.memories('u1'))==3
-    assert engine.store.memories('u1',[target])[0].current.status=='planned'
-    assert all(len(m.revisions)==1 for m in engine.store.memories('u1'))
+    assert len(engine.store.memories('u1',[target])[0].revisions)==1
 
 
 def test_new_observation_preserves_the_old_record_and_its_date():
@@ -164,7 +166,9 @@ def test_new_fact_preserves_time_scope_in_original_statement():
     before = engine.store.memories('u1')[0]
     model.extractor = lambda state, errors: {'commands': [command(state, kind='fact', )]}
     engine.add(request('The restriction still applies.', request_id='r2', when='2024-06-03T10:00:00Z'))
-    assert engine.store.memories('u1')[0] == before
+    current=engine.store.memories('u1')[0]
+    assert current.id==before.id and len(current.revisions)==2
+    assert current.current.content=='The restriction still applies.'
 
 
 def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
@@ -174,9 +178,9 @@ def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
     target = engine.store.memories("u1")[0].id
     model.extractor = lambda state, errors: {"commands": [command(state,   status="occurred")]}
     engine.add(request("That meeting completed.", request_id="r2", when="2024-06-15T10:00:00Z"))
-    new=next(m for m in engine.store.memories("u1") if m.id!=target)
-    assert new.current.status=="occurred" and new.current.event_at is None
-    assert engine.store.memories("u1",[target])[0].current.planned_at.startswith("2024-06-09")
+    current=engine.store.memories("u1",[target])[0]
+    assert len(current.revisions)==2 and current.current.status=="occurred"
+    assert current.current.event_at is None and current.current.planned_at.startswith("2024-06-09")
 
 
 def test_plan_repair_can_resolve_operations_jointly():
@@ -197,8 +201,9 @@ def test_malformed_repair_preserves_unresolved_candidate_as_pending():
         return {'commands': [command(state, time='next solstice')]}
     engine = MemoryEngine(model=ScriptedModel(extract))
     assert engine.add(request('The move completed yesterday.')).success
-    assert not engine.store.memories('u1')
-    assert engine.store.get('requests','u1','r1')['units']['0']['candidate_dispositions'][0]['status'] == 'pending'
+    memory=engine.store.memories('u1')[0]
+    assert memory.current.event_at is None and memory.current.planned_at is None
+    assert 'move completed' in memory.current.content.casefold()
 
 
 def test_equivalent_day_does_not_accept_an_invented_clock():
@@ -245,7 +250,7 @@ def test_desired_relation_keeps_mode_and_stays_out_of_asserted_background():
 
 
 def test_all_model_schema_properties_are_required_without_dynamic_enums():
-    for model in (Decision, ProposalPlan, ProposalDraft):
+    for model in (Decision, SubjectPlan, ExtractionPlan, MemoryPlan, ProposalDraft):
         schema = strict_schema(model)
         assert len(json.dumps(schema)) < 10000
         for item in [schema, *schema.get("$defs", {}).values()]:

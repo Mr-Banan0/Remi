@@ -1,8 +1,8 @@
-"""Repeated cross-turn subject and memory evaluation through complete experimental Add.
+"""Repeated cross-turn subject and memory evaluation through production Add.
 
 Only this evaluator contains synthetic scenarios and expectations. The engine receives ordinary
 source text. --dry-run writes the fixed inputs and validates their shape without API clients.
-Every live case starts with its own empty SubjectMemoryStore; no physical database is created.
+Every live case starts with its own empty MemoryStore; no physical database is created.
 """
 from __future__ import annotations
 
@@ -22,13 +22,49 @@ from time import monotonic
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'src'), str(ROOT)]
 
-from experiments.subject_engine import PIPELINE, SubjectGraphEngine, SubjectMemoryStore
-from experiments.subject_providers import SubjectTextModel
+from remi.engine import MemoryEngine
+from remi.storage import MemoryStore
+from remi.version import PIPELINE
+from remi.providers import GPTModel
 from remi.identity import normalized_name, stable_id
 from remi.models import AddMessage, AddRequest
 from remi.providers import ProviderUnavailable
 from remi.settings import Settings, load_environment, private_key
-from scripts.validate_subject_routing import capture_transport, write_json
+
+
+def write_json(path, payload):
+    Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n')
+
+
+def capture_transport(model, directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    create = model.client.chat.completions.create
+    attempts = []
+
+    def capture(**request):
+        started = monotonic()
+        row = dict(started_at=datetime.now(timezone.utc).isoformat(),
+            request={key:request[key] for key in ['model','temperature','max_completion_tokens',
+                                                'messages','response_format','timeout'] if key in request})
+        attempts.append(row)
+        number = len(attempts)
+        try:
+            response = create(**request)
+            choice = response.choices[0]
+            row['response'] = dict(model=getattr(response, 'model', None), id=getattr(response, 'id', None),
+                system_fingerprint=getattr(response, 'system_fingerprint', None), content=choice.message.content,
+                refusal=getattr(choice.message, 'refusal', None), finish_reason=getattr(choice, 'finish_reason', None),
+                usage=response.usage.model_dump() if response.usage else None)
+            return response
+        except Exception as error:
+            row.update(error_type=type(error).__name__, http_status=getattr(error, 'status_code', None))
+            raise
+        finally:
+            row['seconds'] = monotonic()-started
+            write_json(directory/f'{number:03d}.json', row)
+
+    model.client.chat.completions.create = capture
+    return attempts
 
 
 def step(text, subjects, **expectations):
@@ -268,8 +304,7 @@ def json_return_counts(attempts):
 
 
 def runtime_manifest():
-    paths=sorted([*ROOT.glob('src/**/*.py'),*ROOT.glob('experiments/*.py'),*ROOT.glob('experiments/*.json'),
-                  Path(__file__).resolve(),ROOT/'scripts/validate_subject_routing.py'])
+    paths=sorted([*ROOT.glob('src/**/*.py'), Path(__file__).resolve()])
     return {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -294,10 +329,10 @@ def run_case(case,round_number,output,dry_run=False,max_request_attempts=2):
         key=private_key('LLM_API_KEY','LLM_API_KEY_FILE')
         if not key:
             raise ValueError('model_key_unavailable')
-        model=SubjectTextModel('gpt-4o-mini',key,os.getenv('LLM_BASE_URL','https://api.quickrouter.us/v1'),
+        model=GPTModel(key,os.getenv('LLM_BASE_URL','https://api.quickrouter.us/v1'),
                                timeout=float(os.getenv('REMI_LLM_TIMEOUT','45')))
         attempts=capture_transport(model,directory/'transport')
-        engine=SubjectGraphEngine(SubjectMemoryStore(),model,settings=Settings(add_timeout=240))
+        engine=MemoryEngine(MemoryStore(),model,settings=Settings(add_timeout=240))
         oracle={'user':stable_id('obj_',owner,'user')}
         for index,specification in enumerate(case['steps']):
             request=request_for(case,owner,index);prior={row['id'] for row in engine.store.list('objects',owner)}

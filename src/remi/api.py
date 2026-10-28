@@ -15,6 +15,7 @@ from .models import AddRequest, AddResponse, SearchRequest, SearchResponse
 from .providers import ProviderUnavailable, providers_from_environment
 from .settings import Settings, load_environment
 from .storage import MemoryStore, SQLiteStore
+from .version import PIPELINE, VERSION
 
 
 def environment_engine():
@@ -39,7 +40,7 @@ def create_app(engine=None, api_key=None):
         if app.state.engine:
             app.state.engine.close()
 
-    app = FastAPI(title="Remi", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Remi", version=VERSION, lifespan=lifespan)
     app.state.engine = engine
     key = api_key if api_key is not None else os.getenv("MEMORY_API_KEY")
     mutex = Lock()
@@ -66,13 +67,14 @@ def create_app(engine=None, api_key=None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "remi", "initialized": app.state.engine is not None}
+        return {"status": "ok", "service": "remi", "version": VERSION,
+                "pipeline": PIPELINE, "initialized": app.state.engine is not None}
 
     @app.get("/ready")
     def ready(http_request: Request):
         authorize(http_request)
         active()
-        return {"status": "ready"}
+        return {"status": "ready", "version": VERSION, "pipeline": PIPELINE}
 
     @app.post("/add", response_model=AddResponse)
     def add(request: AddRequest, http_request: Request):

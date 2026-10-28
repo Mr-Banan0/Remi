@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from time import monotonic
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'src'),str(ROOT)]
-from experiments.subject_engine import SubjectGraphEngine,PIPELINE
-from experiments.subject_providers import SubjectTextModel
+from remi.engine import MemoryEngine
+from remi.version import PIPELINE
+from remi.providers import GPTModel
 from remi.models import AddRequest,AddMessage
 from remi.settings import load_environment,private_key,Settings
 
@@ -34,8 +35,8 @@ def main():
     write(args.output/'code-manifest.json',fingerprint)
     load_environment(args.env_file);reports=[];started=monotonic()
     for case in CASES:
-        model=SubjectTextModel('gpt-4o-mini',private_key('LLM_API_KEY','LLM_API_KEY_FILE'),os.getenv('LLM_BASE_URL','https://api.quickrouter.us/v1'),timeout=60)
-        engine=SubjectGraphEngine(model=model,settings=Settings(add_timeout=180));path=args.output/case['id'];path.mkdir()
+        model=GPTModel(private_key('LLM_API_KEY','LLM_API_KEY_FILE'),os.getenv('LLM_BASE_URL','https://api.quickrouter.us/v1'),timeout=60)
+        engine=MemoryEngine(model=model,settings=Settings(add_timeout=180));path=args.output/case['id'];path.mkdir()
         report=dict(id=case['id'],steps=[],checks={});previous_count=0
         try:
             for i,(text,day) in enumerate(case['steps']):

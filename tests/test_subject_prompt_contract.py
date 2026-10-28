@@ -4,10 +4,10 @@ import json
 from time import monotonic
 from types import SimpleNamespace
 
-from experiments.subject_maintenance import PROMPT, REPAIR_PROMPT, examples, maintain, render, review
-from experiments.subject_repair import build_repair_state
+from remi.subject_maintenance import PROMPT, REPAIR_PROMPT, examples, maintain, render, review
+from remi.subject_repair import build_repair_state
 from remi.identity import normalized_name
-from tests.test_subject_maintenance_experiment import initial
+from tests.test_subject_maintenance import initial
 from tests.test_subject_reference_pipeline import nurse_state
 
 
@@ -81,7 +81,7 @@ def test_demonstration_additions_are_novel_values_with_owned_current_source_evid
         catalog={s['id']:s for s in packet['subject_catalog']}
         primary=packet['new_user_source']
         for subject in output['subjects']:
-            from experiments.subject_references import current_evidence
+            from remi.subject_references import current_evidence
             assert subject['reference']['evidence_id'] in {row['id'] for row in current_evidence(primary)}
             stored=catalog.get(subject['target_id'],{})
             known={normalized_name(x['name']) for x in stored.get('aliases',[])}

@@ -1,12 +1,12 @@
-"""V53 regressions for historical writes, append-first fallback and concurrency."""
+"""Regressions for historical writes, independent-add fallback and concurrency."""
 from copy import deepcopy
 import pytest
 
-from experiments.subject_engine import SubjectGraphEngine
+from remi.engine import MemoryEngine
 from remi.graph import active_edges
 from remi.heat import visible_memory
 from remi.providers import ProviderUnavailable
-from tests.test_event_maintenance import OWNER, Model, extracted, lifecycle, req, row, update, unit
+from tests.test_memory_lifecycle import OWNER, Model, extracted, lifecycle, req, row, update, unit
 
 
 def test_backdated_update_uses_historical_revision_and_preserves_later_view():
@@ -43,7 +43,7 @@ def test_valid_target_is_kept_while_invalid_sibling_falls_back_to_add():
     {'items':[{'ref':'C1','target_id':None,'content':None}],'reason':'bad'},
 ])
 def test_malformed_memory_decision_falls_back_without_repair(bad_output):
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     model.propose=lambda state,deadline:bad_output
     key='malformed-'+str(len(str(bad_output)))
     engine.add(req('Aster plans a picnic.',key))

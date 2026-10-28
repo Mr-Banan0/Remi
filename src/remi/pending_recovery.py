@@ -1,8 +1,8 @@
 """Bounded recovery ledger in existing request checkpoints, with original source provenance."""
 from types import SimpleNamespace
-from remi.identity import stable_id
-from remi.clock import parse_time
-from remi.retrieval import bm25
+from .identity import stable_id
+from .clock import parse_time
+from .retrieval import bm25
 
 RECOVERY_LIMIT=2
 

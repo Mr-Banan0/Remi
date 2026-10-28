@@ -1,17 +1,18 @@
-"""V53 append-first coverage, identity targets and compact model input."""
+"""Current independent-add coverage, identity targets and compact model input."""
 import json
 from time import monotonic
 from types import SimpleNamespace
 
-from experiments.event_maintenance import examples, provider_plan
-from experiments.subject_engine import SubjectGraphEngine, SubjectMemoryStore
-from experiments.subject_recall import pack_history, prepare_candidates, RECALL_BYTES
-from tests.test_event_maintenance import Model, OWNER, extracted, req, row, unit
+from remi.memory_maintenance import examples, provider_plan
+from remi.engine import MemoryEngine
+from remi.storage import MemoryStore
+from remi.subject_recall import pack_history, prepare_candidates, RECALL_BYTES
+from tests.test_memory_lifecycle import Model, OWNER, extracted, req, row, unit
 from tests.test_keyword_subject_recall import add_subject, state, source
 
 
 def test_long_evidence_history_keeps_current_view_in_recall_budget():
-    store=SubjectMemoryStore();add_subject(store,'Edda')
+    store=MemoryStore();add_subject(store,'Edda')
     packet,_=prepare_candidates(store,state('Edda confirmed the schedule.'))
     sources=[source('history-'+str(index),('context '+str(index)+' ')*900) for index in range(50)]
     card=dict(id='long-supported-memory',content='Edda confirmed the schedule.',record_type='fact',entity_ids=[],sources=sources)
@@ -22,7 +23,7 @@ def test_long_evidence_history_keeps_current_view_in_recall_budget():
 
 
 def test_every_extracted_candidate_receives_a_disposition_including_omissions():
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     def extractor(state):
         return dict(items=[extracted(state,content='Aster plans a picnic.'),
             extracted(state,content='Aster plans a walk.')],reason='two candidates')
@@ -37,7 +38,7 @@ def test_every_extracted_candidate_receives_a_disposition_including_omissions():
 
 
 def test_invalid_returned_target_has_specific_fallback_disposition():
-    model=Model();engine=SubjectGraphEngine(model=model)
+    model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id='missing')]
     engine.add(req('Aster plans a picnic.','invalid'))
     disposition=unit(engine,'invalid')['candidate_dispositions'][0]

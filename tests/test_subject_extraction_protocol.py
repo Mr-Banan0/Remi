@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from experiments.subject_extraction import (
+from remi.subject_extraction import (
     ExtractionInvalid, ExtractionPlan, PROMPT, decode, examples, feedback, prepare, propose,
     render, schema,
 )

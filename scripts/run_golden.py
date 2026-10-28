@@ -19,8 +19,9 @@ import uvicorn
 from remi.api import create_app, environment_engine
 from remi.settings import load_environment
 from remi.storage import SQLiteStore, TABLES
-from remi.add_pipeline import PIPELINE
-from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
+from remi.version import PIPELINE
+from scripts.golden_adapter import (AML_MESSAGE_LIMIT, AML_METRIC_CUTOFFS, AML_TOP_K, AML_WORD_LIMIT,
+    actions, add_payload, input_catalog, metrics, score_case)
 
 
 def fingerprint(root):
@@ -51,8 +52,17 @@ def summaries(report):
     questions, additions = report["questions"], report["add_calls"] + report["lifecycle_add_calls"]
     calls = report["diagnostic_calls"]
     types = sorted({result["question_type"] for result in questions})
-    return {"retrieval": {str(k): metrics(questions, k) for k in (1, 3, 5, 10)},
+    returned_counts = [result.get("returned_count", len(result.get("candidates", []))) for result in questions]
+    returned_bytes = [result.get("returned_bytes", 0) for result in questions]
+    return {"retrieval": {str(k): metrics(questions, k) for k in AML_METRIC_CUTOFFS},
         "by_type": {kind: metrics([item for item in questions if item["question_type"] == kind]) for kind in types},
+        "search_output": {
+            "mean_returned_count": sum(returned_counts) / len(returned_counts) if returned_counts else 0,
+            "min_returned_count": min(returned_counts) if returned_counts else 0,
+            "max_returned_count": max(returned_counts) if returned_counts else 0,
+            "mean_answer_input_bytes": sum(returned_bytes) / len(returned_bytes) if returned_bytes else 0,
+            "p95_answer_input_bytes": percentile(returned_bytes, .95),
+        },
         "mean_facet_quote_coverage": sum(item["facet_quote_coverage"] for item in questions) / len(questions) if questions else 0,
         "add_success_rate": sum(record["success"] for record in additions) / len(additions) if additions else 0,
         "add_latency": latency(additions), "search_latency": latency(questions),
@@ -116,6 +126,12 @@ def compare(report, baseline, dataset):
 
 
 def verify_baseline(dataset, baseline):
+    expected_chunking = {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
+                         "word_counter": "unicode_word_units_v1"}
+    config = baseline.get("config", {})
+    if (config.get("top_k") != AML_TOP_K or config.get("add_chunking") != expected_chunking
+            or config.get("search_reference_time") != "not_sent"):
+        raise ValueError("baseline_aml_full_contract_mismatch")
     mapping, catalog = {}, {}
     owner = baseline["user_id"]
     for kind, action in actions(dataset):
@@ -124,7 +140,7 @@ def verify_baseline(dataset, baseline):
         payload = add_payload(action, owner)
         for index, message in enumerate(payload["messages"]):
             key = "source:" + hashlib.sha256(f"{owner}\0{payload['request_id']}\0{index}".encode()).hexdigest()[:24]
-            mapping[key] = action["turns"][index // 2]["ref"]
+            mapping[key] = action.get("message_refs", [turn["ref"] for turn in action["turns"] for _ in range(2)])[index]
             catalog[key] = {"role": message["role"], "content": message["content"]}
     lookup = {item["question_id"]: item for item in baseline["questions"]}
     for case in dataset["cases"]:
@@ -138,11 +154,13 @@ def verify_baseline(dataset, baseline):
 def execute(args):
     root = Path(__file__).resolve().parents[1]
     dataset_bytes = args.dataset.read_bytes()
-    dataset, baseline = json.loads(dataset_bytes), json.loads(args.baseline.read_text())
+    dataset = json.loads(dataset_bytes)
+    baseline = json.loads(args.baseline.read_text()) if args.baseline else None
     dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
-    if baseline["dataset_sha256"] != dataset_hash or not baseline.get("complete"):
-        raise ValueError("baseline_dataset_or_completion_mismatch")
-    verify_baseline(dataset, baseline)
+    if baseline:
+        if baseline["dataset_sha256"] != dataset_hash or not baseline.get("complete"):
+            raise ValueError("baseline_dataset_or_completion_mismatch")
+        verify_baseline(dataset, baseline)
     if args.output.exists() and not args.resume:
         raise FileExistsError("fresh_output_directory_required")
     if not args.allow_create_schema:
@@ -177,13 +195,17 @@ def execute(args):
         raise RuntimeError("local_service_start_failed")
     plan = list(actions(dataset))
     report = {"architecture": PIPELINE, "complete": False, "dataset": str(args.dataset),
-        "dataset_sha256": dataset_hash, "baseline_result": str(args.baseline), "runtime_directory": str(root),
+        "dataset_sha256": dataset_hash, "baseline_result": str(args.baseline) if args.baseline else None,
+        "runtime_directory": str(root),
         "runtime_code_fingerprint": fingerprint(root), "active_runtime_code_fingerprint": fingerprint(root),
         "active_runtime_directory": str(root), "started_at": time.time(), "planned_add_calls": sum(
             kind == "add" for kind, action in plan) + len(dataset["lifecycle"]), "planned_questions": len(dataset["cases"]),
         "add_calls": [], "questions": [], "lifecycle_add_calls": [], "lifecycle_searches": [],
         "protocol_checks": [], "errors": [], "diagnostic_calls": [], "source_to_ref": {},
-        "config": {"top_k": 10, "batch_turns": 8, "scoring": "visible_raw_source_v2", "model": engine.model.model,
+        "config": {"top_k": AML_TOP_K,
+            "add_chunking": {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
+                             "word_counter": "unicode_word_units_v1"},
+            "search_reference_time": "not_sent", "scoring": "visible_raw_source_v2", "model": engine.model.model,
             "reranker": engine.reranker.model, "embedding": "text-embedding-v4", "embedding_dimensions": engine.embedder.dimensions,
             "settings": vars(engine.settings)}, "database": str(database)}
     prior_calls = []
@@ -210,11 +232,11 @@ def execute(args):
             "runtime_directory": str(root), "started_at": report["started_at"], "updated_at": time.time(),
             **progress_counts(report), "planned_add_calls": report["planned_add_calls"],
             "planned_questions": report["planned_questions"], "result": str(args.output / "result.json")}, indent=2))
-    def post(client, path, payload, clock=None):
+    def post(client, path, payload):
         seconds = 0.0
         for attempt in range(1, 4):
             started = time.monotonic()
-            response = client.post(path, json=payload, headers={"x-memory-reference-time": clock} if clock else None)
+            response = client.post(path, json=payload)
             elapsed = time.monotonic() - started
             seconds += elapsed
             with (args.output / 'http-attempts.jsonl').open('a') as journal:
@@ -233,7 +255,7 @@ def execute(args):
                     payload = add_payload(action, owner)
                     completed = engine.store.get("requests", owner, payload["request_id"])
                     if completed and completed["status"] == "complete":
-                        refs, originals = input_catalog(payload, action["turns"])
+                        refs, originals = input_catalog(payload, action["turns"], action.get("message_refs"))
                         mapping.update(refs)
                         catalog.update(originals)
                         last_payload = payload
@@ -255,7 +277,7 @@ def execute(args):
                     if not record["success"]:
                         report["errors"].append({"operation": "add", "http_status": response.status_code})
                         raise RuntimeError("golden_add_interrupted")
-                    refs, originals = input_catalog(payload, action["turns"])
+                    refs, originals = input_catalog(payload, action["turns"], action.get("message_refs"))
                     mapping.update(refs)
                     catalog.update(originals)
                     last_payload = payload
@@ -264,8 +286,8 @@ def execute(args):
                     question = action["question"]
                     if any(record["question_id"] == question["id"] and record.get('http_status') == 200 for record in report["questions"]):
                         continue
-                    response, seconds = post(client, "/search", {"user_id": owner, "query": question["text"], "top_k": 10},
-                                             question["day"] + "T23:59:59Z")
+                    response, seconds = post(client, "/search", {
+                        "user_id": owner, "query": question["text"], "top_k": AML_TOP_K})
                     candidates = response.json()["data"] if response.status_code == 200 else []
                     record = score_case(action, candidates, mapping, catalog)
                     record.update(seconds=seconds, http_status=response.status_code, candidates=candidates,
@@ -304,7 +326,8 @@ def execute(args):
                 ("李明现在住在哪里？", ("李明现在住杭州", "2026-10-01"))):
                 if any(record["query"] == question for record in report["lifecycle_searches"]):
                     continue
-                response, seconds = post(client, "/search", {"user_id": life_owner, "query": question, "top_k": 5})
+                response, seconds = post(client, "/search", {
+                    "user_id": life_owner, "query": question, "top_k": AML_TOP_K})
                 if response.status_code != 200:
                     raise RuntimeError('golden_lifecycle_search_interrupted')
                 candidates = response.json()["data"]
@@ -319,8 +342,9 @@ def execute(args):
             report["protocol_checks"].append({"name": "exactly_six_tables", "passed": actual == TABLES})
             report["complete"], report["ended_at"] = True, time.time()
             save("complete")
-            comparison = compare(report, baseline, dataset)
-            (args.output / "comparison.json").write_text(json.dumps(comparison, ensure_ascii=False, indent=2))
+            if baseline:
+                comparison = compare(report, baseline, dataset)
+                (args.output / "comparison.json").write_text(json.dumps(comparison, ensure_ascii=False, indent=2))
     except Exception as error:
         report["errors"].append({"operation": "runner", "exception": type(error).__name__})
         save("interrupted")
@@ -330,13 +354,13 @@ def execute(args):
         thread.join(timeout=5)
         listener.close()
     print(json.dumps({"result": str(args.output / "result.json"), "complete": report["complete"],
-                      "metrics": report["summary"]["retrieval"]["10"]}), flush=True)
+                      "metrics": report["summary"]["retrieval"][str(AML_TOP_K)]}), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True)
-    parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--execute", action="store_true")

@@ -41,7 +41,8 @@ def test_invalid_source_is_diagnosed_and_the_unit_stays_retryable():
     with pytest.raises(ProviderUnavailable): engine.add(request('Access remains restricted.'))
     saved=engine.store.get('requests','u1','r1')['units']['0']
     assert saved['phase']=='pending'
-    assert saved['validation'][0]['error']=='candidate_source_requires_supplied_original'
+    issues=saved['candidate_extraction_issues']['extract_repair']
+    assert issues[0]['code']=='extraction_requires_supplied_source'
     assert not engine.store.memories('u1')
 
 

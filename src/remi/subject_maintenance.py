@@ -1,7 +1,4 @@
-"""Subject identity maintenance with names and three broad subject kinds.
-
-This module uses MemoryStore only. The production Add pipeline remains V32.
-"""
+"""Production subject identity maintenance for Remi 0.2.0."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,10 +7,10 @@ from time import monotonic, sleep
 
 from pydantic import Field
 
-from remi.models import StrictModel
-from experiments.subject_identity import SubjectDraft, resolve_subjects
-from experiments.subject_references import prepare_reference_state
-from remi.providers import semantic_references, scoped_schema, remaining, transient, error_label, ProviderUnavailable, OutputInvalid
+from .models import StrictModel
+from .subject_identity import SubjectDraft, resolve_subjects
+from .subject_references import prepare_reference_state
+from .providers import semantic_references, scoped_schema, remaining, transient, error_label, ProviderUnavailable, OutputInvalid
 
 
 class SubjectPlan(StrictModel):
@@ -114,8 +111,8 @@ def render(state):
     """Render the subject view directly, with evidence bases attached to their candidate."""
     from textwrap import indent
     import re
-    from experiments.subject_recall import subject_stage_state, identity_excerpts
-    from experiments.subject_validation import render_repair
+    from .subject_recall import subject_stage_state, identity_excerpts
+    from .subject_validation import render_repair
     state=subject_stage_state(state)
     primary=state['new_user_source'];context=state.get('context_sources',[])
     lines=[]
@@ -130,7 +127,7 @@ def render(state):
         lines.extend([f"Source {source['id']} | speaker: {source['role']}",fence+'text',content,fence])
 
     section('CURRENT SOURCE');original(primary)
-    from experiments.subject_references import current_evidence
+    from .subject_references import current_evidence
     section('CURRENT EVIDENCE FRAGMENTS')
     for fragment in current_evidence(primary):
         lines.append(f"Evidence {fragment['id']} | source {fragment['source_id']}: {fragment['text']}")
@@ -175,7 +172,7 @@ def render(state):
 
 def maintain(model, state, *, deadline):
     """Record exact messages and reuse the configured client's retry/timeout conventions."""
-    from experiments.subject_recall import subject_stage_state
+    from .subject_recall import subject_stage_state
     staged=subject_stage_state(state)
     payload,restore=semantic_references(staged)
     # semantic_references translates source values; rebuild the lookup from translated IDs.
@@ -189,7 +186,7 @@ def maintain(model, state, *, deadline):
     base={k:v for k,v in payload.items() if k not in {'previous_output','repair_errors','fixed_subjects','fixed_subject_fields'}}
     body='# MAINTENANCE INPUT\n\n'+render(base);messages.append(dict(role='user',content=body))
     if repair:
-        from experiments.subject_validation import render_repair
+        from .subject_validation import render_repair
         previous=json.dumps(payload['previous_output'],ensure_ascii=False)
         feedback=render_repair(payload)
         messages.extend([dict(role='assistant',content=previous),dict(role='user',content=feedback)])
@@ -200,7 +197,7 @@ def maintain(model, state, *, deadline):
         for definition in schema.get('$defs',{}).values():
             prop=definition.get('properties',{}).get('source_id')
             if prop is not None:prop['enum']=source_ids
-    from experiments.subject_references import current_evidence
+    from .subject_references import current_evidence
     properties=schema['$defs']['IdentityReference']['properties']
     properties['evidence_id']['enum']=[row['id'] for row in current_evidence(payload['new_user_source'])]
     bases=[row['id'] for row in payload.get('identity_bases',[])]
@@ -233,8 +230,8 @@ def maintain(model, state, *, deadline):
 
 def review(raw, state, store):
     """One structured validation result drives audit projections and the repair request."""
-    from experiments.subject_validation import issue, error_projection
-    from experiments.subject_recall import subject_stage_state
+    from .subject_validation import issue, error_projection
+    from .subject_recall import subject_stage_state
     current_id=state['new_user_source']['id']
     supplied_current=deepcopy(state.get('source_catalog',{}).get(current_id))
     shared = prepare_reference_state(state, store)

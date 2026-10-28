@@ -14,16 +14,22 @@ TRACE_BLOCK = re.compile(
     r"\[source:([a-f0-9]{24})\]\n原始消息（(user|assistant|system)）[^\n]*\n(.*?)"
     r"(?=\n{1,2}(?:\[source:|\[retrieval\]|事件：|事实（|规则 version=)|\Z)", re.S)
 
+AML_TOP_K = 100
+AML_MESSAGE_LIMIT = 20
+AML_WORD_LIMIT = 2000
+AML_METRIC_CUTOFFS = (1, 3, 5, 10, 100)
+WORD_UNIT = re.compile(r"[\u3400-\u9fff]|[^\W_]+(?:['’-][^\W_]+)*", re.UNICODE)
+
 
 def normalize(text):
     return " ".join(text.split())
 
 
-def input_catalog(payload, turns):
+def input_catalog(payload, turns, message_refs=None):
     mapping, catalog = {}, {}
     for index, message in enumerate(payload["messages"]):
         key = stable_id("src_", payload["user_id"], payload["request_id"], index)
-        mapping[key] = turns[index // 2]["ref"]
+        mapping[key] = message_refs[index] if message_refs is not None else turns[index // 2]["ref"]
         catalog[key] = {"role": message["role"], "content": message["content"]}
     return mapping, catalog
 
@@ -69,10 +75,11 @@ def score_case(case, candidates, mapping, catalog, framework="remi"):
         "evidence_recall": hits / len(gold), "all_evidence_hit": hits == len(gold), "any_evidence_hit": hits > 0,
         "facets": facets, "facet_quote_coverage": sum(item["visible"] for item in facets) / len(facets) if facets else 1,
         "all_facets_visible": all(item["visible"] for item in facets), "scoring": "visible_raw_source_v2",
+        "returned_count": len(candidates),
         "returned_bytes": sum(len(item.get("content", "").encode()) for item in candidates)}
 
 
-def metrics(results, top_k=10):
+def metrics(results, top_k=AML_TOP_K):
     if not results:
         return {"question_count": 0, "mean_evidence_recall": 0, "all_evidence": 0, "any_evidence": 0, "mrr": 0}
     recall, complete, any_hits, reciprocals = [], [], [], []
@@ -87,8 +94,33 @@ def metrics(results, top_k=10):
         "mrr": sum(reciprocals) / len(results)}
 
 
-def actions(dataset, batch_turns=8):
-    """Use the established causal per-day replay ordering without consulting answers."""
+def adapter_word_count(text):
+    """Deterministic Unicode word units for the frozen AML-compatible replay contract."""
+    return len(WORD_UNIT.findall(text))
+
+
+def _message_chunks(turns, message_limit=AML_MESSAGE_LIMIT, word_limit=AML_WORD_LIMIT):
+    messages = [
+        {"ref": turn["ref"], "role": role, "content": turn[role], "timestamp": turn["timestamp_ms"]}
+        for turn in turns for role in ("user", "assistant")
+    ]
+    chunk, words = [], 0
+    for message in messages:
+        message_words = adapter_word_count(message["content"])
+        if chunk and (len(chunk) >= message_limit or words + message_words > word_limit):
+            yield chunk
+            chunk, words = [], 0
+        chunk.append(message)
+        words += message_words
+        if len(chunk) >= message_limit or words >= word_limit:
+            yield chunk
+            chunk, words = [], 0
+    if chunk:
+        yield chunk
+
+
+def actions(dataset):
+    """Replay causally with AML's 20-message / 2,000-word deterministic Add boundary."""
     turns, cursor = dataset["input_turns"], 0
     for case in dataset["cases"]:
         due = defaultdict(list)
@@ -97,15 +129,27 @@ def actions(dataset, batch_turns=8):
             due[turn["day"]].append(turn)
             cursor += 1
         for day, cohort in due.items():
-            for start in range(0, len(cohort), batch_turns):
-                batch = cohort[start:start + batch_turns]
-                first, last = batch[0]["ref"].rsplit(":", 1)[1], batch[-1]["ref"].rsplit(":", 1)[1]
-                yield "add", {"request_id": f"rhelm:{dataset['character']}:{day}:turns-{first}-{last}",
-                              "session_id": f"rhelm:{dataset['character']}:{day}", "turns": batch}
+            by_ref = {turn["ref"]: turn for turn in cohort}
+            for number, messages in enumerate(_message_chunks(cohort), 1):
+                refs = list(dict.fromkeys(message["ref"] for message in messages))
+                first, last = refs[0].rsplit(":", 1)[1], refs[-1].rsplit(":", 1)[1]
+                yield "add", {
+                    "request_id": f"rhelm:{dataset['character']}:{day}:chunk-{number}:turns-{first}-{last}",
+                    "session_id": f"rhelm:{dataset['character']}:{day}",
+                    "turns": [by_ref[ref] for ref in refs],
+                    "messages": messages,
+                    "message_refs": [message["ref"] for message in messages],
+                    "message_count": len(messages),
+                    "word_count": sum(adapter_word_count(message["content"]) for message in messages),
+                }
         yield "search", case
 
 
 def add_payload(action, owner):
+    if "messages" in action:
+        return {"request_id": action["request_id"], "session_id": action["session_id"], "user_id": owner,
+            "messages": [{key: message[key] for key in ("role", "content", "timestamp")}
+                         for message in action["messages"]]}
     return {"request_id": action["request_id"], "session_id": action["session_id"], "user_id": owner,
         "messages": [{"role": role, "content": turn[role], "timestamp": turn["timestamp_ms"]}
                      for turn in action["turns"] for role in ("user", "assistant")]}

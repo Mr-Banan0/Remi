@@ -88,8 +88,23 @@ class MemoryStore:
                 if document.id in ids and document.vector is not None}
 
     def edges_for(self, owner, origins=None, targets=None, limit=None):
-        return [Edge.model_validate(value) for value in self.list("edges", owner)
-                if (origins is None or value["origin"] in origins) and (targets is None or value["target"] in targets)][:limit]
+        rows = [value for value in self.list("edges", owner)
+                if "relation" in value
+                and (origins is None or value["origin"] in origins)
+                and (targets is None or value["target"] in targets)]
+        return [Edge.model_validate(value) for value in rows[:limit]]
+
+    def snapshot(self):
+        return {table: [json.loads(json.dumps(row)) for row in records.values()]
+                for table, records in self.records.items()}
+
+    def restore(self, snapshot):
+        if set(snapshot) != set(self.records):
+            raise ValueError("snapshot_requires_existing_six_collections")
+        with self.transaction():
+            for table, rows in snapshot.items():
+                for row in rows:
+                    self.put(table, row["owner"], row.get("id") or row["request_id"], row)
 
 
 
@@ -197,8 +212,9 @@ class SQLiteStore(MemoryStore):
             suffix = " LIMIT ?" if limit is not None else ""
             if limit is not None:
                 args.append(limit)
-            return [Edge.model_validate_json(row[0]) for row in self.connection.execute(
+            rows = [json.loads(row[0]) for row in self.connection.execute(
                 "SELECT record_json FROM edges WHERE " + " AND ".join(clauses) + " ORDER BY id" + suffix, args)]
+            return [Edge.model_validate(row) for row in rows if "relation" in row]
 
     def vector_scores(self, owner, vector, document_ids):
         import sqlite_vec

@@ -35,9 +35,11 @@ def test_preference_withdrawal_is_a_new_statement_and_preserves_its_original():
     memory = engine.store.memories('u1')[0]
     model.extractor = lambda state, errors: {'commands': [command(state, kind='preference', )]}
     engine.add(request('I withdraw my preference for watermelon.', request_id='r2', when='2024-06-03T10:00:00Z'))
-    assert engine.store.memories('u1')[0] == memory
+    updated=engine.store.memories('u1')[0]
+    assert updated.id==memory.id and len(updated.revisions)==2
+    assert 'withdraw' in updated.current.content
     assert engine.store.get('requests','u1','r2')['units']['0']['candidate_dispositions'][0]['status'] == 'accepted'
-    assert len(engine.store.memories('u1')) == 2
+    assert len(engine.store.memories('u1')) == 1
 
 
 def test_current_revision_uses_source_clock_for_out_of_order_archive():

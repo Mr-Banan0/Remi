@@ -30,7 +30,8 @@ from remi.api import create_app, environment_engine
 from remi.settings import Settings, load_environment
 from remi.storage import SQLiteStore, TABLES
 from scripts.analyze_golden import analyze
-from scripts.golden_adapter import actions, add_payload, input_catalog, metrics, score_case
+from scripts.golden_adapter import (AML_MESSAGE_LIMIT, AML_METRIC_CUTOFFS, AML_TOP_K, AML_WORD_LIMIT,
+    actions, add_payload, input_catalog, metrics, score_case)
 from scripts.run_golden import latency, summaries
 
 
@@ -268,7 +269,10 @@ def public_configuration():
 
 def make_contract(root, metadata, config, plan, max_http_attempts):
     return {**code_fingerprints(root), "data": metadata,
-        "configuration": config, "top_k": 10, "batch_turns": 8,
+        "configuration": config, "top_k": AML_TOP_K,
+        "add_chunking": {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
+                         "word_counter": "unicode_word_units_v1"},
+        "search_reference_time": "not_sent",
         "scoring": "visible_raw_source_v2", "clock": "UTC; same-day dialogue precedes date-only question",
         "max_http_attempts": max_http_attempts,
         "planned_actions_sha256": digest_json([(kind, action) for kind, action in plan])}
@@ -320,14 +324,13 @@ def recovered_add_record(action, request):
         "processing_complete": True, "latency_basis": "recovered_request_checkpoint_wall_clock"}
 
 
-def post_with_retries(client, path, payload, journal, *, clock=None, attempts=3, retry_seconds=2, timeout=None):
+def post_with_retries(client, path, payload, journal, *, attempts=3, retry_seconds=2, timeout=None):
     """Reuse exactly the same Add identity on bounded service/network retries."""
     started = time.monotonic()
     for attempt in range(1, attempts + 1):
         call_started = time.monotonic()
         try:
-            response = client.post(path, json=payload,
-                headers={"x-memory-reference-time": clock} if clock else None, timeout=timeout)
+            response = client.post(path, json=payload, timeout=timeout)
             journal.append({"path": path, "attempt": attempt, "http_status": response.status_code,
                             "seconds": round(time.monotonic() - call_started, 6)})
             if response.status_code not in RETRY_HTTP or attempt == attempts:
@@ -347,7 +350,8 @@ def report_summary(report, known_ids):
     summary["provider_errors"] = {"|".join(key): value for key, value in summary["provider_errors"].items()}
     groups = {"all": report["questions"], "known_regression": [record for record in report["questions"] if record["question_id"] in known_ids],
               "remaining_same_person": [record for record in report["questions"] if record["question_id"] not in known_ids]}
-    summary["groups"] = {group: {str(k): metrics(records, k) for k in (1, 3, 5, 10)} for group, records in groups.items()}
+    summary["groups"] = {group: {str(k): metrics(records, k) for k in AML_METRIC_CUTOFFS}
+                         for group, records in groups.items()}
     summary["http_errors"] = dict(Counter(str(call.get("http_status")) if call.get("http_status") else call.get("error_type", "unknown")
         for call in report["http_attempts"] if call.get("error_type") or (call.get("http_status") or 0) >= 400))
     summary["http_attempts"] = len(report["http_attempts"])
@@ -371,6 +375,13 @@ def validation_summary(requests):
 def compare_baseline(report, dataset, baseline_path):
     """Rescore historical TraceWeave raw originals on the exact causal input."""
     baseline = json.loads(Path(baseline_path).read_text())
+    expected_chunking = {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
+                         "word_counter": "unicode_word_units_v1"}
+    baseline_contract = baseline.get("config", {})
+    if (baseline_contract.get("top_k") != AML_TOP_K
+            or baseline_contract.get("add_chunking") != expected_chunking
+            or baseline_contract.get("search_reference_time") != "not_sent"):
+        raise ValueError("historical_baseline_aml_full_contract_mismatch")
     if not baseline.get("complete") or baseline.get("character") != dataset["character"]:
         raise ValueError("historical_baseline_completion_or_character_mismatch")
     if baseline.get("config", {}).get("dataset_sha256") != dataset["rhelm_source_sha256"]:
@@ -385,7 +396,8 @@ def compare_baseline(report, dataset, baseline_path):
         payload = add_payload(action, baseline["user_id"])
         for index, message in enumerate(payload["messages"]):
             key = "source:" + hashlib.sha256(f"{baseline['user_id']}\0{payload['request_id']}\0{index}".encode()).hexdigest()[:24]
-            mapping[key], catalog[key] = action["turns"][index // 2]["ref"], {"role": message["role"], "content": message["content"]}
+            refs = action.get("message_refs", [turn["ref"] for turn in action["turns"] for _ in range(2)])
+            mapping[key], catalog[key] = refs[index], {"role": message["role"], "content": message["content"]}
     scored = [score_case(case, lookup[case["question"]["id"]]["candidates"], mapping, catalog, "traceweave") for case in dataset["cases"]]
     for record in scored:
         old = lookup[record["question_id"]]
@@ -412,8 +424,12 @@ def execute(args):
     dataset, metadata = load_dataset(args.data_dir, args.character, args.golden_dataset)
     plan = list(actions(dataset))
     preview = plan_preview(dataset, metadata, plan)
-    if preview["add_calls"] != 215 or preview["questions"] != 86 or preview["known_regression_questions"] != 13:
-        raise ValueError("complete_david_plan_must_be_215_add_86_search_13_known")
+    if (preview["questions"] != len(dataset["cases"])
+            or preview["known_regression_questions"] != len(metadata["known_regression_ids"])
+            or preview["processing_units"] != preview["turns"]
+            or preview["max_add_messages"] > AML_MESSAGE_LIMIT
+            or preview["max_add_words"] > AML_WORD_LIMIT):
+        raise ValueError("david_plan_must_cover_all_turns_and_obey_aml_chunk_limits")
     if not args.allow_create_schema:
         raise PermissionError("explicit_approved_six_table_scope_required")
     load_environment(args.env_file)
@@ -530,7 +546,7 @@ def execute(args):
                     http_journal.set_context(action_index=index, action_kind=kind, action_id=identity)
                     if kind == "add":
                         payload = add_payload(action, owner)
-                        refs, originals = input_catalog(payload, action["turns"])
+                        refs, originals = input_catalog(payload, action["turns"], action.get("message_refs"))
                         mapping.update(refs)
                         catalog.update(originals)
                         completed = request_complete(engine.store, owner, action["request_id"])
@@ -558,7 +574,7 @@ def execute(args):
                         save("running")
                         question = action["question"]
                         response, seconds, attempts = post_with_retries(client, "/search", {"user_id": owner,
-                            "query": question["text"], "top_k": 10}, http_journal, clock=question["day"] + "T23:59:59Z",
+                            "query": question["text"], "top_k": AML_TOP_K}, http_journal,
                             attempts=args.max_http_attempts, retry_seconds=args.retry_seconds,
                             timeout=engine.settings.search_timeout + 30)
                         if response.status_code != 200:
@@ -612,14 +628,21 @@ def execute(args):
                     "reason": "The service is still settling an in-flight call; preserved journal counts are a lower bound."})
                 atomic_json(result_path, report)
         print(json.dumps({"result": str(result_path), "complete": report["complete"],
-            "metrics": report["summary"]["retrieval"]["10"]}), flush=True)
+            "metrics": report["summary"]["retrieval"][str(AML_TOP_K)]}), flush=True)
         return report
 
 
 def plan_preview(dataset, metadata, plan):
-    return {"character": dataset["character"], "add_calls": sum(kind == "add" for kind, _ in plan),
+    add_actions = [action for kind, action in plan if kind == "add"]
+    covered_refs = {turn["ref"] for action in add_actions for turn in action["turns"]}
+    return {"character": dataset["character"], "add_calls": len(add_actions),
         "questions": len(dataset["cases"]), "turns": len(dataset["input_turns"]),
-        "processing_units": sum(len(action["turns"]) for kind, action in plan if kind == "add"),
+        "processing_units": len(covered_refs),
+        "max_add_messages": max((action.get("message_count", len(action["turns"]) * 2)
+                                 for action in add_actions), default=0),
+        "max_add_words": max((action.get("word_count", 0) for action in add_actions), default=0),
+        "add_chunk_contract": {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
+                               "word_counter": "unicode_word_units_v1"},
         "known_regression_questions": len(metadata["known_regression_ids"]),
         "remaining_same_person_questions": len(dataset["cases"]) - len(metadata["known_regression_ids"]),
         "dataset_sha256": metadata["dataset_sha256"], "source_manifest_sha256": metadata["source_manifest_sha256"],
