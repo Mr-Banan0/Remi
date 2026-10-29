@@ -30,13 +30,9 @@
           "ref": 0,
           "operation": "create",
           "target_id": null,
-          "name": "@user",
+          "name": "Elena",
           "kind": "person",
           "aliases": [
-            {
-              "name": "Elena",
-              "source_id": "S1"
-            },
             {
               "name": "Ellie",
               "source_id": "S1"
@@ -45,7 +41,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "canonical_user"
         }
       ]
     }
@@ -55,7 +52,7 @@
       "new_user_source": {
         "id": "S1",
         "role": "user",
-        "content": "My name is Elena, and friends call me Ellie.",
+        "content": "Friends call me Rio.",
         "owner": "subject-reference-example",
         "message_at": "2028-02-01T10:00:00+00:00",
         "created_at": "2028-02-01T10:00:00+00:00"
@@ -101,7 +98,7 @@
         "S1": {
           "id": "S1",
           "role": "user",
-          "content": "My name is Elena, and friends call me Ellie.",
+          "content": "Friends call me Rio.",
           "owner": "subject-reference-example",
           "message_at": "2028-02-01T10:00:00+00:00",
           "created_at": "2028-02-01T10:00:00+00:00"
@@ -126,18 +123,15 @@
           "kind": "person",
           "aliases": [
             {
-              "name": "Elena",
-              "source_id": "S1"
-            },
-            {
-              "name": "Ellie",
+              "name": "Rio",
               "source_id": "S1"
             }
           ],
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
-          }
+          },
+          "reason": "same_identity"
         }
       ]
     }
@@ -179,7 +173,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "canonical_user"
         },
         {
           "ref": 1,
@@ -196,7 +191,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         },
         {
           "ref": 2,
@@ -208,7 +204,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         }
       ]
     }
@@ -291,7 +288,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "canonical_user"
         },
         {
           "ref": 1,
@@ -303,7 +301,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
-          }
+          },
+          "reason": "same_identity"
         }
       ]
     }
@@ -345,7 +344,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         },
         {
           "ref": 1,
@@ -357,7 +357,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         }
       ]
     }
@@ -445,7 +446,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
-          }
+          },
+          "reason": "same_identity"
         }
       ]
     }
@@ -487,7 +489,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         },
         {
           "ref": 1,
@@ -499,7 +502,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "no_matching_identity"
         }
       ]
     }
@@ -611,7 +615,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": null
-          }
+          },
+          "reason": "canonical_user"
         },
         {
           "ref": 1,
@@ -622,8 +627,9 @@
           "aliases": [],
           "reference": {
             "evidence_id": "C1",
-            "basis_id": null
-          }
+            "basis_id": "B1"
+          },
+          "reason": "explicitly_distinct"
         }
       ]
     }
@@ -720,15 +726,16 @@
       "subjects": [
         {
           "ref": 0,
-          "operation": "pending",
-          "target_id": null,
+          "operation": "reuse",
+          "target_id": "E1",
           "name": "Riven",
           "kind": "person",
           "aliases": [],
           "reference": {
             "evidence_id": "C1",
-            "basis_id": null
-          }
+            "basis_id": "B1"
+          },
+          "reason": "same_identity"
         }
       ]
     }
@@ -834,7 +841,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
-          }
+          },
+          "reason": "same_identity"
         }
       ]
     }
@@ -955,7 +963,8 @@
           "reference": {
             "evidence_id": "C1",
             "basis_id": "B1"
-          }
+          },
+          "reason": "same_identity"
         }
       ]
     }

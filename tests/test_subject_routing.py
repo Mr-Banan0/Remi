@@ -6,8 +6,6 @@ import pytest
 from remi.storage import MemoryStore
 from remi.subject_maintenance import review
 from remi.subject_recall import prepare_candidates
-from remi.subject_repair import build_repair_state, finish_repair
-from remi.providers import ProviderUnavailable
 from tests.test_subject_identity import plan
 from tests.test_keyword_subject_recall import OWNER, add_subject, source, state
 
@@ -124,7 +122,7 @@ def test_latin_word_boundaries_and_chinese_collision():
     assert packet['maintenance_route']['collision_groups'] == [dict(name='秋禾', subject_ids=['qiu-a', 'qiu-b'])]
 
 
-def test_collision_group_survives_top_candidate_limit():
+def test_collision_group_and_other_mentions_are_all_supplied():
     store = MemoryStore()
     add_subject(store, 'Owner', user=True)
     long_names = ['Alexandria', 'Constantine', 'Maximilian', 'Theophilus', 'Valentina']
@@ -134,11 +132,11 @@ def test_collision_group_survives_top_candidate_limit():
         add_subject(store, 'Lior', key=key)
     packet, trace = recalled(store, ' '.join([*long_names, 'Lior']))
     supplied = {row['id'] for row in packet['subject_catalog']}
-    assert {'lior-a', 'lior-b'} <= supplied and len(supplied) == 6
+    assert {'lior-a', 'lior-b'} <= supplied and len(supplied) == 8
     assert packet['maintenance_route']['order'] == 'subject_first'
     assert set(trace['selected_subject_ids']) == supplied
-    assert set(trace['limit_skipped_subject_ids']) == set(trace['keyword_matched_subject_ids']) - supplied
-    assert trace['subject_recall_truncated']
+    assert not trace['limit_skipped_subject_ids']
+    assert not trace['subject_recall_truncated']
 
 
 def test_exactly_six_colliding_identities_fill_all_slots_without_user():
@@ -152,15 +150,19 @@ def test_exactly_six_colliding_identities_fill_all_slots_without_user():
 
 
 @pytest.mark.parametrize('has_user,count', [(False, 7), (True, 6)])
-def test_collision_overflow_is_explicit_and_keeps_store_unchanged(has_user, count):
+def test_all_same_name_candidates_are_supplied_without_a_count_limit(has_user, count):
     store = MemoryStore()
     if has_user:
         add_subject(store, 'Owner', user=True)
     for index in range(count):
         add_subject(store, 'Lior', key='person-'+str(index))
     before = deepcopy(store.records)
-    with pytest.raises(ProviderUnavailable, match='subject_name_collision_exceeds_candidate_limit'):
-        recalled(store, 'Lior arrived.')
+    packet, trace = recalled(store, 'Lior arrived.')
+    expected=count+has_user
+    assert len(packet['subject_catalog'])==expected
+    assert len(packet['maintenance_route']['collision_groups'][0]['subject_ids'])==count
+    assert len(trace['selected_subject_ids'])==expected
+    assert not trace['limit_skipped_subject_ids'] and not trace['subject_recall_truncated']
     assert store.records == before
 
 
@@ -174,7 +176,7 @@ def test_multiple_collision_groups_are_preserved_together():
     assert len(packet['subject_catalog']) == 4
 
 
-def test_same_name_same_kind_reuse_requires_unique_identity_evidence():
+def test_same_name_same_kind_reuse_is_normalized_to_pending_without_unique_evidence():
     store = MemoryStore()
     for key in ['person-a', 'person-b']:
         add_subject(store, 'Lior', key=key)
@@ -182,8 +184,9 @@ def test_same_name_same_kind_reuse_requires_unique_identity_evidence():
     basis = next(row for row in packet['identity_bases'] if row['target_id']=='person-a')
     raw = plan(name='Lior',kind='person',operation='reuse',target='person-a',sid='now',basis=basis['id'])
     result = review(raw,packet,store)
-    assert any(issue['code']=='reuse_requires_unique_identity_evidence' for issue in result['issues'])
+    assert not result['issues']
     assert not result['bindings']['subject_ids']
+    assert result['state']['pending_subject_candidates']=={'0':['person-a','person-b']}
 
 
 def test_collision_reuse_is_allowed_when_kind_leaves_one_compatible_identity():
@@ -241,31 +244,25 @@ def test_named_pending_accepts_an_unresolved_same_kind_collision():
     assert not result['bindings']['subject_ids']
 
 
-def test_create_overlapping_a_recalled_name_requires_one_confirmation():
+def test_create_overlapping_a_recalled_name_uses_basis_as_distinct_reason():
     store=MemoryStore()
     add_subject(store,'Lior',key='existing-lior')
     packet,_=recalled(store,'I met a different Lior, also called Lee, today.')
-    raw=plan(name='Lior',kind='person',operation='create',target=None,aliases=['Lee'],sid='now',basis=None)
-    first=review(raw,packet,store)
-    assert any(issue['code']=='create_overlaps_recalled_identity' for issue in first['issues'])
-    assert not first['bindings']['subject_ids']
-
-    repair=build_repair_state(raw,first,packet)
-    confirmed=finish_repair(repair,raw,packet,store)
-    assert not confirmed['issues']
-    assert set(confirmed['bindings']['subject_ids'].values()) != {'existing-lior'}
+    basis=next(row for row in packet['identity_bases'] if row['target_id']=='existing-lior')
+    raw=plan(name='Lior',kind='person',operation='create',reason='explicitly_distinct',target=None,aliases=['Lee'],sid='now',basis=basis['id'])
+    result=review(raw,packet,store)
+    assert not result['issues']
+    assert set(result['bindings']['subject_ids'].values()) != {'existing-lior'}
 
 
-def test_create_overlapping_a_collision_can_be_repaired_to_pending():
+def test_create_without_a_distinct_basis_is_normalized_to_pending_for_a_collision():
     store=MemoryStore()
     for key in ['person-a','person-b']:add_subject(store,'Lior',key=key,aliases=['Lee'])
     packet,_=recalled(store,'Lee arrived.')
     raw=plan(name='Lee',kind='person',operation='create',target=None,sid='now',basis=None)
-    first=review(raw,packet,store)
-    assert any(issue['code']=='create_overlaps_recalled_identity' for issue in first['issues'])
-
-    repair=build_repair_state(raw,first,packet)
-    pending=plan(name='Lee',kind='person',operation='pending',target=None,sid='now',basis=None)
-    corrected=finish_repair(repair,pending,packet,store)
-    assert not corrected['issues']
-    assert not corrected['bindings']['subject_ids']
+    result=review(raw,packet,store)
+    assert not result['issues']
+    assert not result['bindings']['subject_ids']
+    assert result['state']['pending_subject_candidates']=={'0':['person-a','person-b']}
+    assert result['state']['subject_corrections']==[dict(ref=0,correction='collision_to_pending',
+        reason='multiple_compatible_identities',candidate_ids=['person-a','person-b'])]

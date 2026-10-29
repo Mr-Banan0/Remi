@@ -10,19 +10,21 @@ from .identity import normalized_name, source_name_present, stable_id
 from .clock import parse_time
 
 SubjectKind = Literal['person', 'animal', 'organization']
+IdentityDecisionReason = Literal['same_identity', 'no_matching_identity', 'explicitly_distinct', 'ambiguous_identity', 'canonical_user']
 
 class IdentityReference(StrictModel):
     evidence_id: str = Field(description="Supplied C ID selecting an exact fragment of CURRENT SOURCE.")
-    basis_id: str | None = Field(description="Supplied B basis owned by target_id for reuse; null for create/pending.")
+    basis_id: str | None = Field(description="Supplied B basis for reuse or for create with reason=explicitly_distinct. Other create and pending decisions use null.")
 
 
 class SubjectDraft(StrictModel):
     ref: SubjectRef = Field(description="One local integer ref per current identity, shared by all its names.")
-    operation: Literal['create', 'reuse', 'pending'] = Field(description="Create a supported new identity, reuse a confirmed candidate, or retain a genuinely ambiguous mention as pending.")
+    operation: Literal['create', 'reuse', 'pending'] = Field(description="The identity action: create a new identity, reuse an existing identity, or leave an unresolved reference pending.")
+    reason: IdentityDecisionReason = Field(description="A fixed reason for the action: same_identity, no_matching_identity, explicitly_distinct, ambiguous_identity, or canonical_user.")
     target_id: str | None = Field(description="Supplied E ID for reuse; null for create or pending.")
-    name: str | None = Field(description="First confirmed name; null while the subject has no stated name. @user identifies the API conversation user.")
+    name: str | None = Field(description="The first confirmed name. With create+canonical_user, return the first stated personal name, or @user when none is stated; the program preserves that name and stores the canonical user label. Reused canonical users use @user. Other subjects use their first confirmed name; null means no stated name.")
     kind: SubjectKind = Field(description="person, animal, or organization.")
-    aliases: list[SubjectNameDraft] = Field(max_length=24,description="Only new proper names, nicknames, abbreviations or renamed organization names stated in CURRENT SOURCE. Exclude occupations, roles, relationships, demographic attributes, animal categories and descriptive phrases.")
+    aliases: list[SubjectNameDraft] = Field(max_length=24,description="New alternative proper names, nicknames, abbreviations, or renamed organization names stated in CURRENT SOURCE. With create+canonical_user, name holds the first stated personal name and aliases holds the remaining names. Reused canonical users place every new personal name in aliases. Exclude occupations, roles, relationships, demographic attributes, animal categories, and descriptive phrases.")
     reference: IdentityReference
 
 class ReferenceEvidence(StrictModel):
@@ -59,7 +61,6 @@ def visible_subject(raw, owner, clock):
 
 
 CONTEXT_LIMIT = 1
-SUBJECT_LIMIT = 6
 
 
 def keyword_score(label, texts):
@@ -71,7 +72,7 @@ def keyword_score(label, texts):
     return (4 if 0 in hits else 3, len(word))
 
 
-def matching_subjects(store, owner, texts, clock, limit=SUBJECT_LIMIT):
+def matching_subjects(store, owner, texts, clock, limit=None):
     """Return keyword-ranked possible identities, with the canonical user first."""
     texts = [normalized_name(text) for text in ([*texts[:1], *texts[1:][-CONTEXT_LIMIT:]])]
     ranked = []
@@ -117,6 +118,7 @@ def resolve_subjects(raw, state, store):
     fragments = {row['id']: row for row in current_evidence(primary)}
     state['current_evidence'] = list(fragments.values())
     decisions, issues = {}, []
+    state['pending_subject_candidates'] = {}
 
     def present(text, originals):
         return any(source_name_present(normalized_name(text), normalized_name(s['content'])) for s in originals)
@@ -190,6 +192,16 @@ def resolve_subjects(raw, state, store):
             if 0 <= ref <= 95:
                 decisions[ref] = dict(id=None,object=None); unresolved()
             continue
+        if draft.operation=='create' and draft.reason=='canonical_user' and draft.name not in {None,'@user'}:
+            stated_name=draft.name
+            alias_rows=list(row.get('aliases',[])) if isinstance(row.get('aliases'),list) else []
+            returned_aliases={normalized_name(alias.get('name','')) for alias in alias_rows if isinstance(alias,dict)}
+            if normalized_name(stated_name) not in returned_aliases:
+                alias_rows.insert(0,{'name':stated_name,'source_id':primary['id']})
+            draft=draft.model_copy(update={'name':'@user'})
+            row={**row,'name':'@user','aliases':alias_rows}
+            state.setdefault('subject_corrections',[]).append(dict(ref=ref,
+                correction='canonical_user_name_to_alias',name=stated_name))
         if counts[ref] != 1:
             emit(['ref'],'subject_ref_selected_more_than_once','Assign one row to each local subject ref.',
                  {'ref':ref},{'rule':'Each ref appears once.'})
@@ -199,6 +211,80 @@ def resolve_subjects(raw, state, store):
                  {'evidence_ids':list(fragments)},source_ids=[primary['id']])
         originals = [primary] if current_valid else []
         marker = draft.name == '@user'; old = None; key = None
+        route=state.get('maintenance_route',{})
+        label=normalized_name(draft.name or '')
+        matching=[]
+        for group in route.get('name_matches',[]):
+            if normalized_name(group.get('name','')) != label:
+                continue
+            matching.extend(subject_id for subject_id in group.get('subject_ids',[])
+                            if catalog.get(subject_id,{}).get('kind')==draft.kind)
+        if marker:
+            matching.extend(subject_id for subject_id,subject in catalog.items()
+                            if subject.get('is_user') and subject.get('kind')==draft.kind)
+        matching=list(dict.fromkeys(matching))
+        selected_basis=next((basis for basis in state.get('identity_bases',[])
+                             if basis['id']==draft.reference.basis_id),None)
+        if selected_basis is not None:
+            basis_groups=[group for group in route.get('name_matches',[])
+                          if normalized_name(group.get('name',''))==normalized_name(selected_basis.get('text',''))]
+            basis_matches=list(dict.fromkeys(subject_id for group in basis_groups for subject_id in group.get('subject_ids',[])
+                                              if catalog.get(subject_id,{}).get('kind')==draft.kind))
+            if basis_matches:
+                matching=basis_matches
+        auto_reused=False
+        disambiguation=state.get('identity_disambiguation') or {}
+        recheck_candidates={str(item['ref']):item.get('candidate_ids',[]) for item in disambiguation.get('pending',[])}
+        if str(ref) in recheck_candidates:
+            allowed=set(recheck_candidates[str(ref)])
+            if draft.operation=='reuse' and draft.target_id not in allowed:
+                emit(['target_id'],'disambiguation_reuse_requires_pending_candidate',
+                     'Select one of the supplied candidates for this pending ref.',
+                     {'target_id':draft.target_id},{'candidate_ids':sorted(allowed)},source_ids=[primary['id']])
+            elif draft.operation=='create':
+                emit(['operation'],'disambiguation_allows_reuse_or_pending',
+                     'The final identity judgment selects one supplied candidate or keeps the ref pending.',
+                     {'operation':'create'},{'operations':['reuse','pending']},source_ids=[primary['id']])
+        elif len(matching)>1 and draft.operation in {'create','reuse'} and draft.reason!='explicitly_distinct':
+            draft=draft.model_copy(update=dict(operation='pending',reason='ambiguous_identity',target_id=None,
+                reference=draft.reference.model_copy(update={'basis_id':None})))
+            auto_reused=True
+            state.setdefault('subject_corrections',[]).append(dict(ref=ref,
+                correction='collision_to_pending',reason='multiple_compatible_identities',candidate_ids=matching))
+        elif draft.operation=='create' and draft.reason in {'no_matching_identity','canonical_user'} and len(matching)==1:
+            target=matching[0]
+            target_bases=[basis for basis in state.get('identity_bases',[]) if basis['target_id']==target]
+            preferred=[basis for basis in target_bases if basis['kind'] in {'name','canonical_user'}
+                       and (basis['kind']=='canonical_user' or normalized_name(basis['text'])==label)]
+            reusable_basis=(preferred or target_bases)
+            if reusable_basis:
+                stored_name=catalog.get(target,{}).get('name')
+                draft=draft.model_copy(update=dict(operation='reuse',reason='same_identity',target_id=target,
+                    name='@user' if catalog.get(target,{}).get('is_user') else stored_name or draft.name,
+                    reference=draft.reference.model_copy(update={'basis_id':reusable_basis[0]['id']})))
+                auto_reused=True
+                state.setdefault('subject_corrections',[]).append(dict(ref=ref,
+                    correction='create_to_reuse',reason='matching_identity_without_distinct_basis',target_id=target))
+        allowed_reasons={
+            'reuse':{'same_identity'},
+            'create':{'no_matching_identity','explicitly_distinct','canonical_user'},
+            'pending':{'ambiguous_identity'},
+        }
+        if draft.reason not in allowed_reasons[draft.operation]:
+            emit(['reason'],'subject_reason_must_match_operation',
+                 'Select the reason defined for this identity operation.',
+                 {'operation':draft.operation,'reason':draft.reason},
+                 {'operation':draft.operation,'reasons':sorted(allowed_reasons[draft.operation])},
+                 source_ids=[primary['id']])
+        if draft.operation=='create' and marker and draft.reason!='canonical_user':
+            emit(['reason'],'new_canonical_user_requires_canonical_reason',
+                 'Use reason=canonical_user when creating the API conversation user.',
+                 {'reason':draft.reason},{'reason':'canonical_user'},source_ids=[primary['id']])
+        if draft.reason=='canonical_user' and (draft.operation!='create' or not marker):
+            emit(['reason'],'canonical_user_reason_requires_user_create',
+                 'Use canonical_user only with operation=create and name=@user.',
+                 {'operation':draft.operation,'name':draft.name,'reason':draft.reason},
+                 {'operation':'create','name':'@user'},source_ids=[primary['id']])
         if marker and primary['role'] != 'user':
             emit(['reference'],'speaker_identity_requires_user_source','Use the actual conversation user only for a user source.',
                  expected={'source_id':primary['id']},source_ids=[primary['id']])
@@ -211,7 +297,7 @@ def resolve_subjects(raw, state, store):
                      {'target_id':draft.target_id},{'entity_ids':list(catalog)})
             else:
                 key = old.id
-                if targets[draft.target_id] != 1:
+                if not auto_reused and targets[draft.target_id] != 1:
                     emit(['target_id'],'existing_identity_uses_one_local_ref','Represent this stored identity with one local ref.',
                          {'target_id':draft.target_id},{'rule':'One local ref per reused ID.'})
                 if old.kind != draft.kind:
@@ -257,27 +343,38 @@ def resolve_subjects(raw, state, store):
                     if basis_source and not present(basis['text'],[basis_source]):
                         emit(['reference','basis_id'],'reference_basis_requires_source_text','Use identity evidence grounded in its original source.',
                              {'basis_id':draft.reference.basis_id})
-            route=state.get('maintenance_route',{})
-            collision=next((group for group in route.get('collision_groups',[])
-                            if draft.target_id in group.get('subject_ids',[])),None)
-            unique_literal=any(group.get('subject_ids')==[draft.target_id]
-                               for group in route.get('name_matches',[]))
-            compatible=[] if collision is None else [subject_id for subject_id in collision['subject_ids']
-                if catalog.get(subject_id,{}).get('kind')==draft.kind]
-            if old and collision and len(compatible)>1 and not unique_literal:
-                emit(['target_id'],'reuse_requires_unique_identity_evidence',
-                     'The current name matches multiple stored identities of this kind. Use pending when the current source and context do not uniquely identify one; use create for an explicitly distinct new identity.',
-                     {'target_id':draft.target_id,'matched_ids':compatible,'matched_name':collision['name']},
-                     {'operations':['pending','create'],'rule':'reuse requires a unique current name, alias, or compatible identity'},
-                     source_ids=[primary['id']])
         else:
-            if draft.reference.basis_id is not None:
-                emit(['reference','basis_id'],'create_pending_use_null_basis','Use basis_id=null for create or pending.',
-                     {'basis_id':draft.reference.basis_id},{'basis_id':None})
             if draft.target_id is not None:
                 emit(['target_id'],'create_pending_use_null_target','Use target_id=null for create or pending.',
                      {'target_id':draft.target_id},{'target_id':None})
             if draft.operation=='create':
+                basis=next((item for item in state.get('identity_bases',[])
+                            if item['id']==draft.reference.basis_id),None)
+                if draft.reason=='explicitly_distinct':
+                    if not matching:
+                        emit(['reason'],'explicitly_distinct_requires_matching_identity',
+                             'Use explicitly_distinct when CURRENT SOURCE distinguishes this new identity from a matching recalled identity.',
+                             {'reason':draft.reason,'matched_ids':matching},
+                             {'reason':'no_matching_identity'},source_ids=[primary['id']])
+                    elif basis is None:
+                        emit(['reference','basis_id'],'explicitly_distinct_requires_matching_basis',
+                             'Select a matching B basis for the identity that CURRENT SOURCE distinguishes from this new namesake.',
+                             {'basis_id':draft.reference.basis_id,'matched_ids':matching},
+                             {'basis_target_ids':matching},source_ids=[primary['id']])
+                    elif basis['target_id'] not in matching:
+                        emit(['reference','basis_id'],'distinct_basis_requires_matching_identity',
+                             'Select a B basis owned by a compatible identity that shares this current name or alias.',
+                             {'basis_id':basis['id'],'target_id':basis['target_id']},
+                             {'basis_target_ids':matching},source_ids=[primary['id']])
+                elif basis is not None:
+                    emit(['reference','basis_id'],'create_without_distinction_uses_null_basis',
+                         'Use basis_id=null with reason=no_matching_identity.',
+                         {'basis_id':basis['id']},{'basis_id':None},source_ids=[primary['id']])
+                if draft.reason=='no_matching_identity' and len(matching)==1:
+                    emit(['operation'],'matching_identity_requires_reuse',
+                         'Reuse the uniquely compatible matching identity.',
+                         {'operation':'create','matched_ids':matching},{'operation':'reuse','reason':'same_identity'},
+                         source_ids=[primary['id']])
                 key = stable_id('obj_',owner,'user') if marker else stable_id('obj_',owner,primary['id'],maintenance_identity_scope(state),ref)
                 if draft.name is None:
                     emit(['name'],'create_requires_stated_name',
@@ -287,29 +384,10 @@ def resolve_subjects(raw, state, store):
                 if key is not None and store.get('objects',owner,key) is not None:
                     emit(['operation'],'existing_identity_requires_reuse','Reuse the existing identity from the supplied candidates.',
                          {'operation':draft.operation})
-                route=state.get('maintenance_route',{})
-                label=normalized_name(draft.name or '')
-                matching=[]
-                for group in route.get('name_matches',[]):
-                    if normalized_name(group.get('name','')) != label:
-                        continue
-                    compatible=[subject_id for subject_id in group.get('subject_ids',[])
-                                if catalog.get(subject_id,{}).get('kind')==draft.kind]
-                    if compatible:matching.extend(compatible)
-                alias_hit=any(label in {normalized_name(alias.get('name','')) for alias in
-                                        catalog.get(subject_id,{}).get('aliases',[])}
-                              for subject_id in matching)
-                canonical_alias_update=(isinstance(row.get('aliases'),list) and bool(row['aliases']) and any(
-                    normalized_name(catalog.get(subject_id,{}).get('name') or '')==label
-                    for subject_id in matching))
-                confirmed=any(entry.get('code')=='create_overlaps_recalled_identity'
-                              and entry.get('ref')==ref for entry in state.get('repair_errors',[]))
-                if matching and (alias_hit or canonical_alias_update) and not confirmed:
-                    emit(['operation'],'create_overlaps_recalled_identity',
-                         'The current name or alias matches a recalled identity of this kind. Select reuse for one uniquely established identity, pending for an unresolved collision, or repeat create in the repair response when CURRENT SOURCE explicitly establishes a distinct new identity.',
-                         {'operation':'create','name':draft.name,'matched_ids':list(dict.fromkeys(matching))},
-                         {'operations':['reuse','pending','create_confirmation']},source_ids=[primary['id']])
             elif draft.operation=='pending' and draft.name is not None:
+                if draft.reference.basis_id is not None:
+                    emit(['reference','basis_id'],'pending_uses_null_basis','Use basis_id=null for pending.',
+                         {'basis_id':draft.reference.basis_id},{'basis_id':None})
                 route=state.get('maintenance_route',{})
                 label=normalized_name(draft.name)
                 relevant=[]
@@ -324,6 +402,11 @@ def resolve_subjects(raw, state, store):
                          'A named pending subject requires at least two matching stored identities. Use create for a new identity or reuse for the uniquely matched identity.',
                          {'operation':'pending','name':draft.name,'matching_candidate_count':maximum},
                          {'operations':['create','reuse']},source_ids=[primary['id']])
+                else:
+                    candidate_ids=list(dict.fromkeys(subject_id for group in relevant
+                        for subject_id in group.get('subject_ids',[])
+                        if catalog.get(subject_id,{}).get('kind')==draft.kind))
+                    state['pending_subject_candidates'][str(ref)]=candidate_ids
         is_user = old.is_user if old else marker
         if is_user and (draft.kind!='person' or key not in {None,stable_id('obj_',owner,'user')}):
             emit(['kind'],'speaker_marker_requires_canonical_person','Represent the actual conversation user as the canonical person identity.',

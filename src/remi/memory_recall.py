@@ -29,6 +29,9 @@ def recall_memories(engine, state, bindings, view):
     primary = state['new_user_source']
     clock = maintenance_clock(state)
     confirmed = set(bindings['subject_ids'].values())
+    pending_candidates={subject_id for values in state.get('pending_subject_candidates',{}).values()
+                        for subject_id in values}
+    subject_scope=confirmed | pending_candidates
     objects = {
         obj.id: obj.model_dump()
         for raw in engine.store.list('objects', owner)
@@ -48,7 +51,7 @@ def recall_memories(engine, state, bindings, view):
         if memory is None or memory.record_type == 'relation':
             continue
         ids = set(memory.current.entity_ids)
-        if ids and not ids.intersection(confirmed):
+        if ids and not ids.intersection(subject_scope):
             continue
         if not ids <= objects.keys():
             continue
@@ -81,13 +84,18 @@ def recall_memories(engine, state, bindings, view):
     confidence = subject_top / allowed_top if allowed_top else 0.0
     supplement = not pools['subjects'] or subject_top <= 0 or confidence < SUBJECT_RECALL_CONFIDENCE
     selected_pool = allowed if supplement else pools['subjects']
-    selected = [memory for memory in selected_pool if scores.get(memory.id, 0.0) > 0]
-    selected.sort(key=lambda memory: (
+    ranked = list(selected_pool)
+    ranked.sort(key=lambda memory: (
         -scores[memory.id],
         -parse_time(memory.current.observed_at).timestamp(),
         memory.id,
     ))
-    selected = selected[:MEMORY_LIMIT]
+    selected=[]
+    for subject_id in sorted(pending_candidates):
+        candidate=next((memory for memory in ranked if subject_id in memory.current.entity_ids),None)
+        if candidate is not None and candidate not in selected:selected.append(candidate)
+    selected.extend(memory for memory in ranked if scores.get(memory.id,0.0)>0 and memory not in selected)
+    selected=selected[:MEMORY_LIMIT]
 
     cards = []
     for memory in selected:
@@ -127,6 +135,7 @@ def recall_memories(engine, state, bindings, view):
     prepared['subject_catalog'] = list(catalog.values())
     return prepared, dict(
         confirmed_subject_ids=sorted(confirmed),
+        pending_candidate_subject_ids=sorted(pending_candidates),
         subject_memory_ids=sorted(memory.id for memory in pools['subjects']),
         unbound_memory_ids=sorted(memory.id for memory in pools['unbound']),
         allowed_memory_ids=sorted(memory.id for memory in allowed),

@@ -31,7 +31,7 @@ def test_current_mention_schema_excludes_the_available_historical_source():
     assert 'evidence' not in schema['SubjectDraft']['properties']
     assert schema['SubjectNameDraft']['properties']['source_id']['enum']==['S1']
     assert schema['IdentityReference']['properties']['evidence_id']['description']
-    assert set(schema['SubjectDraft']['properties'])=={'ref','operation','target_id','name','kind','aliases','reference'}
+    assert set(schema['SubjectDraft']['properties'])=={'ref','operation','reason','target_id','name','kind','aliases','reference'}
 
 
 def test_subject_prompt_has_only_identity_responsibilities():
@@ -45,7 +45,7 @@ def test_subject_prompt_distinguishes_candidates_from_current_referents():
     lower=PROMPT.casefold()
     assert 'search results rather than a checklist' in lower
     assert 'identities appearing only in supporting context' in lower
-    assert 'another or different identity selects create' in lower
+    assert 'another or different identity selects create with reason=explicitly_distinct' in lower
     assert 'unresolved collision' in lower
 
 

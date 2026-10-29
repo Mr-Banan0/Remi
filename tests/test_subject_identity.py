@@ -12,10 +12,12 @@ from tests.test_subject_maintenance import initial
 
 
 def plan(name='Tansy',kind='person',operation='create',target=None,aliases=None,
-         sid='current',mention=None,basis='B1',fragment='C1'):
-    return dict(subjects=[dict(ref=0,operation=operation,target_id=target,name=name,kind=kind,
+         sid='current',mention=None,basis=None,fragment='C1',reason=None):
+    reason=reason or ('same_identity' if operation=='reuse' else 'ambiguous_identity' if operation=='pending'
+                      else 'canonical_user' if name=='@user' else 'explicitly_distinct' if basis else 'no_matching_identity')
+    return dict(subjects=[dict(ref=0,operation=operation,reason=reason,target_id=target,name=name,kind=kind,
         aliases=[dict(name=value,source_id=sid) for value in list(aliases or [])],
-        reference=dict(evidence_id=fragment,basis_id=basis if operation=='reuse' else None))])
+        reference=dict(evidence_id=fragment,basis_id=basis if operation=='reuse' or reason=='explicitly_distinct' else None))])
 
 
 def pet():
@@ -31,6 +33,16 @@ def test_subject_stores_name_alias_and_animal_kind():
     assert obj['name']=='Tansy' and obj['kind']=='animal' and 'species' not in obj
     assert [row['name'] for row in obj['aliases']]==['Tan']
     assert obj['aliases'][0]['quote']==state['new_user_source']['content']
+
+
+def test_canonical_user_reason_preserves_first_name_and_remaining_aliases():
+    state,store=initial('My name is Zadie, and my nickname is Zee.')
+    raw=plan(name='Zadie',reason='canonical_user',aliases=['Zee'])
+    result=review(raw,state,store)
+    assert not result['issues']
+    user=result['bindings']['entity_rows'][0]
+    assert user['is_user'] and user['name']=='user'
+    assert [alias['name'] for alias in user['aliases']]==['Zadie','Zee']
 
 
 def test_only_name_and_alias_recall_the_same_animal():

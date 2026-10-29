@@ -58,6 +58,21 @@ def prepare_state(payload,owner):
     for raw in state.get('subject_catalog',[]):
         raw={**raw,'owner':owner,'kind':'person' if raw.get('kind')=='individual' else raw.get('kind','person')}
         raw.setdefault('observed_at',clock);raw.setdefault('aliases',[]);raw.setdefault('references',[])
+        aliases=[]
+        for index,alias in enumerate(raw['aliases']):
+            alias=dict(alias);quote=alias.get('quote') or alias['name']
+            source_id=alias.get('source_id')
+            if source_id not in catalog:
+                matched=next((source for source in catalog.values() if quote in source['content']),None)
+                if matched is None:
+                    source_id=f"fixture-{raw['id']}-alias-{index}"
+                    matched=dict(id=source_id,owner=owner,role='user',content=quote,
+                                 message_at=clock,created_at=clock)
+                    catalog[source_id]=matched;store.put('sources',owner,source_id,matched)
+                else:source_id=matched['id']
+            aliases.append({**alias,'source_id':source_id,'quote':quote,
+                            'observed_at':alias.get('observed_at',clock)})
+        raw['aliases']=aliases
         obj=SubjectRecord.model_validate(raw);store.put('objects',owner,obj.id,obj.model_dump())
     state['subject_catalog']=[store.get('objects',owner,key) for key in ids.values()]
     from remi.subject_references import prepare_reference_state

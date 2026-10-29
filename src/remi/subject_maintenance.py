@@ -40,47 +40,64 @@ Use SUPPORTING CONTEXT to interpret current references. Each returned identity n
 1. List the current eligible identities. Group names of the same identity under one ref.
 2. Explicitly different referents are separate, including same-name people, animals or organizations. A role can
    distinguish two current referents, while aliases remains empty unless an alternative name is stated.
-3. Explicit language that introduces another or different identity selects create even when its name matches a
-   candidate. reuse a supplied E ID when context and its B basis establish the same identity. A word shared by multiple
-   candidates is only a clue. create a concrete new referent with no supported match. pending means genuine ambiguity
-   between multiple plausible identities or an unresolved referring expression. create/pending have target_id=null and reference.basis_id=null.
+3. Explicit language that introduces another or different identity selects create with reason=explicitly_distinct when its name matches a
+   candidate. reuse with reason=same_identity selects a supplied E ID when context and its B basis establish the same identity. When several compatible
+   candidates share the current name and the supplied evidence does not uniquely identify one of them, select pending with
+   reason=ambiguous_identity. Candidate order carries no identity evidence. create a concrete new referent with no supported match.
+   create and pending have target_id=null. pending uses reason=ambiguous_identity and basis_id=null.
    A matching name or alias and compatible person/animal/organization evidence can resolve a candidate.
 4. Return each identity once. For reuse, use that ID's kind and any of its known names or aliases.
 
 # Operation decision table
 - A current name or alias that uniquely matches one compatible candidate selects reuse, except when CURRENT SOURCE
   explicitly establishes a different identity.
-- A current name matching multiple compatible candidates selects pending when CURRENT SOURCE and SUPPORTING CONTEXT
-  provide no unique identity evidence.
-- Explicit new-identity evidence, or a concrete referent with no matching candidate, selects create.
+- A current name matching multiple compatible candidates selects reuse only when CURRENT SOURCE, SUPPORTING CONTEXT,
+  or a unique name or alias basis identifies one candidate. Equal support selects pending.
+- Explicit different-namesake evidence selects create with reason=explicitly_distinct. A concrete referent with no matching candidate selects create with reason=no_matching_identity.
+- Creating the API conversation user selects create with reason=canonical_user and name=@user.
 - Candidate identities and first-person expressions found only in SUPPORTING CONTEXT stay outside the response.
 
 # Conversation user
-The actual API user has name=@user,kind=person. Self-introductions and nicknames belong in that
-same row's aliases. Reuse a candidate marked canonical user with its canonical_user B basis; otherwise
-create @user. Return @user only when the actual user is a current participant expressed by first person, such as
-I, me, my or 我. Authorship alone does not make the user a participant. Quoted first person belongs to its author.
+The actual API conversation user always has name=@user,kind=person in every language. CURRENT SOURCE includes
+speaker metadata. Interpret expressions that refer to that speaker according to the language, discourse and quotation
+structure of the source. Creating this canonical identity uses reason=canonical_user: return its first stated personal
+name in name and the remaining stated names in aliases; use name=@user when no personal name is stated. The program
+preserves these names and stores the canonical user label. Reuse a candidate marked canonical user with name=@user,
+its canonical_user B basis, and every newly stated personal name in aliases. Source authorship supplies speaker identity while the
+source semantics determines whether the speaker is a current participant. Include @user when a clause in CURRENT
+SOURCE refers to its speaker as a particular person, including clauses that state no personal name. Apply this semantic
+rule in every language. A quoted speaker remains distinct from the outer source author.
 E/B numbers are local labels with no role meaning.
 
 # Names, aliases, kind and evidence
-name is the first confirmed name stored for the subject. Keep that name on reuse. If a stored subject has
-name=null and CURRENT SOURCE gives its first real name, return that name. aliases contains only new alternative
+name is the first confirmed name. For create+canonical_user, return the first stated personal name in name and the
+remaining names in aliases; use @user when no personal name is stated. The program canonicalizes this identity and
+preserves the stated names. For a reused canonical user, keep name=@user and put newly stated names in aliases. Keep the stored canonical label on reuse. If an ordinary stored
+subject has name=null and CURRENT SOURCE gives its first real name, return that name. aliases contains only new alternative
 names, nicknames or abbreviations explicitly stated for the same subject in CURRENT SOURCE. Do not repeat the
 canonical name or an existing alias. An alias must function as a proper name for this exact identity. Occupations,
 roles, kinship terms, relationships, demographic attributes, animal categories and descriptive phrases are prohibited.
 Examples that are not aliases include nurse, designer, colleague, sister, employee, man, dog, pet and the baker.
 A pronoun can reuse a named stored subject when context resolves it. Omit a new unnamed referent from subjects and preserve it in memory content.
 Every subject has reference={evidence_id,basis_id}. Select a C fragment that supports this CURRENT
-referent; the program copies its original wording and source. reuse selects an owned B basis as well;
-create/pending select basis_id=null. C evidence establishes provenance; identity is your contextual
-judgment. Existing candidates and historical originals help that judgment; returned subjects cover
-current referents. Each alias addition cites CURRENT SOURCE through source_id.
+referent; the program copies its original wording and source. reuse selects an owned B basis for the same identity.
+create with reason=no_matching_identity selects basis_id=null. When CURRENT SOURCE explicitly establishes
+a distinct new identity despite a matching candidate, create with reason=explicitly_distinct selects one B basis from that matching candidate.
+pending with reason=ambiguous_identity selects basis_id=null. C evidence
+establishes provenance; identity is your contextual judgment. Existing candidates and historical originals help that
+judgment; returned subjects cover current referents. Each alias addition cites CURRENT SOURCE through source_id.
+The presence of a B basis never makes an identity distinct by itself. create+explicitly_distinct+B asserts that the selected C fragment
+explicitly says this is another, different or otherwise separate identity. When C only names the candidate or describes
+what it did, select reuse with that candidate's E target and B basis.
 
 # Response and check
-Return subjects only. Each subject has ref,operation,target_id,name,kind,aliases,reference.
+Return subjects only. Each subject has ref,operation,reason,target_id,name,kind,aliases,reference.
 reference uses {evidence_id,basis_id}; select supplied C/B IDs. Aliases use {name,source_id}.
-Operation gate: explicit evidence of another or different identity selects create; a uniquely established stored
-identity selects reuse; two or more plausible same-kind stored identities without unique evidence select pending.
+reason identifies the decision basis. create+canonical_user returns the first stated personal name in name and the
+remaining names in aliases; reuse+same_identity keeps the stored canonical user's name=@user.
+Decision gate: explicit evidence of another or different identity selects create+explicitly_distinct with a matching B basis; a uniquely
+established stored identity selects reuse+same_identity; multiple plausible same-kind stored identities select pending+ambiguous_identity.
+create is reserved for names with no compatible candidate; a create with one compatible candidate is normalized to reuse.
 Before returning, check current identity coverage, exclude context-only candidates, distinguish explicit new
 identities from unresolved collisions, preserve same-identity grouping, phrase ownership, and valid references.
 Use empty addition arrays when unchanged.
@@ -95,16 +112,21 @@ then select its supplied C fragment or withdraw the unconfirmed row. Keep each r
 consolidate structurally duplicated refs only when the issue requires it. Retain FIXED SUBJECT DECISIONS,
 fixed identity fields and valid additions. Correct failed fields together. A failed unconfirmed proposal
 unsupported by CURRENT SOURCE may be withdrawn. Confirmed decisions remain fixed. Use pending
-for genuine unresolved identity and return the complete response. When create overlaps a recalled
-name or alias, select reuse or pending as appropriate. Repeat create only when CURRENT SOURCE
-explicitly establishes a distinct new identity; the repeated decision confirms that evidence.
+for genuine unresolved identity and return the complete response. When a proposed create overlaps a recalled name or alias,
+use create with reason=explicitly_distinct and its B basis only when CURRENT SOURCE establishes a distinct new identity. Otherwise return reuse with
+reason=same_identity, the matching target and B basis. The program may already normalize a unique exact match to reuse or an unresolved
+collision to pending, so preserve that fixed decision.
 """
 
 
 def examples():
     """Load independent contract examples; runtime imports contain no evaluator fixtures."""
     from pathlib import Path
-    return json.loads(Path(__file__).with_name('subject_reference_examples.json').read_text())
+    rows=json.loads(Path(__file__).with_name('subject_reference_examples.json').read_text())
+    # Put the three highest-risk identity boundaries first: new canonical user,
+    # an alias for an existing canonical user, and an explicitly distinct namesake.
+    order=[0,1,8,*[index for index in range(len(rows)) if index not in {0,1,8}]]
+    return [rows[index] for index in order]
 
 
 def render(state):
@@ -139,8 +161,6 @@ def render(state):
         section('SEARCH CANDIDATES — FILTER AGAINST CURRENT SOURCE')
         lines.append('These are possible identities found by current words or supporting context. Return only identities referred to in CURRENT SOURCE.')
         lines.append('Use SUPPORTING CONTEXT to resolve a current referring expression; omit identities that appear only in context.')
-        if state.get('subject_recall',{}).get('truncated'):
-            lines.append('The keyword candidate limit was reached; this is a partial candidate list.')
         for subject in catalog:
             name=subject.get('name') or '(unnamed)'
             lines.append(f"Subject {subject['id']} | type: {subject['kind']} | name: {name}")
@@ -152,6 +172,21 @@ def render(state):
                 origin=f"source {basis['source_id']}" if basis['source_id'] else 'API user identity'
                 label='alias' if basis['kind']=='name' else basis['kind']
                 lines.append(f"    Basis {basis['id']} | {label}: {basis['text']} | {origin}")
+    disambiguation=state.get('identity_disambiguation')
+    if disambiguation:
+        section('IDENTITY DISAMBIGUATION — SECOND AND FINAL JUDGMENT')
+        lines.append('Re-evaluate only the listed pending refs. Candidate order is not evidence.')
+        lines.append('Select reuse only when the staged memory evidence identifies one supplied candidate; otherwise keep pending.')
+        lines.append('Return the same ref, use reason=same_identity for reuse or ambiguous_identity for pending, and do not create a subject.')
+        for pending in disambiguation.get('pending',[]):
+            lines.append(f"Pending ref {pending['ref']} | name: {pending['name']} | type: {pending['kind']} | candidates: {', '.join(pending['candidate_ids'])}")
+            for memory in pending.get('memories',[]):
+                lines.append(f"    Memory {memory['id']} | subjects: {', '.join(memory['entity_ids'])} | {memory['record_type']}: {memory['content']}")
+        decisions=disambiguation.get('memory_decisions',[])
+        if decisions:
+            lines.append('Staged memory decisions from this source:')
+            for decision in decisions:
+                lines.append(f"    {decision['ref']} | target: {decision.get('target_id') or '(new memory)'} | {decision['content']}")
     displayed={s['id']:s['content'] for s in [primary,*context]}
     additional=[source for sid,source in state.get('source_catalog',{}).items()
                 if sid not in displayed or sid!=primary['id'] and displayed[sid]!=source['content']]
@@ -159,8 +194,10 @@ def render(state):
         section('IDENTITY ORIGINALS')
         for source in additional:original(source,identity_excerpts(source,state.get('identity_bases',[])))
     section('AVAILABLE SOURCE CITATIONS')
-    lines.extend([', '.join(state['source_catalog']),
-                  'Return the complete subjects JSON for CURRENT SOURCE.'])
+    lines.append(', '.join(state['source_catalog']))
+    if primary.get('role')=='user':
+        lines.append('Speaker metadata identifies the CURRENT SOURCE author as the API conversation user. When creating that subject, use reason=canonical_user, put the first stated personal name in name and the remaining names in aliases; use name=@user when none is stated. A quoted speaker keeps its own identity.')
+    lines.append('Return the complete subjects JSON for CURRENT SOURCE.')
     if state.get('repair_errors'):lines.extend(['',render_repair(state)])
     if state.get('recovery'):
         lines.extend(['# PENDING CLAIM REVIEW',

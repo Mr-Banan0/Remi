@@ -4,7 +4,7 @@ from copy import deepcopy
 from .subject_validation import issue
 
 
-IDENTITY_FIELDS = ('ref', 'operation', 'target_id', 'name', 'kind', 'reference')
+IDENTITY_FIELDS = ('ref', 'operation', 'reason', 'target_id', 'name', 'kind', 'reference')
 
 
 def build_repair_state(raw, reviewed, state):

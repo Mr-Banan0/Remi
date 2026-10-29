@@ -8,7 +8,7 @@ from .clock import parse_time
 from .identity import normalized_name, source_name_present
 from .providers import ProviderUnavailable
 from .retrieval import clip_bytes
-from .subject_identity import CONTEXT_LIMIT, SUBJECT_LIMIT, keyword_score, matching_subjects
+from .subject_identity import CONTEXT_LIMIT, keyword_score, matching_subjects
 from .subject_references import prepare_reference_state
 
 RECALL_BYTES = 24000
@@ -96,7 +96,7 @@ def maintenance_route(hits, current_text):
 
 
 def prepare_candidates(store, state):
-    """Fix at most six keyword candidates before allocating space to recalled memories."""
+    """Keep every subject whose name or alias occurs in the current recall scope."""
     state = deepcopy(state); owner = state['owner']; primary = state['new_user_source']
     clock = maintenance_clock(state)
     def visible(source):
@@ -107,22 +107,9 @@ def prepare_candidates(store, state):
     texts = [primary['content'], *[row['content'] for row in state['context_sources']]]
     hits = matching_subjects(store, owner, texts, clock, limit=None)
     route = maintenance_route(hits, primary['content'])
-    users = [(obj, matches) for obj, matches in hits if obj.is_user]
-    protected = {sid for group in route['collision_groups'] for sid in group['subject_ids']}
-    protected.update(obj.id for obj, _ in users)
-    if len(protected) > SUBJECT_LIMIT:
-        raise ProviderUnavailable('subject_name_collision_exceeds_candidate_limit')
-    # Preserve every collision alternative before spending remaining slots on other hits.
-    selected_ids = set(protected)
-    capacity = max(len(users) + SUBJECT_LIMIT - 1, len(protected))
-    for obj, _ in hits:
-        if len(selected_ids) >= capacity:
-            break
-        selected_ids.add(obj.id)
-    selected = [(obj, matches) for obj, matches in hits if obj.id in selected_ids]
-    catalog = [compact_subject(obj, [normalized_name(text) for text in texts]) for obj, _ in selected]
+    catalog = [compact_subject(obj, [normalized_name(text) for text in texts]) for obj, _ in hits]
     state.update(subject_catalog=catalog, history=[], maintenance_route=route,
-                 subject_recall=dict(candidate_limit=SUBJECT_LIMIT, matched_count=len(hits), truncated=len(hits)>len(selected)))
+                 subject_recall=dict(candidate_limit=None, matched_count=len(hits), truncated=False))
 
     def rebuild():
         return prepare_reference_state({**state, 'source_catalog': {row['id']: row for row in
@@ -136,8 +123,8 @@ def prepare_candidates(store, state):
         row, field = optional[0]; row[field].pop(); prepared = rebuild()
     return prepared, dict(selected_subject_ids=[row['id'] for row in catalog],
         keyword_matched_subject_ids=[obj.id for obj, _ in hits],
-        limit_skipped_subject_ids=[obj.id for obj, _ in hits if obj.id not in selected_ids], context_source_ids=[row['id'] for row in state['context_sources']],
-        subject_candidate_limit=SUBJECT_LIMIT, subject_recall_truncated=len(hits)>len(selected))
+        limit_skipped_subject_ids=[], context_source_ids=[row['id'] for row in state['context_sources']],
+        subject_candidate_limit=None, subject_recall_truncated=False)
 
 
 def pack_history(store, state, cards):

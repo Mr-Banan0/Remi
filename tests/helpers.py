@@ -46,7 +46,8 @@ def direct_subjects_fixture(state,names,*,aliases=None,kinds=None,force_new=Fals
                     if row['target_id']==target),None) if target else None
         fragment=next((row['id'] for row in fragments
                        if normalized_name(name) in normalized_name(row['text'])),fragments[0]['id'])
-        subjects.append(dict(ref=ref,operation='pending' if uncertain else 'reuse' if target else 'create',target_id=target,
+        reason='ambiguous_identity' if uncertain else 'same_identity' if target else 'canonical_user' if user else 'no_matching_identity'
+        subjects.append(dict(ref=ref,operation=operation,reason=reason,target_id=target,
             name=name,kind=kind,aliases=[dict(name=a,source_id=source['id']) for a in added],
             reference=dict(evidence_id=fragment,basis_id=basis if operation=='reuse' else None)))
     return dict(subjects=subjects)

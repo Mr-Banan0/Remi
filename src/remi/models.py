@@ -34,6 +34,23 @@ class AddResponse(StrictModel):
     session_id: str
 
 
+class ClarificationCandidate(StrictModel):
+    subject_id: str
+    display: str = Field(min_length=1, max_length=500)
+
+
+class SubjectClarification(StrictModel):
+    type: Literal['subject_identity'] = 'subject_identity'
+    mention: str = Field(min_length=1, max_length=500)
+    reason: Literal['ambiguous_identity'] = 'ambiguous_identity'
+    message: str = Field(min_length=1, max_length=1000)
+    candidates: list[ClarificationCandidate] = Field(max_length=96)
+
+
+class AddResult(AddResponse):
+    clarifications: list[SubjectClarification] = Field(default_factory=list)
+
+
 class SearchRequest(StrictModel):
     query: str = Field(min_length=1)
     user_id: str = Field(min_length=1, max_length=256)

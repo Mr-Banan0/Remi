@@ -5,7 +5,6 @@ from remi.subject_maintenance import SubjectPlan,examples,review,commit,render,P
 from remi.memory_maintenance import PROMPT as EVENT_PROMPT
 from remi.subject_extraction import PROMPT as EXTRACTION_PROMPT
 from remi.subject_references import prepare_reference_state
-from remi.subject_repair import build_repair_state, finish_repair
 from scripts.validate_subject_identities import prepare_state
 from scripts.validate_subject_identities import step_state
 from tests.helpers import direct_subjects_fixture
@@ -55,9 +54,6 @@ def test_few_shots_execute_identity_checks():
                            and b['kind']==original['kind'] and b['text']==original['text'])
                 row['reference']['basis_id']=basis['id']
         result=review(raw,state,store)
-        if any(issue['code']=='create_overlaps_recalled_identity' for issue in result['issues']):
-            repair=build_repair_state(raw,result,state)
-            result=finish_repair(repair,raw,state,store)
         assert not result['contract_errors'] and not result['subject_errors']
         assert not result['alias_issues']
 

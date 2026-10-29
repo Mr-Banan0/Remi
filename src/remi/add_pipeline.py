@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from .clock import message_time, parse_time, utcnow
 from .heat import visible_memory
 from .identity import stable_id
-from .models import AddRequest, AddResponse, Candidate, Edge, Memory, ProposalDraft, Source
+from .models import AddRequest, AddResult, Candidate, Edge, Memory, ProposalDraft, Source, SubjectClarification
 from .providers import OutputInvalid, ProviderUnavailable
 from .retrieval import clip_bytes
 from .subject_recall import prepare_candidates, subject_stage_state
@@ -45,6 +45,101 @@ class AddPipeline:
 
     def __getattr__(self, name):
         return getattr(self.engine, name)
+
+    @staticmethod
+    def _response(request, progress=None):
+        rows=(progress or {}).get('clarifications',[])
+        return AddResult(request_id=request.request_id,user_id=request.user_id,session_id=request.session_id,
+                         clarifications=[SubjectClarification.model_validate(row) for row in rows])
+
+    @staticmethod
+    def _collect_clarifications(progress):
+        rows=[];seen=set()
+        for key in sorted(progress.get('units',{})):
+            for row in progress['units'][key].get('subject_clarifications',[]):
+                identity=(row.get('type'),row.get('mention'),tuple(candidate.get('subject_id') for candidate in row.get('candidates',[])))
+                if identity not in seen:
+                    rows.append(row);seen.add(identity)
+        return rows
+
+    def _subject_clarifications(self, cache, result):
+        pending_map=result['state'].get('pending_subject_candidates',{})
+        pending_refs={int(ref) for ref in pending_map}
+        if not pending_refs:return []
+        state=result['state'];owner=state['owner'];clock=state['new_user_source'].get('message_at') or state['new_user_source'].get('created_at') or utcnow()
+        catalog={row['id']:row for row in state.get('subject_catalog',[])}
+        contexts={subject_id:[] for subject_id in catalog}
+        for memory in self.store.memories(owner):
+            current=visible_memory(memory,clock)
+            if current is None:continue
+            for subject_id in current.current.entity_ids:
+                if subject_id in contexts:
+                    contexts[subject_id].append((parse_time(current.current.observed_at),current.current.content))
+        clarifications=[]
+        for subject in state.get('proposal',{}).get('subjects',[]):
+            if subject.get('ref') not in pending_refs or str(subject.get('ref')) in result['bindings']['subject_ids']:continue
+            mention=subject.get('name')
+            if not isinstance(mention,str) or not mention.strip():continue
+            label=mention.strip()
+            candidate_ids=pending_map.get(str(subject['ref']),[])
+            candidate_rows=[]
+            for subject_id in dict.fromkeys(candidate_ids):
+                stored=catalog[subject_id];name=stored.get('name') or next((alias.get('name') for alias in stored.get('aliases',[]) if alias.get('name')),label)
+                details=sorted(contexts.get(subject_id,[]),reverse=True)
+                detail=details[0][1] if details else next((row.get('quote') for row in reversed(stored.get('references',[])) if row.get('quote')),None)
+                display=name if not detail else name+' — '+clip_bytes(' '.join(str(detail).split()),240)
+                candidate_rows.append(dict(subject_id=subject_id,display=display))
+            message=(f'Multiple identities match "{label}". Please confirm the intended subject.' if len(candidate_rows)>1
+                     else f'The identity of "{label}" is uncertain. Please confirm the intended subject.')
+            clarifications.append(SubjectClarification(mention=label,message=message,candidates=candidate_rows).model_dump())
+        return clarifications
+
+    def _disambiguate_pending_subjects(self,cache,result,save,deadline):
+        pending=result['state'].get('pending_subject_candidates',{})
+        if not pending:return
+        state=deepcopy(cache['memory_recall'])
+        proposal={str(row['ref']):row for row in result['state']['proposal']['subjects']}
+        pending_rows=[]
+        for ref,candidate_ids in pending.items():
+            subject=proposal.get(str(ref))
+            if subject is None:continue
+            memories=[dict(id=row['id'],record_type=row['record_type'],content=row['content'],entity_ids=row['entity_ids'])
+                      for row in state.get('history',[]) if set(row.get('entity_ids',[])).intersection(candidate_ids)]
+            pending_rows.append(dict(ref=int(ref),name=subject.get('name'),kind=subject.get('kind'),
+                                     candidate_ids=candidate_ids,memories=memories))
+        if not pending_rows:return
+        decisions=[dict(ref=row['ref'],target_id=row.get('target_id'),content=row['content'])
+                   for row in cache.get('memory_plan',{}).values()]
+        packet={**state,'identity_disambiguation':dict(pending=pending_rows,memory_decisions=decisions)}
+        outputs=cache.setdefault('outputs',{})
+        if 'subjects_disambiguation' not in outputs:
+            try:outputs['subjects_disambiguation']=self.model.maintain_subjects(subject_stage_state(packet),deadline=deadline)
+            except OutputInvalid:outputs['subjects_disambiguation']={'output_error':'model_json_invalid'}
+            save()
+        raw=outputs['subjects_disambiguation']
+        reviewed=review(raw,packet,self.store)
+        allowed_refs={row['ref'] for row in pending_rows}
+        returned_refs={row.get('ref') for row in raw.get('subjects',[]) if isinstance(row,dict)} if isinstance(raw,dict) else set()
+        if reviewed['issues'] or not returned_refs<=allowed_refs:
+            cache['subject_disambiguation_issues']=deepcopy(reviewed['issues']) or [dict(code='disambiguation_returned_unlisted_ref')]
+            return
+        for ref,subject_id in reviewed['bindings']['subject_ids'].items():
+            if int(ref) not in allowed_refs:continue
+            result['bindings']['subject_ids'][ref]=subject_id
+            replacement=next((row for row in reviewed['state']['proposal']['subjects'] if str(row['ref'])==ref),None)
+            if replacement is not None:
+                result['state']['proposal']['subjects']=[replacement if str(row['ref'])==ref else row
+                                                         for row in result['state']['proposal']['subjects']]
+            result['state']['pending_subject_candidates'].pop(ref,None)
+        by_id={row['id']:row for row in result['bindings']['entity_rows']}
+        for row in reviewed['bindings']['entity_rows']:by_id[row['id']]=row
+        result['bindings']['entity_rows']=list(by_id.values())
+        for row in reviewed['bindings']['entity_rows']:
+            cache['expected_objects'].setdefault(row['id'],self.store.get('objects',state['owner'],row['id']))
+        cache['subject_disambiguation_result']=dict(
+            resolved_refs=sorted(int(ref) for ref in reviewed['bindings']['subject_ids']),
+            pending_refs=sorted(int(ref) for ref in result['state'].get('pending_subject_candidates',{})))
+        save()
 
     def _shared_recall(self, state, deadline):
         """Expose the unified recall step to validation and replay tooling."""
@@ -225,6 +320,7 @@ class AddPipeline:
         else:cache.pop('memory_rejections',None)
 
         save()
+        self._disambiguate_pending_subjects(cache,result,save,deadline)
 
     def add(self,request):
 
@@ -240,7 +336,7 @@ class AddPipeline:
 
             if recovery and self.store.get('requests',owner,recovery['key']):
 
-                return AddResponse(request_id=request.request_id,user_id=owner,session_id=request.session_id)
+                return pipeline._response(request)
 
             fingerprint=hashlib.sha256(json.dumps(request.model_dump(),sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
@@ -250,7 +346,7 @@ class AddPipeline:
 
             if progress and progress['pipeline']!=PIPELINE:raise ProviderUnavailable('request_pipeline_requires_source_replay')
 
-            if progress and progress['status']=='complete':return AddResponse(request_id=request.request_id,user_id=owner,session_id=request.session_id)
+            if progress and progress['status']=='complete':return pipeline._response(request,progress)
 
             if progress is None:
 
@@ -321,6 +417,10 @@ class AddPipeline:
                         result=self._identity_stage(cache,state,save,deadline)
 
                         self._memory_after_identity(cache,result,save,deadline)
+
+                        if 'subject_clarifications' not in cache:
+
+                            cache['subject_clarifications']=pipeline._subject_clarifications(cache,result);save()
 
                         state=deepcopy(cache['memory_recall']);bindings=result['bindings']
 
@@ -450,6 +550,6 @@ class AddPipeline:
 
                         self._add(child,recovery=job,deadline=deadline)
 
-            progress.update(status='complete',completed_at=utcnow());save()
+            progress.update(status='complete',completed_at=utcnow(),clarifications=pipeline._collect_clarifications(progress));save()
 
-        return AddResponse(request_id=request.request_id,user_id=owner,session_id=request.session_id)
+        return pipeline._response(request,progress)

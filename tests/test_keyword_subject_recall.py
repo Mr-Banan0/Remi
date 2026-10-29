@@ -96,16 +96,16 @@ def test_keyword_matching_respects_latin_word_boundaries_and_chinese_names():
 
 
 @pytest.mark.parametrize('has_user',[False,True])
-def test_candidate_count_is_five_other_subjects_plus_the_existing_user(has_user):
+def test_every_mentioned_subject_candidate_is_supplied(has_user):
     store=MemoryStore();names=[f'Person{i}' for i in range(9)]
     for name in names:add_subject(store,name)
     if has_user:user=add_subject(store,'Owner',user=True)
     packet,trace=prepare_candidates(store,state(' '.join(names)))
-    assert len(packet['subject_catalog'])==5+has_user
-    assert len(trace['limit_skipped_subject_ids'])==4
-    assert trace['subject_recall_truncated']
+    assert len(packet['subject_catalog'])==len(names)+has_user
+    assert not trace['limit_skipped_subject_ids']
+    assert not trace['subject_recall_truncated']
     if has_user:assert packet['subject_catalog'][0]['id']==user['id']
-    assert 'partial candidate list' in render(packet)
+    assert 'partial candidate list' not in render(packet)
 
 
 def test_same_name_candidates_keep_separate_ids_in_the_available_slots():

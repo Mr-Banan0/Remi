@@ -27,8 +27,10 @@ def packet(text, store=None, *, sid='current', role='user', when=NOW):
     return prepare_reference_state(state,store),store
 
 
-def choice(name, *, operation='create', target=None, basis=None, fragment='C1', names=(), sid='current', ref=0, kind='person'):
-    return dict(ref=ref,operation=operation,target_id=target,name=name,kind=kind,
+def choice(name, *, operation='create', target=None, basis=None, fragment='C1', names=(), sid='current', ref=0, kind='person', reason=None):
+    reason=reason or ('same_identity' if operation=='reuse' else 'ambiguous_identity' if operation=='pending'
+                      else 'canonical_user' if name=='@user' else 'explicitly_distinct' if basis else 'no_matching_identity')
+    return dict(ref=ref,operation=operation,reason=reason,target_id=target,name=name,kind=kind,
                 aliases=[dict(name=value,source_id=sid) for value in names],
                 reference=dict(evidence_id=fragment,basis_id=basis))
 

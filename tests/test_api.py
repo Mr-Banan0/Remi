@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from remi.api import create_app
+from remi.models import AddResult, SubjectClarification
 from remi import __version__
 from remi.version import PIPELINE
 from remi.settings import Settings
@@ -96,3 +97,16 @@ def test_search_rejects_out_of_contract_limits_and_empty_query(overrides):
     with TestClient(create_app(MemoryEngine(), api_key="")) as client:
         payload = {"user_id": "u1", "query": "SearchContractMarker", "top_k": 10, **overrides}
         assert client.post("/search", json=payload).status_code == 422
+
+
+def test_aml_add_response_filters_internal_subject_clarifications():
+    class ClarifyingEngine:
+        def add(self,value):
+            return AddResult(request_id=value.request_id,user_id=value.user_id,session_id=value.session_id,
+                clarifications=[SubjectClarification(mention='Hamid',message='Please confirm the intended subject.',
+                    candidates=[dict(subject_id='hamid-a',display='Hamid — neighbor')])])
+        def close(self):pass
+    with TestClient(create_app(ClarifyingEngine(),api_key='')) as client:
+        response=client.post('/add',json=request('Hamid sent a note.').model_dump())
+    assert response.status_code==200
+    assert response.json()=={'success':True,'request_id':'r1','user_id':'u1','session_id':'s1'}
