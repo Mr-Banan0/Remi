@@ -62,6 +62,7 @@ dislike or tendency; experience records an expressed lesson or reusable insight;
 occurrence or plan. A detail added to one particular occurrence remains part of that event; a fact describes
 a state or attribute that stands independently of one occurrence. Keep independently changeable propositions
 separate. Preserve useful source-reported states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
+Combine the participants, place, method, outcome and other inseparable details of one occurrence into one complete event candidate. Separate occurrences with different times or independently changeable outcomes remain separate candidates. A fact, preference or experience that can change independently from the event remains its own candidate.
 Each item contains content,record_type,participant_handles,mode,context,status,time_expression,evidence.
 participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
 pending handles. Use [] for a claim with no particular in-scope participant. Compare current referents,
@@ -371,10 +372,16 @@ def examples():
     detail=dict(new_user_source=source(detail_text),context_sources=[],resolved_subjects=[person(0,'Mira',oid='mira')],
         history=[dict(id='visit',record_type='event',content='Mira scheduled a studio visit.',entity_ids=['mira'],status='planned',
             sources=[dict(id='visit-source',role='user',content='Mira scheduled a studio visit.')])])
+    combined_text='Mira met Rowan at the studio today. They tested the lights and finished the exhibition plan.'
+    combined=dict(new_user_source=source(combined_text),context_sources=[],resolved_subjects=[
+        person(0,'Mira',oid='mira'),person(1,'Rowan',oid='rowan')],history=[])
+    combined_output=output('Mira met Rowan at the studio today, tested the lights, and finished the exhibition plan.',
+                           'event',['P0','P1'],status='occurred',time='today')
     return [(fact,output(text,'fact',[])),(preference,output(preference_text,'preference',['P7'])),
             (experience,output(experience_text,'experience',['P5'])),
             (event,output(event_text,'event',['P14','P2'],status='occurred',time='today')),
-            (detail,output(detail_text,'event',['P0'],status='planned'))]
+            (detail,output(detail_text,'event',['P0'],status='planned')),
+            (combined,combined_output)]
 
 
 def propose(model,state,*,deadline):

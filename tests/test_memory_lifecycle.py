@@ -8,6 +8,7 @@ import pytest
 
 from remi.memory_maintenance import MemoryPlan, eligible_targets, examples, provider_plan, validate_plan
 from remi.engine import MemoryEngine
+from remi.graph import active_connections
 from remi.storage import MemoryStore
 from remi.models import AddRequest, AddMessage
 from remi.providers import ProviderUnavailable
@@ -132,13 +133,14 @@ def test_ambiguous_target_creates_independent_searchable_memory():
     assert not any(doc.id.startswith('doc_pending_') for doc in engine.store.documents(OWNER))
 
 
-def test_invalid_target_falls_back_to_independent_add():
+def test_invalid_target_is_repaired_once_then_retained_as_validation_failure():
     engine,model=lifecycle();model.writer=lambda state:[row(state,operation='update',target_id='foreign')]
     before=engine.store.list('memories',OWNER);engine.add(req('Aster corrected a different meeting.','bad',1))
-    assert len(engine.store.list('memories',OWNER))==len(before)+1
+    assert len(engine.store.list('memories',OWNER))==len(before)
     disposition=unit(engine,'bad')['candidate_dispositions'][0]
-    assert disposition['operation']=='created_fallback'
+    assert disposition['operation']=='rejected' and disposition['status']=='validation_failed'
     assert 'target_requires_recalled_same_kind_memory' in {issue['code'] for issue in unit(engine,'bad')['memory_rejections']}
+    assert model.calls[-2:]==['memory','memory']
 
 
 def test_update_unions_current_participants_with_historical_participants():
@@ -156,8 +158,8 @@ def test_provider_schema_contains_only_target_decision_fields_and_decodes_target
     result=provider_plan(model,packet,deadline=monotonic()+30)
     assert result['items'][0]['target_id']=='old'
     schema=captured[0]['response_format']['json_schema']['schema']
-    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','content'}
-    assert all(set(item)=={'ref','target_id','content'} for _,answer in examples() for item in answer['items'])
+    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','content','related_target_ids'}
+    assert all(set(item)=={'ref','target_id','content','related_target_ids'} for _,answer in examples() for item in answer['items'])
 
 
 def test_examples_match_live_schema_and_validate_without_issues():
@@ -184,8 +186,7 @@ def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
     answer=dict(items=[dict(ref='C1',target_id='completed',
         content='Mira plans another studio visit for June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert next(iter(accepted.values()))['target_id'] is None
-    assert next(iter(accepted.values()))['fallback_reason']=='terminal_event_cannot_return_to_planned'
+    assert not accepted
     assert 'terminal_event_cannot_return_to_planned' in {issue['code'] for issue in issues}
 
 
@@ -195,8 +196,7 @@ def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
     answer=dict(items=[dict(ref='C1',target_id='completed',
         content='Mira completed another studio visit on June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert next(iter(accepted.values()))['target_id'] is None
-    assert next(iter(accepted.values()))['fallback_reason']=='terminal_event_date_identifies_separate_occurrence'
+    assert not accepted
     assert 'terminal_event_date_identifies_separate_occurrence' in {issue['code'] for issue in issues}
 
 
@@ -208,13 +208,38 @@ def test_embedding_failure_resumes_without_repeating_model_stages():
     assert model.calls==['subjects','extract','memory'] and len(engine.store.memories(OWNER))==1
 
 
-def test_invalid_target_uses_fallback_without_memory_repair_call():
+def test_invalid_target_uses_one_memory_repair_call():
     model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id='foreign')]
     engine.add(req('Aster plans a picnic.','invalid-target'))
-    assert model.calls==['subjects','extract','memory']
+    assert model.calls==['subjects','extract','memory','memory']
+    assert len(engine.store.memories(OWNER))==0
+    assert unit(engine,'invalid-target')['candidate_dispositions'][0]['operation']=='rejected'
+
+
+def test_invalid_target_repair_can_return_a_valid_create_decision():
+    model=Model();engine=MemoryEngine(model=model)
+    model.writer=lambda state:[dict(row(state),target_id=None if state.get('previous_memory_output') else 'foreign')]
+    engine.add(req('Aster plans a picnic.','repaired-target'))
+    assert model.calls==['subjects','extract','memory','memory']
     assert len(engine.store.memories(OWNER))==1
-    assert unit(engine,'invalid-target')['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert unit(engine,'repaired-target')['candidate_dispositions'][0]['operation']=='created'
+
+
+def test_cross_kind_hybrid_recall_can_materialize_a_related_memory_edge():
+    model=Model();engine=MemoryEngine(model=model)
+    model.extractor=lambda state:dict(items=[extracted(state,record_type='fact',status=None,
+        content='Aster has an ankle injury.')],reason='injury fact')
+    engine.add(req('Aster has an ankle injury.','injury'))
+    fact_id=engine.store.memories(OWNER)[0].id
+    model.extractor=lambda state:dict(items=[extracted(state,record_type='event',status='cancelled',
+        content='Aster cancelled the hike because of the ankle injury.')],reason='cancelled event')
+    model.writer=lambda state:[dict(row(state),related_target_ids=[fact_id])]
+    engine.add(req('Aster cancelled the hike because of the ankle injury.','hike',1))
+    event_id=next(memory.id for memory in engine.store.memories(OWNER) if memory.id!=fact_id)
+    related=[edge for edge in active_connections(engine.store,OWNER,'2031-01-01T00:00:00+00:00')
+             if edge.relation=='related' and edge.memory_id==event_id]
+    assert [(edge.origin,edge.target) for edge in related]==[(event_id,fact_id)]
 
 
 def test_snapshot_restore_requires_existing_six_collections():

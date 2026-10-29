@@ -1,5 +1,6 @@
 """Recall subject-scoped memories, then supplement only with unbound memories when needed."""
 from copy import deepcopy
+from collections import Counter
 from types import SimpleNamespace
 
 from .maintenance_clock import maintenance_clock
@@ -9,20 +10,21 @@ from .memory_maintenance import memory_fingerprint
 from .clock import parse_time
 from .heat import visible_memory
 from .retrieval import bm25
+from .identity import stable_id
 
 
 def source_visible(source, as_of):
     return parse_time(source.message_at or source.created_at) <= parse_time(as_of)
 
 
-MEMORY_LIMIT = 6
+MEMORY_LIMIT = 12
 MEMORY_EVIDENCE_LIMIT = 3
 # A subject-scoped result is sufficient when its best lexical score is close to the
 # best score in the complete allowed pool. Golden calibration can tune this value.
 SUBJECT_RECALL_CONFIDENCE = 0.80
 
 
-def recall_memories(engine, state, bindings, view):
+def recall_memories(engine, state, bindings, view, *, deadline=None):
     """Keep the fixed subject scope and use unbound memories as a program fallback."""
     state = deepcopy(state)
     owner = state['owner']
@@ -84,17 +86,49 @@ def recall_memories(engine, state, bindings, view):
     confidence = subject_top / allowed_top if allowed_top else 0.0
     supplement = not pools['subjects'] or subject_top <= 0 or confidence < SUBJECT_RECALL_CONFIDENCE
     selected_pool = allowed if supplement else pools['subjects']
-    ranked = list(selected_pool)
-    ranked.sort(key=lambda memory: (
-        -scores.get(memory.id,0.0),
-        -parse_time(memory.current.observed_at).timestamp(),
-        memory.id,
-    ))
-    selected=[]
+    candidates = list(state.get('memory_candidates', []))
+    vectors = ([None] * len(candidates) if not candidates or engine.embedder is None else
+               engine._embed([row['content'] for row in candidates], deadline))
+    documents = {memory.id: stable_id('doc_', memory.current.id) for memory in selected_pool}
+    connections = [edge for edge in engine.store.edges_for(owner)
+                   if edge.relation == 'related' and edge.revision_id == next(
+                       (memory.current.id for memory in selected_pool if memory.id == edge.memory_id), None)]
+    selected=[];candidate_target_ids={};candidate_related_ids={};candidate_rankings={}
+    by_id={memory.id:memory for memory in selected_pool}
+    for candidate,vector in zip(candidates,vectors):
+        lexical=bm25(candidate['content'],[SimpleNamespace(id=memory.id,text=memory.current.content)
+                                          for memory in selected_pool])
+        lexical_ids=sorted(lexical,key=lambda key:(-lexical[key],key))
+        semantic={}
+        if vector is not None:
+            raw=engine.store.vector_scores(owner,vector,[documents[memory.id] for memory in selected_pool])
+            semantic={memory.id:raw[documents[memory.id]] for memory in selected_pool if documents[memory.id] in raw}
+        semantic_ids=sorted(semantic,key=lambda key:(-semantic[key],key))
+        fused=Counter()
+        for ranking in (lexical_ids,semantic_ids):
+            for position,memory_id in enumerate(ranking,1):fused[memory_id]+=1/(60+position)
+        ranked_ids=sorted(fused,key=lambda key:(-fused[key],-parse_time(by_id[key].current.observed_at).timestamp(),key))
+        targets=[memory_id for memory_id in ranked_ids
+                 if by_id[memory_id].record_type==candidate['record_type']][:3]
+        related=ranked_ids[:6]
+        candidate_target_ids[candidate['ref']]=targets
+        candidate_related_ids[candidate['ref']]=related
+        candidate_rankings[candidate['ref']]=dict(
+            keyword=lexical_ids[:6],semantic=semantic_ids[:6],fused=ranked_ids[:6],
+            update_targets=targets,related_targets=related)
+        for memory_id in [*targets,*related]:
+            memory=by_id[memory_id]
+            if memory not in selected:selected.append(memory)
+        seeds=set(targets[:2]);neighbors=[]
+        for edge in connections:
+            if edge.origin in seeds and edge.target in by_id:neighbors.append(edge.target)
+            if edge.target in seeds and edge.origin in by_id:neighbors.append(edge.origin)
+        for memory_id in neighbors[:2]:
+            memory=by_id[memory_id]
+            if memory not in selected:selected.append(memory)
     for subject_id in sorted(pending_candidates):
-        candidate=next((memory for memory in ranked if subject_id in memory.current.entity_ids),None)
+        candidate=next((memory for memory in selected_pool if subject_id in memory.current.entity_ids),None)
         if candidate is not None and candidate not in selected:selected.append(candidate)
-    selected.extend(memory for memory in ranked if scores.get(memory.id,0.0)>0 and memory not in selected)
     selected=selected[:MEMORY_LIMIT]
 
     cards = []
@@ -129,6 +163,12 @@ def recall_memories(engine, state, bindings, view):
         card['id']: snapshot_hashes[card['id']]
         for card in prepared['history']
     }
+    prepared['candidate_target_ids']={ref:[memory_id for memory_id in ids
+        if memory_id in {card['id'] for card in prepared['history']}]
+        for ref,ids in candidate_target_ids.items()}
+    prepared['candidate_related_ids']={ref:[memory_id for memory_id in ids
+        if memory_id in {card['id'] for card in prepared['history']}]
+        for ref,ids in candidate_related_ids.items()}
     needed = {object_id for row in prepared['history'] for object_id in row['entity_ids']}
     catalog = {row['id']: row for row in state['subject_catalog']}
     catalog.update({object_id: objects[object_id] for object_id in needed | confirmed if object_id in objects})
@@ -148,5 +188,8 @@ def recall_memories(engine, state, bindings, view):
         supplemented_unbound_memory_ids=sorted(
             memory.id for memory in selected if lanes[memory.id] == 'unbound'
         ),
+        candidate_rankings=candidate_rankings,
+        candidate_target_ids=prepared['candidate_target_ids'],
+        candidate_related_ids=prepared['candidate_related_ids'],
         **trace,
     )

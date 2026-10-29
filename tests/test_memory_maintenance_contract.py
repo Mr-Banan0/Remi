@@ -32,17 +32,17 @@ def test_every_extracted_candidate_receives_a_disposition_including_omissions():
     engine.add(req('Aster plans a picnic and a walk.','coverage'))
     dispositions=unit(engine,'coverage')['candidate_dispositions']
     assert {(entry['candidate_id'],entry['operation']) for entry in dispositions}=={
-        ('C1','created'),('C2','created_fallback')}
+        ('C1','created'),('C2','rejected')}
     omitted=next(entry for entry in dispositions if entry['candidate_id']=='C2')
     assert omitted['reason']=='candidate_omitted_by_model'
 
 
-def test_invalid_returned_target_has_specific_fallback_disposition():
+def test_invalid_returned_target_has_specific_validation_failure_disposition():
     model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id='missing')]
     engine.add(req('Aster plans a picnic.','invalid'))
     disposition=unit(engine,'invalid')['candidate_dispositions'][0]
-    assert disposition['candidate_id']=='C1' and disposition['operation']=='created_fallback'
+    assert disposition['candidate_id']=='C1' and disposition['operation']=='rejected'
     assert disposition['reason']=='target_requires_recalled_same_kind_memory'
 
 
@@ -57,7 +57,7 @@ def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
     props=captured[0]['response_format']['json_schema']['schema']['$defs']['MemoryDecision']['properties']
     assert '# CANDIDATE MEMORIES' in body and 'participants: P0' in body
     assert 'eligible same-kind targets: M1' in body
-    assert set(props)=={'ref','target_id','content'}
+    assert set(props)=={'ref','target_id','content','related_target_ids'}
 
 
 def test_program_owned_fields_are_absent_from_all_few_shot_answers():

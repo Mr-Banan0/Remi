@@ -144,8 +144,8 @@ def test_multiple_source_reported_dates_append_without_changing_the_old_plan():
     model.extractor=lambda state,errors:{'commands':[command(state,'Northstar meeting',quote=p,time=p,status='planned') for p in ('6月9日','6月15日')]}
     engine.add(request('Northstar meeting 6月9日，再改到6月15日。',request_id='r2'))
     unit=next(iter(engine.store.get('requests','u1','r2')['units'].values()))
-    assert [d['operation'] for d in unit['candidate_dispositions']]==['created_fallback','created_fallback']
-    assert len(engine.store.memories('u1'))==3
+    assert [d['operation'] for d in unit['candidate_dispositions']]==['rejected','rejected']
+    assert len(engine.store.memories('u1'))==1
     assert len(engine.store.memories('u1',[target])[0].revisions)==1
 
 

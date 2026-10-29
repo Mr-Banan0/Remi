@@ -46,7 +46,7 @@ def test_memory_view_keeps_grounded_pending_referents_and_excludes_ungrounded_hi
     engine.close()
 
 
-def test_wire_rejection_is_recorded_and_candidate_uses_append_fallback():
+def test_wire_rejection_is_recorded_and_repaired_once_before_rejection():
     raw=dict(items=[dict(participant_handles=['P88'])],reason='Invalid current handle.')
     issues=[dict(path=['items',0,'participant_handles',0],code='unknown_current_handle',
                  requirement='Choose a current participant handle.',actual='P88',allowed_handles=['P0','P7'])]
@@ -57,9 +57,10 @@ def test_wire_rejection_is_recorded_and_candidate_uses_append_fallback():
             raise error
     model=Fault();engine=MemoryEngine(model=model);cache={};saved=[]
     engine._memory_after_identity(cache,reviewed(),lambda:saved.append(deepcopy(cache)),monotonic()+10)
-    assert len(model.inputs)==1
+    assert len(model.inputs)==2
     assert cache['outputs']['propose']==raw and cache['memory_protocol_issues']['propose']==issues
     assert cache['memory_initial_issues'][:1]==issues
-    assert cache['items'][0]['subject_refs']==[0,7]
+    assert cache['items']==[]
+    assert cache['memory_validation_dispositions'][0]['operation']=='rejected'
     assert any(row.get('outputs',{}).get('propose')==raw for row in saved)
     engine.close()

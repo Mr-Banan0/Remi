@@ -163,15 +163,15 @@ def test_alias_only_failure_uses_same_repair_budget_with_identity_retained():
     assert model.calls==['subject','repair','extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
 
-def test_subject_repair_budget_is_separate_from_append_first_memory_fallback():
+def test_subject_repair_budget_is_separate_from_scoped_memory_repair():
     class BothInvalid(RepairModel):
         def propose(self,state,*,deadline):self.calls.append('memory');return dict(items=[dict(invalid=True)],reason='fixture')
     model=BothInvalid();engine=MemoryEngine(model=model);engine.add(request())
-    assert model.calls==['subject','subject_repair','extract','memory']
+    assert model.calls==['subject','subject_repair','extract','memory','memory']
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
     assert unit['memory_rejections'] and unit['phase']=='indexed'
-    assert len(engine.store.memories('reference-owner'))==1
-    assert unit['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert len(engine.store.memories('reference-owner'))==0
+    assert unit['candidate_dispositions'][0]['operation']=='rejected'
 
 
 def test_invalid_subject_json_is_repaired_once_and_then_remains_rejected():

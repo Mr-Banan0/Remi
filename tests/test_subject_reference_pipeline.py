@@ -111,7 +111,7 @@ def test_embedding_failure_preserves_model_checkpoint_and_atomic_records_then_re
     model=Model();embedder=FlakyEmbedder();engine=MemoryEngine(model=model,embedder=embedder)
     with pytest.raises(ProviderUnavailable):engine.add(request())
     assert not engine.store.list('objects','reference-owner') and not engine.store.memories('reference-owner')
-    assert not engine.store.documents('reference-owner') and model.calls==['subject','extract','memory']
+    assert not engine.store.documents('reference-owner') and model.calls==['subject','extract']
     engine.add(request())
     assert model.calls==['subject','extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
@@ -133,19 +133,19 @@ def test_new_pipeline_is_callable_through_existing_http_contract():
         assert response.status_code==200 and response.json()['data']
 
 
-def test_invalid_memory_output_uses_candidate_fallback_without_a_repair_call():
+def test_invalid_memory_output_uses_one_repair_call_then_rejects_the_candidate():
     class InvalidMemory(Model):
         def propose(self,state,*,deadline):
             self.calls.append('memory')
             return {'items':[{'unrecognized':'field'}],'reason':'invalid model fixture'}
     model=InvalidMemory();engine=MemoryEngine(model=model)
     engine.add(request())
-    assert model.calls==['subject','extract','memory']
-    assert len(engine.store.memories('reference-owner'))==1
-    assert engine.store.documents('reference-owner')
+    assert model.calls==['subject','extract','memory','memory']
+    assert len(engine.store.memories('reference-owner'))==0
+    assert not any(document.memory_id for document in engine.store.documents('reference-owner'))
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
     assert unit['memory_rejections'] and unit['phase']=='indexed'
-    assert unit['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert unit['candidate_dispositions'][0]['operation']=='rejected'
 
 
 def test_graph_search_uses_query_matches_as_seeds_and_keeps_canonical_user_out_of_implicit_expansion(monkeypatch):

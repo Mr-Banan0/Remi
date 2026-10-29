@@ -279,7 +279,7 @@ class AddPipeline:
 
         if 'memory_recall' not in cache:
 
-            recalled, trace = recall_memories(self, state, bindings, view)
+            recalled, trace = recall_memories(self, state, bindings, view, deadline=deadline)
 
             cache.update(memory_recall=recalled, memory_recall_trace=trace)
 
@@ -311,11 +311,34 @@ class AddPipeline:
 
         cache['memory_initial_issues']=deepcopy(errors)
 
-        cache.update(memory_plan=accepted,items=candidates(accepted,state))
+        if errors:
+            accepted_refs={row['ref'] for row in accepted.values()}
+            repair_candidates=[row for row in state['memory_candidates'] if row['ref'] not in accepted_refs]
+            previous=outputs['propose'] if isinstance(outputs['propose'],dict) else {}
+            previous_items=previous.get('items') if isinstance(previous.get('items'),list) else []
+            previous_rows=[row for row in previous_items if isinstance(row,dict)
+                           and row.get('ref') in {item['ref'] for item in repair_candidates}]
+            repair_state={**payload,'memory_candidates':repair_candidates,
+                'previous_memory_output':dict(items=previous_rows,reason=previous.get('reason','')),
+                'memory_repair_errors':errors}
+            if repair_candidates and 'propose_repair' not in outputs:call('propose_repair',repair_state)
+            if repair_candidates:
+                protected={row['target_id'] for row in accepted.values() if row.get('target_id')}
+                repaired,repair_errors=validate_plan(outputs.get('propose_repair',{}),repair_state,view,
+                                                      protected=protected)
+                accepted.update({'repair:'+key:value for key,value in repaired.items()})
+                errors=[*protocol_issues.get('propose_repair',[]),*repair_errors]
 
-        cache['memory_validation_dispositions']=[]
+        accepted_refs={row['ref'] for row in accepted.values()}
+        dispositions=[]
+        for candidate in state['memory_candidates']:
+            if candidate['ref'] in accepted_refs:continue
+            issue=next((row for row in errors if row.get('candidate_ref')==candidate['ref']),None)
+            dispositions.append(dict(candidate_id=candidate['ref'],status='validation_failed',operation='rejected',
+                memory_id=None,reason=(issue or {}).get('code','memory_decision_invalid')))
+        cache.update(memory_plan=accepted,items=candidates(accepted,state),memory_validation_dispositions=dispositions)
 
-        if errors:cache['memory_rejections']=errors
+        if errors:cache['memory_rejections']=deepcopy(errors)
 
         else:cache.pop('memory_rejections',None)
 

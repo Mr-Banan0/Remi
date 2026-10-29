@@ -241,20 +241,20 @@ class MemoryEngine:
         entities={e.target for e in edges if e.origin in mids}-users
         entities.update(obj.id for obj,matches in matching_subjects(self.store,owner,[query],as_of,limit=24) if matches and not obj.is_user)
         record_ids={edge.origin for edge in edges if edge.target in entities}
-        visible_events={m.id for original in self.store.memories(owner)
-                        if (m:=visible_memory(original,as_of)) and m.record_type=='event'}
-        frontier=set(sorted(mids & visible_events)[:24]);event_ids=set(frontier)
+        visible_memories={m.id for original in self.store.memories(owner)
+                          if (m:=visible_memory(original,as_of))}
+        frontier=set(sorted(mids & visible_memories)[:24]);related_ids=set(frontier)
         navigation=[edge for edge in active_connections(self.store,owner,as_of)
-                    if edge.origin in visible_events and edge.target in visible_events]
+                    if edge.origin in visible_memories and edge.target in visible_memories]
         for _ in range(2):
             adjacent_ids=set()
             for edge in navigation:
                 if edge.origin in frontier:adjacent_ids.add(edge.target)
                 if edge.target in frontier:adjacent_ids.add(edge.origin)
-            frontier=set(sorted(adjacent_ids-event_ids)[:max(0,24-len(event_ids))])
-            event_ids.update(frontier)
+            frontier=set(sorted(adjacent_ids-related_ids)[:max(0,24-len(related_ids))])
+            related_ids.update(frontier)
             if not frontier:break
-        record_ids.update(event_ids)
+        record_ids.update(related_ids)
 
         sessions={};adjacent=set()
         for raw in self.store.list('sources',owner):

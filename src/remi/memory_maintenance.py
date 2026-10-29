@@ -23,6 +23,7 @@ class MemoryDecision(StrictModel):
     ref: str = Field(pattern=r'^C[1-9][0-9]*$')
     target_id: str | None
     content: str = Field(min_length=1, max_length=4000)
+    related_target_ids: list[str] = Field(default_factory=list, max_length=8)
 
 
 class MemoryPlan(StrictModel):
@@ -42,6 +43,7 @@ class MaintainedItem(StrictModel):
     status: EventStatus | None
     time_expression: str | None
     evidence: list[dict]
+    related_target_ids: list[str] = Field(default_factory=list)
 
 
 PROMPT = """# Task
@@ -61,8 +63,9 @@ An occurred or cancelled event remains a completed occurrence. A later planned o
 Return exactly one item for every C candidate.
 - Use target_id=M when the candidate continues, corrects, completes or adds support to that same memory.
 - Use target_id=null when it is an independent memory or the supplied evidence does not identify one eligible target safely.
+- Use related_target_ids for recalled memories that provide direct background, condition, cause, result or subsequent state. Shared participants or a shared topic alone do not establish a related edge. Exclude target_id from related_target_ids.
 
-Every candidate is stored. A null target creates an independent memory. Each M target receives at most one candidate. Keep C refs unchanged. Subject identity, memory kind, participants, attribution, condition, status, time and evidence are fixed by the preceding stage. Event links are maintained outside this decision protocol.
+Each M target receives at most one candidate. Keep C refs unchanged. Subject identity, memory kind, participants, attribution, condition, status, time and evidence are fixed by the preceding stage. The program validates and stores evidence-backed related links.
 
 # Content
 With target_id=null, preserve a complete standalone version of the candidate. With a selected target, write the complete current view after applying this turn. Preserve supported conditions, attribution, uncertainty and relevant prior details. Use readable names. Preserve a relative or unresolved date phrase when the source does not support an absolute date. Return items and reason only. Use only the supplied C and M handles.
@@ -102,6 +105,9 @@ def _identity_terms(text, labels=()):
 
 def eligible_targets(state):
     """Return a small candidate-specific target set based on concrete topic continuity."""
+    if state.get('candidate_target_ids') is not None:
+        return {row['ref']: list(state['candidate_target_ids'].get(row['ref'], []))
+                for row in state.get('memory_candidates', [])}
     labels = []
     for subject in state.get('subject_catalog', []):
         labels.append(subject.get('name'))
@@ -137,11 +143,13 @@ def render_event(packet):
     for item in packet.get('memory_candidates', []):
         participants = ', '.join(item['participant_handles']) or '(none)'
         targets = ', '.join(item['eligible_targets']) or '(none)'
+        related = ', '.join(item['eligible_related_targets']) or '(none)'
         rows.extend([
             f"{item['ref']} | kind: {item['record_type']} | participants: {participants}",
             f"  candidate: {item['content']}",
             f"  mode: {item['mode']} | context: {item['context']} | status: {item['status']} | time expression: {item['time_expression']}",
             f"  eligible same-kind targets: {targets}",
+            f"  eligible related memories: {related}",
         ])
     body += '\n\n' + '\n'.join(rows)
     if packet.get('recovery'):
@@ -174,7 +182,9 @@ def _wire_candidates(state, context):
         mode=row['mode'], context=row.get('context'), status=row.get('status'),
         time_expression=row.get('time_expression'), eligible_targets=[
             context['memory_aliases'][target_id] for target_id in by_candidate.get(row['ref'], [])
-        ],
+        ], eligible_related_targets=[context['memory_aliases'][memory_id]
+            for memory_id in state.get('candidate_related_ids', {}).get(row['ref'], [])
+            if memory_id in context['memory_aliases']],
     ) for row in state.get('memory_candidates', [])]
 
 
@@ -190,6 +200,8 @@ def provider_plan(model, state, *, deadline):
     memory_handles = list(context['memory_aliases'].values())
     properties['target_id'] = ({'anyOf': [{'type': 'string', 'enum': memory_handles}, {'type': 'null'}]}
                                if memory_handles else {'type': 'null'})
+    properties['related_target_ids']['items'] = ({'type': 'string', 'enum': memory_handles}
+                                                  if memory_handles else {'type': 'string', 'enum': []})
     messages = [dict(role='system', content=PROMPT)]
     for example, answer in examples():
         example_packet, example_context = prepare(example)
@@ -199,13 +211,39 @@ def provider_plan(model, state, *, deadline):
             dict(role='assistant', content=json.dumps(answer, ensure_ascii=False)),
         ])
     messages.append(dict(role='user', content='# MEMORY MAINTENANCE INPUT\n' + render_event(packet)))
+    if state.get('previous_memory_output') is not None:
+        previous = deepcopy(state['previous_memory_output'])
+        handles = context['memory_aliases']
+        for row in previous.get('items', []) if isinstance(previous, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            if isinstance(row.get('target_id'), str):
+                row['target_id'] = handles.get(row['target_id'], row['target_id'])
+            row['related_target_ids'] = [handles.get(value, value)
+                for value in row.get('related_target_ids', [])]
+        messages.append(dict(role='assistant', content=json.dumps(previous, ensure_ascii=False)))
+        repair_errors = deepcopy(state.get('memory_repair_errors', []))
+        def wire_error(value, key=None):
+            if isinstance(value, dict):
+                return {name: wire_error(item, name) for name, item in value.items()}
+            if isinstance(value, list):
+                return [wire_error(item, key) for item in value]
+            if isinstance(value, str) and key in {'actual', 'target_id'}:
+                return handles.get(value, value)
+            if isinstance(value, str) and key in {'allowed_target_ids'}:
+                return handles.get(value, value)
+            return value
+        messages.append(dict(role='user', content=(
+            'Correct the listed validation errors for these candidates and return the complete scoped MemoryPlan:\n'
+            + json.dumps(wire_error(repair_errors), ensure_ascii=False))))
     request = dict(
         model=model.model, temperature=0, max_completion_tokens=3000, messages=messages,
         response_format=dict(type='json_schema', json_schema=dict(name='MemoryPlan', strict=True, schema=schema)),
     )
     for attempt in range(2):
         started = monotonic()
-        trace = dict(kind='add_propose', model=model.model, attempt=attempt + 1,
+        trace = dict(kind='add_propose_repair' if state.get('previous_memory_output') is not None else 'add_propose',
+                     model=model.model, attempt=attempt + 1,
                      pending_recovery=bool(state.get('recovery')))
         try:
             response = model.client.chat.completions.create(**request, timeout=remaining(deadline, model.timeout))
@@ -221,6 +259,8 @@ def provider_plan(model, state, *, deadline):
             for row in result.get('items', []) if isinstance(result.get('items'), list) else []:
                 if isinstance(row, dict) and isinstance(row.get('target_id'), str):
                     row['target_id'] = reverse.get(row['target_id'], row['target_id'])
+                if isinstance(row, dict) and isinstance(row.get('related_target_ids'), list):
+                    row['related_target_ids'] = [reverse.get(value, value) for value in row['related_target_ids']]
             return result
         except (ValueError, OutputInvalid) as error:
             trace.update(error_label(error))
@@ -280,9 +320,10 @@ def examples():
 
 
 def validate_plan(raw, state, view, *, protected=None):
-    """Validate target selections and fall back to independent Add for every invalid slot."""
-    del view, protected
-    accepted, issues, fallback_reasons = {}, [], {}
+    """Validate model decisions and retain invalid candidates for one scoped repair."""
+    del view
+    protected = set(protected or ())
+    accepted, issues = {}, []
     rows = raw.get('items') if isinstance(raw, dict) else None
     if not isinstance(rows, list) or len(rows) > 24:
         issues.append(dict(path=['items'], code='memory_plan_requires_at_most_24_items'))
@@ -297,16 +338,19 @@ def validate_plan(raw, state, view, *, protected=None):
     for index, row in enumerate(rows):
         row_issues = []
         def fail(field, code, **details):
-            issue = dict(path=['items', index, field], code=code, **details)
+            candidate_ref = row.get('ref') if isinstance(row, dict) else None
+            issue = dict(path=['items', index, field], candidate_ref=candidate_ref,
+                         code=code, **details)
             row_issues.append(issue)
             issues.append(issue)
         try:
             decision = MemoryDecision.model_validate(row)
         except ValidationError as error:
-            validation_issues = [dict(path=['items', index, *entry['loc']], code=entry['type']) for entry in error.errors()]
+            candidate_ref = row.get('ref') if isinstance(row, dict) else None
+            validation_issues = [dict(path=['items', index, *entry['loc']], candidate_ref=candidate_ref,
+                                      code=entry['type'], requirement='Return the supplied MemoryDecision schema.')
+                                 for entry in error.errors()]
             issues.extend(validation_issues)
-            if isinstance(row, dict) and row.get('ref') in candidate_rows:
-                fallback_reasons.setdefault(row['ref'], validation_issues[0]['code'])
             continue
         candidate = candidate_rows.get(decision.ref)
         if candidate is None:
@@ -316,9 +360,11 @@ def validate_plan(raw, state, view, *, protected=None):
         target = history.get(decision.target_id) if decision.target_id else None
         if decision.target_id is not None:
             if candidate is not None and (target is None or target['record_type'] != candidate['record_type']):
-                fail('target_id', 'target_requires_recalled_same_kind_memory')
+                fail('target_id', 'target_requires_recalled_same_kind_memory', actual=decision.target_id,
+                     allowed_target_ids=candidate_targets.get(decision.ref, []))
             elif candidate is not None and decision.target_id not in candidate_targets.get(decision.ref, []):
-                fail('target_id', 'target_requires_candidate_topic_continuity')
+                fail('target_id', 'target_requires_candidate_topic_continuity', actual=decision.target_id,
+                     allowed_target_ids=candidate_targets.get(decision.ref, []))
             elif candidate is not None and candidate['record_type'] == 'event':
                 previous_status = target.get('status')
                 current_status = candidate.get('status')
@@ -331,25 +377,35 @@ def validate_plan(raw, state, view, *, protected=None):
                     previous_time = target.get('event_at')
                     if current_time and previous_time and current_time[:10] != previous_time[:10]:
                         fail('target_id', 'terminal_event_date_identifies_separate_occurrence')
-            if selected_targets[decision.target_id] != 1:
-                fail('target_id', 'one_candidate_per_target')
+            if selected_targets[decision.target_id] != 1 or decision.target_id in protected:
+                fail('target_id', 'one_candidate_per_target', actual=decision.target_id,
+                     allowed_target_ids=[value for value in candidate_targets.get(decision.ref, [])
+                                         if value not in protected])
+        if len(set(decision.related_target_ids)) != len(decision.related_target_ids):
+            fail('related_target_ids', 'related_targets_must_be_unique', actual=decision.related_target_ids)
+        allowed_related = state.get('candidate_related_ids', {}).get(decision.ref, list(history))
+        for related_id in decision.related_target_ids:
+            if related_id not in history or related_id not in allowed_related:
+                fail('related_target_ids', 'related_target_requires_recalled_memory', actual=related_id,
+                     allowed_target_ids=allowed_related)
+            elif related_id == decision.target_id:
+                fail('related_target_ids', 'maintenance_target_is_not_a_related_target', actual=related_id)
         relevant = [state['new_user_source'], *(target.get('sources', []) if target else [])]
         for date in re.findall(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)', decision.content):
             if not any(resolve_time(date, source['content'], source.get('message_at')) for source in relevant):
                 fail('content', 'readable_date_requires_source_support', actual=date)
         if candidate is not None and not row_issues:
             accepted[str(index)] = {**deepcopy(candidate), 'content': decision.content,
-                'target_id': decision.target_id, 'fallback_reason': None}
+                'target_id': decision.target_id, 'fallback_reason': None,
+                'related_target_ids': list(decision.related_target_ids)}
             accepted_refs.add(decision.ref)
-        elif candidate is not None and row_issues:
-            fallback_reasons.setdefault(decision.ref, row_issues[0]['code'])
-    for position, candidate in enumerate(state.get('memory_candidates', []), start=len(rows)):
+    for candidate in state.get('memory_candidates', []):
         if candidate['ref'] in accepted_refs:
             continue
-        reason = 'candidate_omitted_by_model' if declared[candidate['ref']] == 0 else (
-            fallback_reasons.get(candidate['ref'], 'candidate_decision_invalid'))
-        accepted[f'fallback:{position}'] = {**deepcopy(candidate), 'content': candidate['content'],
-            'target_id': None, 'fallback_reason': reason}
+        if not any(issue.get('candidate_ref') == candidate['ref'] for issue in issues):
+            issues.append(dict(path=['items'], candidate_ref=candidate['ref'], code='candidate_omitted_by_model',
+                requirement='Return one decision for this candidate.',
+                allowed_target_ids=candidate_targets.get(candidate['ref'], [])))
     return accepted, issues
 
 
@@ -473,7 +529,8 @@ def materialize(store, state, bindings, accepted):
             values={key: deepcopy(values[key]) for key in ('content', 'entity_ids', 'mode', 'context', 'status', 'planned_at', 'event_at', 'time_evidence')},
             participant_mode='add' if previous else 'replace', participant_ids=current_ids,
             evidence=[entry.model_dump() for entry in patch_evidence], evidence_mode=item.mode,
-            related_add=[], related_remove=[], source_id=primary['id'], base_revision_id=previous.id if previous else None)
+            related_add=item.related_target_ids, related_remove=[], source_id=primary['id'],
+            base_revision_id=previous.id if previous else None)
         revision = Revision.model_validate(values)
         if memory:
             memory.revisions.append(revision)

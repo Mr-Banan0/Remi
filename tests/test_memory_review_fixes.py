@@ -1,4 +1,4 @@
-"""Regressions for historical writes, independent-add fallback and concurrency."""
+"""Regressions for historical writes, scoped maintenance repair and concurrency."""
 from copy import deepcopy
 import pytest
 
@@ -23,7 +23,7 @@ def test_backdated_update_uses_historical_revision_and_preserves_later_view():
     assert any(edge.revision_id==historical.id for edge in active_edges(engine.store,OWNER,'2030-01-02T23:59:59Z'))
 
 
-def test_valid_target_is_kept_while_invalid_sibling_falls_back_to_add():
+def test_valid_target_is_kept_while_invalid_sibling_is_rejected_after_repair():
     engine,model=lifecycle();target=engine.store.memories(OWNER)[0].id
     model.extractor=lambda state:dict(items=[extracted(state),deepcopy(extracted(state))],reason='two candidates')
     model.writer=lambda state:[
@@ -33,8 +33,8 @@ def test_valid_target_is_kept_while_invalid_sibling_falls_back_to_add():
     engine.add(req('Aster added refreshments and mentioned another workshop.','mixed',1))
     memories=engine.store.memories(OWNER)
     updated=next(memory for memory in memories if memory.id==target)
-    assert updated.current.content=='Aster added refreshments to the workshop.' and len(memories)==2
-    assert [entry['operation'] for entry in unit(engine,'mixed')['candidate_dispositions']]==['updated','created_fallback']
+    assert updated.current.content=='Aster added refreshments to the workshop.' and len(memories)==1
+    assert [entry['operation'] for entry in unit(engine,'mixed')['candidate_dispositions']]==['updated','rejected']
 
 
 @pytest.mark.parametrize('bad_output',[
@@ -42,13 +42,13 @@ def test_valid_target_is_kept_while_invalid_sibling_falls_back_to_add():
     {'items':[{'ref':'C1','target_id':{},'content':'Aster plans a picnic.'}],'reason':'bad'},
     {'items':[{'ref':'C1','target_id':None,'content':None}],'reason':'bad'},
 ])
-def test_malformed_memory_decision_falls_back_without_repair(bad_output):
+def test_malformed_memory_decision_is_repaired_once_then_rejected(bad_output):
     model=Model();engine=MemoryEngine(model=model)
     model.propose=lambda state,deadline:bad_output
     key='malformed-'+str(len(str(bad_output)))
     engine.add(req('Aster plans a picnic.',key))
-    assert len(engine.store.memories(OWNER))==1
-    assert unit(engine,key)['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert len(engine.store.memories(OWNER))==0
+    assert unit(engine,key)['candidate_dispositions'][0]['operation']=='rejected'
     assert model.calls==['subjects','extract']
 
 
