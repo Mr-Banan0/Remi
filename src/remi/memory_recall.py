@@ -86,7 +86,7 @@ def recall_memories(engine, state, bindings, view):
     selected_pool = allowed if supplement else pools['subjects']
     ranked = list(selected_pool)
     ranked.sort(key=lambda memory: (
-        -scores[memory.id],
+        -scores.get(memory.id,0.0),
         -parse_time(memory.current.observed_at).timestamp(),
         memory.id,
     ))

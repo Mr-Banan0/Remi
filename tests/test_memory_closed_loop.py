@@ -102,7 +102,7 @@ def test_ambiguous_subject_returns_persisted_confirmation_candidates():
     assert engine.store.memories(OWNER)[0].current.entity_ids==[]
 
 
-def test_candidate_memories_resolve_a_pending_namesake_once_before_commit():
+def test_candidate_memories_resolve_a_pending_namesake_once_before_commit(monkeypatch):
     class DisambiguatingModel(FlowModel):
         def maintain_subjects(self,state,*,deadline):
             if not state.get('identity_disambiguation'):
@@ -131,6 +131,7 @@ def test_candidate_memories_resolve_a_pending_namesake_once_before_commit():
     engine.store.put('memories',OWNER,second_memory['id'],second_memory)
 
     model.pending=True
+    monkeypatch.setattr('remi.memory_recall.bm25',lambda query,documents:{})
     result=engine.add(req('Aster added a sticker to the red notebook.','collision',1))
     trace=unit(engine,'collision')
     created=next(memory for memory in engine.store.memories(OWNER) if 'sticker' in memory.current.content)
