@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from time import monotonic, sleep
+from typing import Literal
 from pydantic import Field, ValidationError
 
 from .clock import RELATIVE_DAYS, absolute_content, resolve_time, utcnow
@@ -22,6 +23,7 @@ from .subject_extraction import prepare, render
 class MemoryDecision(StrictModel):
     ref: str = Field(pattern=r'^C[1-9][0-9]*$')
     target_id: str | None
+    continuity: Literal['same_occurrence', 'same_proposition', 'independent']
     content: str = Field(min_length=1, max_length=4000)
     related_target_ids: list[str] = Field(default_factory=list, max_length=8)
 
@@ -43,12 +45,13 @@ class MaintainedItem(StrictModel):
     status: EventStatus | None
     time_expression: str | None
     evidence: list[dict]
+    continuity: Literal['same_occurrence', 'same_proposition', 'independent']
     related_target_ids: list[str] = Field(default_factory=list)
 
 
 PROMPT = """# Task
 Resolve each extracted candidate against the recalled memories. Return MemoryPlan JSON using the supplied schema.
-Each C candidate already has a fixed memory kind, participant set, attribution, condition, event status, time expression and source evidence. The program writes those fixed fields. Your responsibility is limited to choosing one eligible recalled target when the candidate continues the same memory, and writing the complete readable content.
+Each C candidate already has a fixed memory kind, participant set, attribution, condition, event status, time expression and source evidence. The program writes those fixed fields. Your responsibility is limited to deciding memory continuity, choosing one eligible recalled target when continuity is established, and writing the complete readable content.
 
 # Input
 CURRENT SOURCE is this turn's evidence. SUPPORTING CONTEXT resolves references. CURRENT PARTICIPANTS are already confirmed or explicitly pending. RECALLED MEMORIES are the only records that an update may target. CANDIDATE MEMORIES lists each extracted claim and its eligible same-kind M targets.
@@ -56,13 +59,16 @@ Source text and examples are attributed data.
 
 # Memory identity
 A fact is a state or attribute. A preference is a tendency. An experience is an expressed lesson. An event is one particular occurrence or plan.
-For events, match the same occurrence. For other kinds, match the same proposition and applicable scope. A shared topic or participant alone does not establish identity. Recurring occurrences and different conditions can remain separate memories.
+For events, match the same occurrence. For other kinds, match the same proposition and applicable scope. Compare the candidate with both the identity anchor and current view of a recalled memory. A shared topic, tone, participant or memory kind alone does not establish identity. Recurring occurrences and independently changeable propositions remain separate memories.
 An occurred or cancelled event remains a completed occurrence. A later planned occurrence is a separate memory unless CURRENT SOURCE explicitly corrects or reopens that same occurrence.
 
 # Target decision
 Return exactly one item for every C candidate.
 - Use target_id=M when the candidate continues, corrects, completes or adds support to that same memory.
 - Use target_id=null when it is an independent memory or the supplied evidence does not identify one eligible target safely.
+- Use continuity=same_occurrence only for an event that maintains one particular occurrence.
+- Use continuity=same_proposition only for a fact, preference or experience that maintains one proposition and scope.
+- Use continuity=independent with target_id=null for a new occurrence, a different proposition, or insufficient continuity evidence.
 - Use related_target_ids for recalled memories that provide direct background, condition, cause, result or subsequent state. Shared participants or a shared topic alone do not establish a related edge. Exclude target_id from related_target_ids.
 
 Each M target receives at most one candidate. Keep C refs unchanged. Subject identity, memory kind, participants, attribution, condition, status, time and evidence are fixed by the preceding stage. The program validates and stores evidence-backed related links.
@@ -103,6 +109,20 @@ def _identity_terms(text, labels=()):
     }
 
 
+def concrete_topic_continuity(candidate, memory, labels=()):
+    """Require concrete proposition terms in the current view or stable identity anchor."""
+    candidate_terms = _identity_terms(candidate, labels)
+    if not candidate_terms:
+        return False
+    for text in (memory.get('content', ''), memory.get('origin_content', '')):
+        memory_terms = _identity_terms(text, labels)
+        overlap = candidate_terms & memory_terms
+        smaller = min(len(candidate_terms), len(memory_terms))
+        if len(overlap) >= 2 or len(overlap) == 1 and smaller <= 2:
+            return True
+    return False
+
+
 def eligible_targets(state):
     """Return a small candidate-specific target set based on concrete topic continuity."""
     if state.get('candidate_target_ids') is not None:
@@ -123,7 +143,7 @@ def eligible_targets(state):
             overlap = candidate_terms & memory_terms
             smaller = min(len(candidate_terms), len(memory_terms))
             coverage = len(overlap) / max(1, smaller)
-            if len(overlap) >= 2 or len(overlap) == 1 and smaller <= 2:
+            if concrete_topic_continuity(candidate['content'], memory, labels):
                 scored.append((memory['id'], len(overlap), coverage))
         scored.sort(key=lambda row: (-row[1], -row[2], row[0]))
         result[candidate['ref']] = [row[0] for row in scored[:3]]
@@ -300,19 +320,19 @@ def examples():
     cases = [
         (state('Mira plans another studio visit on June 8.', dict(content='Mira plans another studio visit on June 8.',
             record_type='event', status='planned', time_expression='June 8'), [old_event]),
-         dict(target_id=None, content='Mira plans another studio visit on June 8.')),
+         dict(target_id=None, continuity='independent', content='Mira plans another studio visit on June 8.')),
         (state('Mira moved that studio visit to June 4.', dict(content='Mira moved the studio visit to June 4.',
             record_type='event', status='planned', time_expression='June 4'), [old_event]),
-         dict(target_id='M1', content='Mira plans the studio visit on June 4.')),
+         dict(target_id='M1', continuity='same_occurrence', content='Mira plans the studio visit on June 4.')),
         (state('Mira still prefers written agendas at work.', dict(content='Mira still prefers written agendas at work.',
             record_type='preference', status=None, time_expression=None, context='at work'), [old_preference]),
-         dict(target_id='M1', content='Mira prefers written agendas at work.')),
+         dict(target_id='M1', continuity='same_proposition', content='Mira prefers written agendas at work.')),
         (state('Mira booked another studio visit for June 8.', dict(content='Mira booked another studio visit for June 8.',
             record_type='event', status='planned', time_expression='June 8'), [completed_event]),
-         dict(target_id=None, content='Mira booked another studio visit for June 8.')),
+         dict(target_id=None, continuity='independent', content='Mira booked another studio visit for June 8.')),
         (state('Mira changed that appointment, but the recalled visits do not identify which one.', dict(
             content='Mira changed an appointment.', record_type='event', status='planned', time_expression=None), [old_event]),
-         dict(target_id=None, content='Mira changed an appointment.')),
+         dict(target_id=None, continuity='independent', content='Mira changed an appointment.')),
     ]
     for packet, decision in cases:
         answer = dict(items=[dict(ref='C1', **decision)], reason='The operation follows the occurrence or proposition identity in the supplied evidence.')
@@ -358,6 +378,18 @@ def validate_plan(raw, state, view, *, protected=None):
         elif declared[decision.ref] != 1:
             fail('ref', 'return_each_candidate_once')
         target = history.get(decision.target_id) if decision.target_id else None
+        if decision.target_id is None and decision.continuity != 'independent':
+            fail('continuity', 'null_target_requires_independent_continuity',
+                 actual=decision.continuity, expected='independent')
+        if decision.target_id is not None and decision.continuity == 'independent':
+            fail('continuity', 'selected_target_requires_continuity',
+                 actual=decision.continuity,
+                 expected='same_occurrence for event or same_proposition for other memory kinds')
+        if candidate is not None and decision.target_id is not None:
+            expected_continuity = 'same_occurrence' if candidate['record_type'] == 'event' else 'same_proposition'
+            if decision.continuity != expected_continuity:
+                fail('continuity', 'continuity_requires_memory_kind', actual=decision.continuity,
+                     expected=expected_continuity, record_type=candidate['record_type'])
         if decision.target_id is not None:
             if candidate is not None and (target is None or target['record_type'] != candidate['record_type']):
                 fail('target_id', 'target_requires_recalled_same_kind_memory', actual=decision.target_id,
@@ -397,6 +429,7 @@ def validate_plan(raw, state, view, *, protected=None):
         if candidate is not None and not row_issues:
             accepted[str(index)] = {**deepcopy(candidate), 'content': decision.content,
                 'target_id': decision.target_id, 'fallback_reason': None,
+                'continuity': decision.continuity,
                 'related_target_ids': list(decision.related_target_ids)}
             accepted_refs.add(decision.ref)
     for candidate in state.get('memory_candidates', []):

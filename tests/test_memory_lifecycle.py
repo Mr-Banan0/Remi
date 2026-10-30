@@ -6,7 +6,7 @@ import json
 import re
 import pytest
 
-from remi.memory_maintenance import MemoryPlan, eligible_targets, examples, provider_plan, validate_plan
+from remi.memory_maintenance import MemoryPlan, concrete_topic_continuity, eligible_targets, examples, provider_plan, validate_plan
 from remi.engine import MemoryEngine
 from remi.graph import active_connections
 from remi.storage import MemoryStore
@@ -24,7 +24,12 @@ def req(text,key,day=0,timestamp=True):
 
 
 def row(state,**kwargs):
-    return dict(ref=kwargs.get('ref','C1'),target_id=kwargs.get('target_id'),
+    target_id=kwargs.get('target_id')
+    record_type=next((item['record_type'] for item in state.get('memory_candidates',[])
+                      if item['ref']==kwargs.get('ref','C1')),'event')
+    continuity=kwargs.get('continuity',
+        'independent' if target_id is None else 'same_occurrence' if record_type=='event' else 'same_proposition')
+    return dict(ref=kwargs.get('ref','C1'),target_id=target_id,continuity=continuity,
         content=kwargs.get('content',state['new_user_source']['content']))
 
 
@@ -158,8 +163,8 @@ def test_provider_schema_contains_only_target_decision_fields_and_decodes_target
     result=provider_plan(model,packet,deadline=monotonic()+30)
     assert result['items'][0]['target_id']=='old'
     schema=captured[0]['response_format']['json_schema']['schema']
-    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','content','related_target_ids'}
-    assert all(set(item)=={'ref','target_id','content','related_target_ids'} for _,answer in examples() for item in answer['items'])
+    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','continuity','content','related_target_ids'}
+    assert all(set(item)=={'ref','target_id','continuity','content','related_target_ids'} for _,answer in examples() for item in answer['items'])
 
 
 def test_examples_match_live_schema_and_validate_without_issues():
@@ -181,9 +186,42 @@ def test_candidate_target_gate_requires_concrete_topic_continuity():
     assert eligible_targets(packet)['C1']==['old']
 
 
+def test_concrete_continuity_checks_stable_anchor_and_current_view():
+    memory=dict(content='Mira now dislikes written agendas at work.',
+                origin_content='Mira prefers written agendas at work.')
+    assert concrete_topic_continuity('Mira still discusses written agendas at work.',memory,['Mira'])
+    assert not concrete_topic_continuity('Mira prefers early morning walks.',memory,['Mira'])
+
+
+def test_continuity_value_must_match_target_and_memory_kind():
+    event,_=list(examples())[1]
+    invalid=dict(items=[dict(ref='C1',target_id='old',continuity='same_proposition',
+        content='Mira plans the studio visit on June 4.')],reason='wrong continuity kind')
+    accepted,issues=validate_plan(invalid,event,event['resolved_subjects'])
+    assert not accepted and 'continuity_requires_memory_kind' in {issue['code'] for issue in issues}
+    independent=dict(items=[dict(ref='C1',target_id=None,continuity='same_occurrence',
+        content='Mira plans a separate studio visit.')],reason='target mismatch')
+    accepted,issues=validate_plan(independent,event,event['resolved_subjects'])
+    assert not accepted and 'null_target_requires_independent_continuity' in {issue['code'] for issue in issues}
+
+
+def test_hybrid_recall_does_not_offer_same_kind_different_proposition_as_update_target():
+    from tests.helpers import HashEmbedder
+    model=Model();engine=MemoryEngine(model=model,embedder=HashEmbedder())
+    model.extractor=lambda state:dict(items=[extracted(state,record_type='preference',status=None,
+        content=state['new_user_source']['content'])],reason='preference')
+    engine.add(req('Aster prefers written agendas at work.','agenda'))
+    engine.add(req('Aster prefers early morning walks.','walk',1))
+    packet=next(state for kind,state in reversed(model.packets) if kind=='memory')
+    assert packet['candidate_target_ids']['C1']==[]
+    ranking=packet['memory_recall_trace']['candidate_rankings']['C1'] if 'memory_recall_trace' in packet else None
+    assert ranking is None or ranking['update_targets']==[]
+
+
 def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
     packet,_=list(examples())[3]
     answer=dict(items=[dict(ref='C1',target_id='completed',
+        continuity='same_occurrence',
         content='Mira plans another studio visit for June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
     assert not accepted
@@ -194,6 +232,7 @@ def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
     packet,_=list(examples())[3]
     packet['memory_candidates'][0].update(status='occurred',content='Mira completed another studio visit on June 8.')
     answer=dict(items=[dict(ref='C1',target_id='completed',
+        continuity='same_occurrence',
         content='Mira completed another studio visit on June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
     assert not accepted

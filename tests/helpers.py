@@ -104,10 +104,14 @@ class ScriptedModel:
         targets=eligible_targets(state)
         text=state.get('new_user_source',{}).get('content','').casefold()
         continuation=bool(re.search(r'\b(that|still|moved|cancelled|canceled|completed|corrected|changed|withdraw|remains|no longer)\b|改到|取消|仍然|还是|不再',text))
-        return {'items':[{'ref':row['ref'],
-                          'target_id':targets[row['ref']][0] if continuation and len(targets.get(row['ref'],[]))==1 else None,
-                          'content':row['content']}
-                         for row in state.get('memory_candidates',[])],
+        items=[]
+        for row in state.get('memory_candidates',[]):
+            target=targets[row['ref']][0] if continuation and len(targets.get(row['ref'],[]))==1 else None
+            items.append({'ref':row['ref'],'target_id':target,
+                          'continuity':('independent' if target is None else
+                                        'same_occurrence' if row['record_type']=='event' else 'same_proposition'),
+                          'content':row['content']})
+        return {'items':items,
                 'reason':'offline fixture selects the only eligible recalled target'}
 
     def maintain_subjects(self,state,*,deadline):

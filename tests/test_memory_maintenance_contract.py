@@ -39,7 +39,7 @@ def test_every_extracted_candidate_receives_a_disposition_including_omissions():
 
 def test_invalid_returned_target_has_specific_validation_failure_disposition():
     model=Model();engine=MemoryEngine(model=model)
-    model.writer=lambda state:[dict(row(state),target_id='missing')]
+    model.writer=lambda state:[dict(row(state),target_id='missing',continuity='same_occurrence')]
     engine.add(req('Aster plans a picnic.','invalid'))
     disposition=unit(engine,'invalid')['candidate_dispositions'][0]
     assert disposition['candidate_id']=='C1' and disposition['operation']=='rejected'
@@ -57,7 +57,8 @@ def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
     props=captured[0]['response_format']['json_schema']['schema']['$defs']['MemoryDecision']['properties']
     assert '# CANDIDATE MEMORIES' in body and 'participants: P0' in body
     assert 'eligible same-kind targets: M1' in body
-    assert set(props)=={'ref','target_id','content','related_target_ids'}
+    assert 'Identity anchor:' in body and 'Current view:' in body
+    assert set(props)=={'ref','target_id','continuity','content','related_target_ids'}
 
 
 def test_program_owned_fields_are_absent_from_all_few_shot_answers():

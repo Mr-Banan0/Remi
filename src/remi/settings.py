@@ -41,6 +41,8 @@ class Settings:
     evidence_bytes: int = 6000
     context_bytes: int = 4000
     role_recall_min_score: float = 0.02
+    memory_update_min_similarity: float = 0.78
+    memory_update_min_margin: float = 0.03
     add_timeout: float = 180
     search_timeout: float = 45
     graph_enabled: bool = True
@@ -55,6 +57,10 @@ class Settings:
             raise ValueError("call_budget_invalid")
         if not 0 <= self.role_recall_min_score <= 1:
             raise ValueError("role_recall_threshold_invalid")
+        if not 0 <= self.memory_update_min_similarity <= 1:
+            raise ValueError("memory_update_similarity_invalid")
+        if not 0 <= self.memory_update_min_margin <= 1:
+            raise ValueError("memory_update_margin_invalid")
 
     @classmethod
     def from_environment(cls):
@@ -64,6 +70,8 @@ class Settings:
         values.update(add_timeout=float(os.getenv("REMI_ADD_TIMEOUT", "180")),
                       search_timeout=float(os.getenv("REMI_SEARCH_TIMEOUT", "45")),
                       role_recall_min_score=float(os.getenv("REMI_ROLE_RECALL_MIN_SCORE", "0.02")),
+                      memory_update_min_similarity=float(os.getenv("REMI_MEMORY_UPDATE_MIN_SIMILARITY", "0.78")),
+                      memory_update_min_margin=float(os.getenv("REMI_MEMORY_UPDATE_MIN_MARGIN", "0.03")),
                       graph_enabled=os.getenv("REMI_GRAPH_ENABLED", "1") == "1",
                       hot_enabled=os.getenv("REMI_HOT_ENABLED", "1") == "1")
         return cls(**values)

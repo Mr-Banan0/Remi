@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from .maintenance_clock import maintenance_clock
 from .subject_identity import visible_subject
 from .subject_recall import pack_history
-from .memory_maintenance import memory_fingerprint
+from .memory_maintenance import concrete_topic_continuity, memory_fingerprint
 from .clock import parse_time
 from .heat import visible_memory
 from .retrieval import bm25
@@ -95,6 +95,10 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
                        (memory.current.id for memory in selected_pool if memory.id == edge.memory_id), None)]
     selected=[];candidate_target_ids={};candidate_related_ids={};candidate_rankings={}
     by_id={memory.id:memory for memory in selected_pool}
+    labels=[]
+    for obj in objects.values():
+        labels.append(obj.get('name'))
+        labels.extend(alias.get('name') for alias in obj.get('aliases', []))
     for candidate,vector in zip(candidates,vectors):
         lexical=bm25(candidate['content'],[SimpleNamespace(id=memory.id,text=memory.current.content)
                                           for memory in selected_pool])
@@ -108,14 +112,42 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
         for ranking in (lexical_ids,semantic_ids):
             for position,memory_id in enumerate(ranking,1):fused[memory_id]+=1/(60+position)
         ranked_ids=sorted(fused,key=lambda key:(-fused[key],-parse_time(by_id[key].current.observed_at).timestamp(),key))
-        targets=[memory_id for memory_id in ranked_ids
-                 if by_id[memory_id].record_type==candidate['record_type']][:3]
+        same_kind=[memory_id for memory_id in ranked_ids
+                   if by_id[memory_id].record_type==candidate['record_type']]
+        semantic_same_kind=sorted(same_kind,key=lambda key:(-semantic.get(key,-1.0),key))
+        semantic_positions={memory_id:position for position,memory_id in enumerate(semantic_same_kind)}
+        semantic_margins={}
+        for position,memory_id in enumerate(semantic_same_kind):
+            score=semantic.get(memory_id)
+            runner_up=semantic.get(semantic_same_kind[position+1]) if position+1<len(semantic_same_kind) else None
+            semantic_margins[memory_id]=(score-runner_up if score is not None and runner_up is not None
+                                         else score if score is not None else None)
+        target_reasons={}
+        for memory_id in same_kind:
+            memory=by_id[memory_id]
+            anchor=dict(content=memory.current.content,
+                        origin_content=memory.revisions[0].content if memory.revisions else memory.current.content)
+            lexical_continuity=concrete_topic_continuity(candidate['content'],anchor,labels)
+            score=semantic.get(memory_id);margin=semantic_margins.get(memory_id)
+            semantic_continuity=(semantic_positions.get(memory_id)==0 and score is not None and margin is not None
+                and score>=engine.settings.memory_update_min_similarity
+                and margin>=engine.settings.memory_update_min_margin)
+            if lexical_continuity or semantic_continuity:
+                target_reasons[memory_id]=dict(
+                    lexical_continuity=lexical_continuity,
+                    semantic_similarity=score,
+                    semantic_margin=margin,
+                    semantic_continuity=semantic_continuity)
+        targets=[memory_id for memory_id in same_kind if memory_id in target_reasons][:3]
         related=ranked_ids[:6]
         candidate_target_ids[candidate['ref']]=targets
         candidate_related_ids[candidate['ref']]=related
         candidate_rankings[candidate['ref']]=dict(
             keyword=lexical_ids[:6],semantic=semantic_ids[:6],fused=ranked_ids[:6],
-            update_targets=targets,related_targets=related)
+            update_targets=targets,update_target_reasons=target_reasons,
+            update_min_similarity=engine.settings.memory_update_min_similarity,
+            update_min_margin=engine.settings.memory_update_min_margin,
+            related_targets=related)
         for memory_id in [*targets,*related]:
             memory=by_id[memory_id]
             if memory not in selected:selected.append(memory)
@@ -139,6 +171,7 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
             revision_id=revision.id,
             record_type=memory.record_type,
             content=revision.content,
+            origin_content=memory.revisions[0].content,
             status=revision.status,
             planned_at=revision.planned_at,
             event_at=revision.event_at,

@@ -63,6 +63,7 @@ occurrence or plan. A detail added to one particular occurrence remains part of 
 a state or attribute that stands independently of one occurrence. Keep independently changeable propositions
 separate. Preserve useful source-reported states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
 Combine the participants, place, method, outcome and other inseparable details of one occurrence into one complete event candidate. Separate occurrences with different times or independently changeable outcomes remain separate candidates. A fact, preference or experience that can change independently from the event remains its own candidate.
+Resolve pronouns and shorthand through SUPPORTING CONTEXT into a standalone candidate that names the maintained occurrence or proposition. Preserve the source's attribution, uncertainty and time precision.
 Each item contains content,record_type,participant_handles,mode,context,status,time_expression,evidence.
 participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
 pending handles. Use [] for a claim with no particular in-scope participant. Compare current referents,
@@ -138,6 +139,7 @@ def prepare(state):
     for index,card in enumerate(state.get('history',[])):
         mid='M'+str(index+1);memories[card['id']]=mid
         packet['history'].append(dict(id=mid,record_type=card.get('record_type','fact'),content=card['content'],
+            origin_content=card.get('origin_content',card['content']),
             participants=[historical[oid]['label'] for oid in card.get('entity_ids',[])],
             sources=[source(row) for row in card.get('sources',[])],
             related_memories=[memories[mid] for mid in card.get('related_memory_ids',[]) if mid in memories],
@@ -332,7 +334,8 @@ def render(packet):
         for card in packet['history']:
             lines.extend([f"Memory {card['id']} | kind: {card['record_type']}",
                           '    Historical participants: '+(', '.join(card['participants']) or '(none)'),
-                          '    Claim: '+card['content']])
+                          '    Identity anchor: '+card['origin_content'],
+                          '    Current view: '+card['content']])
             if card.get('related_memories'):lines.append('    Linked event handles: '+', '.join(card['related_memories']))
             for key in ('mode','context','status','planned_at','event_at'):
                 if card.get(key):lines.append('    '+key+': '+str(card[key]))
