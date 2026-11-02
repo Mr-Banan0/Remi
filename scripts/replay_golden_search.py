@@ -25,8 +25,10 @@ from scripts.run_golden import compare, diagnostics, fingerprint, latency, verif
 def execute(args):
     original = json.loads(args.original.read_text())
     dataset = json.loads(Path(original["dataset"]).read_text())
-    baseline = json.loads(Path(original["baseline_result"]).read_text())
-    verify_baseline(dataset, baseline)
+    baseline_path=original.get('baseline_result')
+    baseline = json.loads(Path(baseline_path).read_text()) if baseline_path else None
+    if baseline is not None:
+        verify_baseline(dataset, baseline)
     if not original["complete"] or args.output.exists() or not args.allow_copy_bank:
         raise ValueError("complete_original_fresh_output_and_explicit_bank_copy_required")
     os.umask(0o077)
@@ -67,7 +69,7 @@ def execute(args):
         "runtime_directory": str(root), "runtime_code_fingerprint": fingerprint(root), "started_at": time.time(),
         "add_calls": original["add_calls"], "lifecycle_add_calls": original["lifecycle_add_calls"],
         "questions": [], "lifecycle_searches": [], "errors": [], "database": str(database),
-        "config": original["config"], "source_to_ref": mapping}
+        "config": {**original["config"], 'settings':vars(engine.settings)}, "source_to_ref": mapping}
     def save(status):
         calls = diagnostics(engine)
         report["diagnostic_calls"] = calls
@@ -108,7 +110,8 @@ def execute(args):
                 save("running")
             report["complete"] = True
             save("complete")
-            (args.output / "comparison.json").write_text(json.dumps(compare(report, baseline, dataset), ensure_ascii=False, indent=2))
+            if baseline is not None:
+                (args.output / "comparison.json").write_text(json.dumps(compare(report, baseline, dataset), ensure_ascii=False, indent=2))
     except Exception as error:
         report["errors"].append({"exception": type(error).__name__})
         save("interrupted")

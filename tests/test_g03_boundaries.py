@@ -122,7 +122,7 @@ def test_partial_rerank_retains_the_original_question_baseline():
     assert "rerank_partial_or_unavailable" not in engine.last_search["degradation"]
 
 
-def test_fallback_recall_logs_its_actual_new_source():
+def test_unknown_planner_anchor_is_repaired_before_retrieval():
     model = ScriptedModel(lambda state, errors: {"commands": []}, lambda state: {
         "query_mode": "direct", "action_time_expression": None, "searches": [{
         "role": "direct", "query": "SECONDARY", "time_expression": None,
@@ -132,11 +132,9 @@ def test_fallback_recall_logs_its_actual_new_source():
     engine.add(request("PRIMARY answer"))
     engine.add(request("SECONDARY detail", request_id="r2"))
     engine.search(query("PRIMARY"), "2024-06-04T00:00:00Z")
-    result = engine.last_search["tool_results"][0]
-    assert result["coverage"] == "anchor_unknown" and result["fallback_executed"]
-    assert result["scoped_new_documents"] == 0 and result["new_documents"] == 1
-    assert result["new_source_turns"] == 1
-    assert engine.last_search["unavailable_condition_selection_count"] == 1
+    assert 'decision_invalid' in engine.last_search['degradation']
+    assert engine.last_search['tool_results'] == []
+    assert engine.last_search["unavailable_condition_selection_count"] == 0
 
 
 def test_sufficient_direct_and_graph_channels_define_the_natural_bound():

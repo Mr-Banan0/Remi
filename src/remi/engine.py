@@ -439,16 +439,24 @@ class MemoryEngine:
         return 'all'
 
     @classmethod
-    def _compile_searches(cls, decision, question, as_of):
+    def _compile_searches(cls, decision, question, as_of, anchor_sources=()):
         """Fill deterministic retrieval mechanics after the model chooses semantic searches."""
         steps, errors = [], []
+        available_sources={source.id:source for source in anchor_sources}
         for position, search in enumerate(decision.searches):
+            source=available_sources.get(search.anchor_source_id)
+            if search.anchor_source_id and source is None:
+                errors.append({'field':f'searches.{position}.anchor_source_id',
+                    'error':'anchor_source_not_available','allowed_source_ids':sorted(available_sources)})
+                continue
             supported_time = None
             if search.time_expression:
-                supported_time = resolve_time(search.time_expression, question, as_of)
+                supported_time = resolve_time(search.time_expression,
+                    source.content if source else question,source.message_at if source else as_of)
                 if supported_time is None:
                     errors.append({'field': f'searches.{position}.time_expression',
-                                   'error': 'time_not_supported_by_question'})
+                                   'error': 'time_not_supported_by_anchor_source' if source else 'time_not_supported_by_question',
+                                   'expected':'One supported date phrase, or null; keep date ranges in query.'})
                     continue
             purpose = ('scheduled' if supported_time and
                        parse_time(supported_time).date() > parse_time(as_of).date() else 'history')
@@ -714,6 +722,9 @@ class MemoryEngine:
             direct_coverage = self._retrieval_coverage(request.query, base)
             current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
+            source_ids = {source_id for card in state['evidence'] for source_id in card['source_ids']}
+            source_ids.update(source_id for item in state['current_conditions'] for source_id in item['source_ids'])
+            anchor_sources=self.store.sources(request.user_id,sorted(source_ids))
             decision = Decision(searches=[], relevant_memory_ids=[])
             compiled_steps = []
             decision_errors = []
@@ -722,7 +733,7 @@ class MemoryEngine:
                 try:
                     raw_decision = self.model.decide(state, deadline=deadline)
                     decision, decision_errors, _ = self._decode_decision(raw_decision)
-                    compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of)
+                    compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of,anchor_sources)
                     decision_errors.extend(compile_errors)
                     planner_attempts.append({'raw': raw_decision, 'errors': list(decision_errors)})
                     if self._plan_error(decision_errors):
@@ -730,7 +741,7 @@ class MemoryEngine:
                                         'repair_errors': decision_errors}
                         repaired_raw = self.model.decide(repair_state, deadline=deadline)
                         decision, decision_errors, _ = self._decode_decision(repaired_raw)
-                        compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of)
+                        compiled_steps, compile_errors = self._compile_searches(decision, request.query, as_of,anchor_sources)
                         decision_errors.extend(compile_errors)
                         planner_attempts.append({'raw': repaired_raw, 'errors': list(decision_errors)})
                     if self._plan_error(decision_errors):
@@ -746,8 +757,6 @@ class MemoryEngine:
             unavailable_condition_count = len(set(decision.relevant_memory_ids) - shown)
             if "decision_unavailable" in degradation:
                 selected = []
-            source_ids = {source_id for card in state["evidence"] for source_id in card["source_ids"]}
-            source_ids.update(source_id for item in state["current_conditions"] for source_id in item["source_ids"])
             tool_results, step_hits = [], []
             for index, step in enumerate(compiled_steps):
                 temporal_step = bool(step.time_expression or step.anchor_source_id or step.anchor_step is not None

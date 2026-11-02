@@ -84,7 +84,7 @@ def test_unresolved_temporal_step_keeps_unrestricted_fallback_as_role_evidence()
     source_id = engine.store.list('sources', 'u1')[0]['id']
     model.decider = lambda state: {'query_mode': 'verify_premise', 'searches': [{
         'role': 'premise_check', 'query': 'actual market activity',
-        'time_expression': '2024-01-20', 'anchor_source_id': source_id,
+        'time_expression': None, 'anchor_source_id': source_id,
         'anchor_step': None, 'relation': 'same_day',
     }], 'relevant_memory_ids': [], 'action_time_expression': None}
     result = engine.search(query('actual market activity on 2024-01-20', top_k=1), '2024-02-01T00:00:00+00:00')

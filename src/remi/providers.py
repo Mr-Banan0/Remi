@@ -77,13 +77,22 @@ Classify query_mode first. The program supplies mechanical retrieval fields afte
 
 Write retrieval targets, not answers and not copied evidence sentences. A medical or practical restriction can matter without repeating the action words. A dated activity can correct a false premise. For an incident-anchored question, identify the incident before searching for its consequence or requested detail.
 
-time_expression uses only a date phrase supported by the original question. action_time_expression holds the date of a newly requested action and does not restrict historical evidence. reference_time resolves relative phrases and creates no restriction by itself. anchor_source_id uses only an input source ID. anchor_step=0 refers to the first search; then time_expression and anchor_source_id are null. relation is independent when no temporal anchor is used.
+time_expression uses a single date phrase supported by the original question, or by the explicitly selected anchor source. Keep a requested date interval in the search query and use time_expression=null when it cannot be represented by a single date. action_time_expression holds the date of a newly requested action and does not restrict historical evidence. reference_time resolves relative phrases and creates no restriction by itself. anchor_source_id selects only an ID from source_ids; evidence card IDs identify documents and serve a different purpose. anchor_step=0 refers to the first search; then time_expression and anchor_source_id are null. relation is independent when no temporal anchor is used.
 
 Memory cards contain independent propositions or occurrences. Names support navigation; original evidence establishes roles and direction. Select relevant_memory_ids only when a visible current condition is useful. When repair_errors and previous_output are present, return a complete corrected object that satisfies this contract.
 """
 
 
 DECISION_EXAMPLES = [
+    (
+        {"query": "How many deliveries arrived between March 2 and March 7, 2027?",
+         "reference_time": "2027-04-01T00:00:00Z", "evidence": [], "current_conditions": []},
+        {"query_mode": "direct", "action_time_expression": None,
+         "searches": [{"role": "direct",
+             "query": "All deliveries that arrived between March 2 and March 7, 2027, to count distinct arrivals",
+             "time_expression": None, "anchor_source_id": None, "anchor_step": None,
+             "relation": "independent"}], "relevant_memory_ids": []},
+    ),
     (
         {"query": "I remember giving a budget lecture at Harbor School on May 4. How did students respond?",
          "reference_time": "2028-06-01T00:00:00+00:00", "evidence": [], "current_conditions": []},
@@ -153,6 +162,23 @@ def strict_schema(model):
             for item in value:
                 visit(item)
     visit(schema)
+    return schema
+
+
+def search_schema(state):
+    """Expose only displayed source and current-memory identities to the planner."""
+    schema=strict_schema(Decision)
+    sources=sorted({sid for row in [*state.get('evidence',[]),*state.get('current_conditions',[])]
+                    for sid in row.get('source_ids',[])})
+    props=schema['$defs']['PlannedSearch']['properties']
+    props['anchor_source_id']=({'anyOf':[{'type':'string','enum':sources},{'type':'null'}]}
+                               if sources else {'type':'null'})
+    memories=sorted({row['id'] for row in state.get('current_conditions',[])})
+    selected=schema['properties']['relevant_memory_ids']
+    if memories:
+        selected['items']={'type':'string','enum':memories}
+    else:
+        selected['maxItems']=0
     return schema
 
 
@@ -264,7 +290,8 @@ class GPTModel:
                     timeout=remaining(deadline, self.timeout),
                     messages=messages,
                     response_format={"type": "json_schema", "json_schema": {
-                        "name": schema.__name__, "strict": True, "schema": strict_schema(schema)}})
+                        "name": schema.__name__, "strict": True,
+                        "schema": search_schema(payload) if schema is Decision else strict_schema(schema)}})
                 if response.usage:
                     trace.update(input_tokens=response.usage.prompt_tokens, output_tokens=response.usage.completion_tokens)
                 trace.update(input_bytes=len(body.encode()), output_bytes=len((response.choices[0].message.content or '').encode()))

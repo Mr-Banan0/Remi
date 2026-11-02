@@ -70,7 +70,7 @@ def test_search_planner_contract_is_compact_explicit_and_covered_by_examples():
     assert '"searches"' in DECISION_PROMPT and 'verify_premise: include premise_check' in DECISION_PROMPT
     assert 'action: include constraint and latest_state' in DECISION_PROMPT
     roles = [{item['role'] for item in output['searches']} for _, output in DECISION_EXAMPLES]
-    assert roles == [{'premise_check'}, {'constraint', 'latest_state'}, {'temporal_anchor', 'answer_detail'}]
+    assert roles == [{'direct'}, {'premise_check'}, {'constraint', 'latest_state'}, {'temporal_anchor', 'answer_detail'}]
 
 
 @pytest.mark.parametrize("expression,text,anchor,expected", [

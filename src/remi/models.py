@@ -317,7 +317,9 @@ class PlannedSearch(StrictModel):
     """The semantic part of one supplemental search chosen by the planner."""
     role: EvidenceRole
     query: str = Field(min_length=1, max_length=2000)
-    time_expression: str | None = None
+    time_expression: str | None = Field(default=None, description=(
+        "One supported calendar date or relative date phrase. For a date interval, "
+        "use null and preserve both bounds in query with relation=independent."))
     anchor_source_id: str | None = None
     anchor_step: int | None = Field(default=None, ge=0, le=0)
     relation: Literal["independent", "same_day", "before", "after"] = "independent"
