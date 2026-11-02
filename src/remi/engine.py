@@ -457,6 +457,10 @@ class MemoryEngine:
                 errors.append({'field':f'searches.{position}.anchor_source_id',
                     'error':'anchor_source_not_available','allowed_source_ids':sorted(available_sources)})
                 continue
+            if search.relation == 'independent' and not search.time_expression:
+                # Independent search uses the full visible history; temporal relations opt into anchors.
+                search = search.model_copy(update={'anchor_source_id': None, 'anchor_step': None})
+                source = None
             supported_time = None
             calendar_day = yearless_calendar_day(search.time_expression, question) if source is None else None
             if search.time_expression:

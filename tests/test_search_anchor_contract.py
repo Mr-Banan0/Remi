@@ -36,3 +36,43 @@ def test_unavailable_source_is_rejected_before_date_compilation():
         anchor_source_id='document-A')],relevant_memory_ids=[])
     steps,errors=MemoryEngine._compile_searches(decision,'What happened?', '2026-01-01T00:00:00Z')
     assert not steps and errors[0]['error']=='anchor_source_not_available'
+
+
+def test_independent_latest_state_keeps_history_open_despite_spurious_step_anchor():
+    decision=Decision(query_mode='action', searches=[
+        PlannedSearch(role='constraint',query='studio access restrictions'),
+        PlannedSearch(role='latest_state',query='later restoration of studio access',anchor_step=0)],
+        relevant_memory_ids=[])
+    steps,errors=MemoryEngine._compile_searches(decision,'Can I use the studio?', '2026-01-01T00:00:00Z')
+    assert not errors
+    assert steps[1].anchor_step is None
+    assert steps[1].anchor_source_id is None
+    assert steps[1].select == 'latest'
+    assert decision.searches[1].anchor_step == 0
+
+
+def test_explicit_after_relation_preserves_prior_result_anchor():
+    decision=Decision(query_mode='temporal_join',searches=[
+        PlannedSearch(role='temporal_anchor',query='studio closure'),
+        PlannedSearch(role='answer_detail',query='first replacement studio',anchor_step=0,relation='after')],
+        relevant_memory_ids=[])
+    steps,errors=MemoryEngine._compile_searches(decision,'Which studio did I use after the closure?',
+        '2026-01-01T00:00:00Z')
+    assert not errors
+    assert steps[1].anchor_step == 0 and steps[1].relation == 'after'
+
+
+def test_independent_state_recall_reaches_later_evidence():
+    from time import monotonic
+    from tests.test_search_roles import document
+    engine=TestEngine()
+    old=document('old').model_copy(update=dict(text='studio access suspended',message_at='2025-01-01T00:00:00Z'))
+    new=document('new').model_copy(update=dict(text='studio access restored',message_at='2025-02-01T00:00:00Z'))
+    decision=Decision(searches=[PlannedSearch(role='latest_state',query='studio access',anchor_step=0)],
+                      relevant_memory_ids=[])
+    steps,errors=engine._compile_searches(decision,'Can I use the studio?', '2026-01-01T00:00:00Z')
+    assert not errors
+    hits,coverage=engine._recall_step('u1','studio access',steps[0],set(),[old,new],
+        '2026-01-01T00:00:00Z',monotonic()+10,prior_results=[[(old,1.0)]])
+    assert 'new' in {row.id for row,_ in hits}
+    assert coverage != 'anchor_step_ambiguous'

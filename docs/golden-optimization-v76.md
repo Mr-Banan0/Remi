@@ -22,3 +22,9 @@
 完整离线回归 501 passed，包含现有六张表临时数据库和本地 HTTP 测试。版本标识变更另验 API 合同。V75 的主要来源保留随本版保留，运行中的 V74 与 V75 快照重放使用冻结代码。
 
 实验记录位于 `/private/tmp/remi-v75-link-specificity*.json`、`/private/tmp/remi-v76-link-specificity*.json`、`/private/tmp/remi-v75-specificity-validation.json`、`/private/tmp/remi-v76-specificity-validation.json` 和 `/private/tmp/remi-v76-links-holdout.json`。
+
+## 完整 Golden 结果
+
+冻结提交 `75ce57e` 的完整顺序运行结果位于 `.local-data/golden-v76-link-scope-20261102-r1/golden-gpt-4o-mini/result.json`。R@10 86.32%、MRR@10 82.05%、R@100 97.44%，生命周期 3/3；Search 平均 11.68 秒、P95 14.72 秒。写入平均 56.12 秒、P95 135.27 秒（包含失败尝试）。一次 Add 因 embedding 连接失败返回 503，随后从检查点恢复完成；物理调用统计不完整，保留错误历史。另有一次连边超时。结果尚未超过 V60 的 R@10 88.03%、MRR@10 85.58%。
+
+前十缺口为 Q2 的同日多项证据、Q4 的另一条限制、Q8 的故障锚点；Q13 的手杖来源仍未进入返回结果。较高的 R@100 说明排序仍有改善空间，单次完整运行无法证明图连接稳定或达到历史最优。
