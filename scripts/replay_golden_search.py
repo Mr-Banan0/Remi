@@ -63,7 +63,10 @@ def execute(args):
     if planner_report is not None:
         engine.model.close()
         engine.model = FrozenSearchPlanner()
-    if getattr(args, 'primary_source_rerank', False):
+    if getattr(args, 'role_only_rerank', False):
+        from scripts.role_only_rerank import configure
+        configure(engine.reranker)
+    elif getattr(args, 'primary_source_rerank', False):
         from scripts.primary_source_rerank import configure
         configure(engine)
     elif getattr(args, 'grounded_rerank', False):
@@ -113,7 +116,8 @@ def execute(args):
                    'planner_prefix':prefix,
                    'planner_prefix_sha256':hashlib.sha256(prefix.encode()).hexdigest() if prefix else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
-                   'rerank_input':('primary_source' if getattr(args,'primary_source_rerank',False) else
+                   'rerank_input':('role_only' if getattr(args,'role_only_rerank',False) else
+                                   'primary_source' if getattr(args,'primary_source_rerank',False) else
                                    'grounded_blend' if getattr(args,'grounded_rerank',False) else
                                    'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default')},
         "source_to_ref": mapping}
@@ -205,6 +209,8 @@ def main():
     planner.add_argument('--frozen-planner',type=Path,
                         help='Replay all planner responses and clocks from this completed matching Search report')
     rerank = parser.add_mutually_exclusive_group()
+    rerank.add_argument('--role-only-rerank',action='store_true',
+                        help='Experiment-only: omit generated navigation queries from rerank objectives')
     rerank.add_argument('--primary-source-rerank',action='store_true',
                         help='Experiment-only: separate primary evidence and interpretive context for Jev')
     rerank.add_argument('--grounded-rerank',action='store_true',
