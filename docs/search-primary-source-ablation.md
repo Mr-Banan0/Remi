@@ -11,3 +11,9 @@
 固定池回放已完成：`.local-data/search-v82-primary-v76-boundaries-20261102-r1/result.json`。16 项候选 ID 与 RRF 分数和对照完全一致；R@10 82.48%、MRR@10 88.46%、R@100 97.44%，平均回放耗时 6.02 秒。R@10 与一次相同固定计划的原文对照相同，低于首次高分的 90.17%。因此本表示方式继续保持实验状态。
 
 额外离线检查五次已保存的重排输出：相同 Jev 分数改按 RRF 排序，一次小幅改善、两次下降、两次不变，MRR 均不变。记录在 `/private/tmp/remi-tie-audit.json`。现有证据不足以采用该同分规则。
+
+## Combined with adjacent source context on the new V81 bank
+
+`.local-data/search-v83-primary-v81-boundaries-20261102-r1/result.json` freezes the V81 full run's Planner and query clocks. Against the V83 adjacent-context replay, all 16 candidate pools, RRF scores and returned card contents (ignoring order) are identical. R@10 increased from 95.73% to 96.58%, MRR from 82.69% to 92.31%, R@100 stayed 97.44%, lifecycle 3/3. Mean replay latency was 6.10 seconds, P95 7.48; no request errors occurred.
+
+The action constraint's first evidence rank improved from 4 to 1, and the actual contact record from 2 to 1. The device question stayed at rank 2; the false-premise question also stayed at rank 2. This is a ranking improvement at constant output content, but it is a single run. A fixed-plan repeat and live-plan replay are running before any production adoption.
