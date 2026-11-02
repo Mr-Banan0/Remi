@@ -311,14 +311,20 @@ class MemoryEngine:
             source.message_at or source.created_at,
             source.ordinal,
         ), reverse=True)
-        sources = sources[:max(1, min(8, budget // 500))]
         headers = [f"[{source.id}] {source.role} at {source.message_at or 'unknown'}:\n" for source in sources]
+        source_limit = max(1, min(8, budget // 500))
+        # Preserve the primary statement and its strongest context when both have useful excerpt room.
+        if len(sources) >= 2 and sum(len(header.encode()) + 2 for header in headers[:2]) + 400 <= budget:
+            source_limit = max(2, source_limit)
+        sources, headers = sources[:source_limit], headers[:source_limit]
         overhead = sum(len(header.encode()) + 2 for header in headers)
-        allowance = max(0, (budget - overhead) // max(1, len(sources)))
+        remaining = max(0, budget - overhead)
         blocks = []
-        for source, header in zip(sources, headers):
+        for index, (source, header) in enumerate(zip(sources, headers)):
+            allowance = remaining // (len(sources) - index)
             windows = [(span.start, span.stop) for span in document.source_windows if span.source_id == source.id]
             excerpt = source_excerpt(source.content, query, allowance, windows)
+            remaining -= len(excerpt.encode())
             if excerpt:
                 blocks.append({"source_id": source.id, "role": source.role, "message_at": source.message_at,
                                "text": excerpt, "rendered": header + excerpt})
