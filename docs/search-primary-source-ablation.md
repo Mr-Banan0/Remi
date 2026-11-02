@@ -7,3 +7,7 @@
 实验开关为 `scripts.replay_golden_search --primary-source-rerank`，与完整摘要、支持度混合模式互斥。`_source_blocks` 提取既有卡片构造步骤，生产卡片保持原样；实验使用来源块构造 Jev 视图，Planner、返回结果、时间核验项、召回候选和预算均保持原样。无额外模型调用。
 
 对照使用 V76 查询边界、首次 V79 高分运行记录的 Planner 和时钟。先比较逐题候选 ID、RRF 与分数，再比较召回、MRR、生命周期和延迟；若有稳定收益再考虑生产采用。小样本成功本身不代表 Golden 已改善。
+
+固定池回放已完成：`.local-data/search-v82-primary-v76-boundaries-20261102-r1/result.json`。16 项候选 ID 与 RRF 分数和对照完全一致；R@10 82.48%、MRR@10 88.46%、R@100 97.44%，平均回放耗时 6.02 秒。R@10 与一次相同固定计划的原文对照相同，低于首次高分的 90.17%。因此本表示方式继续保持实验状态。
+
+额外离线检查五次已保存的重排输出：相同 Jev 分数改按 RRF 排序，一次小幅改善、两次下降、两次不变，MRR 均不变。记录在 `/private/tmp/remi-tie-audit.json`。现有证据不足以采用该同分规则。
