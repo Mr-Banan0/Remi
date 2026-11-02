@@ -331,10 +331,10 @@ class MemoryEngine:
                                "text": excerpt, "rendered": header + excerpt})
         return blocks
 
-    def _card(self, owner, document, query, budget):
+    def _card(self, owner, document, query, budget, for_rerank=False):
         blocks = self._source_blocks(owner, document, query, budget)
         raw = "\n\n".join(block["rendered"] for block in blocks)
-        return {"id": document.id, "source_ids": [block["source_id"] for block in blocks], "memory_id": document.memory_id,
+        card = {"id": document.id, "source_ids": [block["source_id"] for block in blocks], "memory_id": document.memory_id,
                 "event_at": document.event_at, "message_at": document.message_at,
                 "original": raw, "summary": clip_bytes(document.text, 400),
                 "memories": [{"id": memory.memory_id, "revision_id": memory.revision_id,
@@ -343,6 +343,11 @@ class MemoryEngine:
                     "time_precision": memory.time_precision,
                     "observed_at": memory.observed_at, "temporal_scope": memory.temporal_scope}
                     for memory in document.memory_evidence]}
+        if for_rerank:
+            card['ranking_evidence'] = {
+                'original': blocks[0]['rendered'] if blocks else '',
+                'context': '\n\n'.join(block['rendered'] for block in blocks[1:])}
+        return card
 
     def _decision_state(self, owner, query, hits, current, as_of):
         state = {"query": clip_bytes(query, min(12000, self.settings.decision_bytes // 3)),
@@ -905,7 +910,7 @@ class MemoryEngine:
             baseline_order = {doc.id: index for index, (doc, _) in enumerate(merged)}
             context = source_context(self.store, request.user_id, [doc for doc, _ in merged], as_of)
             cards = [self._card(request.user_id, with_source_context(document, context), request.query,
-                                self.settings.evidence_bytes) for document, _ in merged]
+                                self.settings.evidence_bytes, True) for document, _ in merged]
             _, source_memories = self._logical_groups(documents)
             retrieval_objectives = {}
             for channel in retrieval_channels:

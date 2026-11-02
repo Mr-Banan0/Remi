@@ -18,9 +18,9 @@ def test_contract_health_auth_add_search():
     with TestClient(app) as client:
         health = client.get("/health")
         assert health.status_code == 200
-        assert app.title == "Remi" and app.version == __version__ == "0.2.17"
+        assert app.title == "Remi" and app.version == __version__ == "0.2.18"
         assert health.json() == {
-            "status": "ok", "service": "remi", "version": "0.2.17",
+            "status": "ok", "service": "remi", "version": "0.2.18",
             "pipeline": PIPELINE, "initialized": True}
         assert client.post("/add", json=request("Dell event").model_dump()).status_code == 401
         headers = {"authorization": "Bearer test-secret"}

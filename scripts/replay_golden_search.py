@@ -66,9 +66,6 @@ def execute(args):
     if getattr(args, 'role_only_rerank', False):
         from scripts.role_only_rerank import configure
         configure(engine.reranker)
-    elif getattr(args, 'primary_source_rerank', False):
-        from scripts.primary_source_rerank import configure
-        configure(engine)
     elif getattr(args, 'grounded_rerank', False):
         from scripts.grounded_reranker import GroundedReranker
         engine.reranker = GroundedReranker.from_existing(engine.reranker)
@@ -117,7 +114,6 @@ def execute(args):
                    'planner_prefix_sha256':hashlib.sha256(prefix.encode()).hexdigest() if prefix else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
                    'rerank_input':('role_only' if getattr(args,'role_only_rerank',False) else
-                                   'primary_source' if getattr(args,'primary_source_rerank',False) else
                                    'grounded_blend' if getattr(args,'grounded_rerank',False) else
                                    'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default')},
         "source_to_ref": mapping}
@@ -211,8 +207,6 @@ def main():
     rerank = parser.add_mutually_exclusive_group()
     rerank.add_argument('--role-only-rerank',action='store_true',
                         help='Experiment-only: omit generated navigation queries from rerank objectives')
-    rerank.add_argument('--primary-source-rerank',action='store_true',
-                        help='Experiment-only: separate primary evidence and interpretive context for Jev')
     rerank.add_argument('--grounded-rerank',action='store_true',
                         help='Experiment-only: blend source and full scores using source support')
     rerank.add_argument('--full-rerank-cards',action='store_true',

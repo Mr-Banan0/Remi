@@ -137,7 +137,10 @@ SUPPORT_QUESTION = (
     "status and dates. A medical or practical restriction can be strong action evidence without repeating the "
     "action words. A dated actual activity can strongly correct a false premise. An identity or time anchor can "
     "be strong evidence when the answer depends on it. Shared topic alone, another occurrence and unrelated "
-    "generic advice provide little support."
+    "generic advice provide little support. "
+    "Evaluate the contribution of original. The context field provides interpretive context "
+    "for references, speaker attribution and dates. Credit the primary statement for what "
+    "it adds or confirms; context alone does not turn an unrelated primary statement into direct evidence."
 )
 
 TEMPORAL_MATCH_QUESTION = (
@@ -482,6 +485,9 @@ class JevReranker:
         result = {key: card[key] for key in (
             'id', 'original', 'source_ids', 'event_at', 'message_at',
             'retrieval_roles', 'retrieval_objectives') if key in card}
+        if 'ranking_evidence' in card:
+            result['original'] = card['ranking_evidence']['original']
+            result['context'] = card['ranking_evidence']['context']
         if 'temporal_targets' in card:
             result['temporal_targets'] = [
                 {key: target[key] for key in ('id', 'query', 'original', 'time') if key in target}
