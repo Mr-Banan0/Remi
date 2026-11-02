@@ -1,5 +1,6 @@
 """Experiment-only soft use of derived claims according to their source support."""
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 import math
 from time import monotonic, sleep
 
@@ -23,6 +24,26 @@ class GroundedReranker(JevReranker):
         result = object.__new__(cls)
         result.model, result.timeout, result.client = ranker.model, ranker.timeout, ranker.client
         result.calls = deque(maxlen=2048)
+        return result
+
+    def rank(self, query, cards, *, deadline):
+        batches, batch, question_count = [], [], 0
+        for card in cards:
+            count = 3 + len({row['id'] for row in card.get('temporal_targets', [])})
+            if batch and (question_count + count > 24 or len(batch) >= 8):
+                batches.append(batch)
+                batch, question_count = [], 0
+            batch.append(card)
+            question_count += count
+        if batch:
+            batches.append(batch)
+        result = RankResult()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(self._batch, query, batch, deadline) for batch in batches]
+            for future in futures:
+                ranked = future.result()
+                result.scores.update(ranked.scores)
+                result.temporal_scores.update(ranked.temporal_scores)
         return result
 
     def _batch(self, query, cards, deadline):
