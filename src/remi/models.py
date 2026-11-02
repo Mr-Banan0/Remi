@@ -249,8 +249,25 @@ class Edge(StrictModel):
     target: str
     relation: Literal['mentions', 'supported_by', 'revises', 'related']
     revision_id: str
+    target_revision_id: str | None = None
     memory_id: str
     source_id: str
+    quote: str | None = None
+
+    @model_validator(mode='after')
+    def related_contract(self):
+        if self.relation == 'related':
+            if self.origin == self.target:
+                raise ValueError('related_edge_requires_two_versions_and_source_evidence')
+            # Persisted pre-linker edges remain readable during the migration window,
+            # while active_connections excludes them from retrieval. Every newly
+            # created edge must provide both revision bindings and exact evidence.
+            partially_bound = self.target_revision_id is not None or self.quote is not None
+            if partially_bound and (self.target_revision_id is None or not self.quote):
+                raise ValueError('related_edge_requires_two_versions_and_source_evidence')
+        elif self.target_revision_id is not None or self.quote is not None:
+            raise ValueError('structural_edge_uses_its_native_projection')
+        return self
 
 
 class SourceWindow(StrictModel):

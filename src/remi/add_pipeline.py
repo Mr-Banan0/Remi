@@ -19,6 +19,7 @@ from .subject_identity import CONTEXT_LIMIT, SubjectRecord, visible_subject, mat
 from .subject_maintenance import review
 from .memory_maintenance import (accept_targetless_adds, candidates, materialize,
                                  pending_candidates, validate_plan)
+from .memory_linking import build_state as build_link_state, validate_plan as validate_link_plan
 from .memory_recall import recall_memories
 from .version import PIPELINE
 
@@ -447,6 +448,30 @@ class AddPipeline:
 
                             raise
 
+                        link_state=build_link_state(self.store,state,memories,dispositions)
+                        cache['link_candidates']=dict(
+                            current=len(link_state['current_memories']),
+                            recalled=len(link_state['recalled_memories']),
+                            pairs=len(link_state['pairs']),truncated=link_state['truncated'])
+                        link_issues=[];link_edges=[]
+                        linker=getattr(self.model,'link_memories',None)
+                        if link_state['pairs'] and linker is not None:
+                            if 'links' not in cache['outputs']:
+                                try:cache['outputs']['links']=linker(link_state,deadline=deadline)
+                                except (OutputInvalid,ProviderUnavailable) as error:
+                                    cache['outputs']['links']={'links':[]}
+                                    cache['link_provider_error']=type(error).__name__
+                                save()
+                        link_edges,link_issues=validate_link_plan(
+                            cache['outputs'].get('links',{'links':[]}),link_state)
+                        edges.extend(link_edges)
+                        cache['link_issues']=link_issues
+                        cache['related_edges']=[edge.model_dump() for edge in link_edges]
+                        for edge in link_edges:
+                            for memory_id in (edge.origin,edge.target):
+                                if memory_id not in expected and memory_id not in {memory.id for memory in memories}:
+                                    expected[memory_id]=self.store.get('memories',owner,memory_id)
+
                         cache['candidate_dispositions']=[*dispositions,*cache.get('memory_validation_dispositions',[])]
 
                         cache['expected_memories']=expected
@@ -503,13 +528,16 @@ class AddPipeline:
 
                             for memory in memories:self.store.put('memories',owner,memory.id,memory.model_dump())
 
-                            # Replayed projections replace edges for touched memory revisions atomically.
+                            # Structural projections are replayed for the current revision.
+                            # Version-bound related edges remain as historical evidence;
+                            # active_connections exposes only the current endpoint revisions.
 
                             touched={m.id for m in memories}
 
                             for old_edge in self.store.edges_for(owner):
 
-                                if old_edge.memory_id in touched:self.store.delete('edges',owner,old_edge.id)
+                                if old_edge.memory_id in touched and old_edge.relation!='related':
+                                    self.store.delete('edges',owner,old_edge.id)
 
                             for edge in edges:self.store.put('edges',owner,edge.id,edge.model_dump())
 

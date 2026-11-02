@@ -5,7 +5,7 @@ chronicle; structural slots replay independently. This preserves evidence withou
 """
 from copy import deepcopy
 from .clock import parse_time
-from .models import Memory, Revision, EvidenceRef, Edge
+from .models import Memory, Revision
 from remi.graph import project_edges
 from .identity import stable_id
 
@@ -17,8 +17,7 @@ def replay_revisions(store, memories, edges):
     for memory in memories:
         by_id={r.id:r for r in memory.revisions}
         ordered=sorted(memory.revisions,key=lambda r:(parse_time(r.observed_at),parse_time(r.created_at),r.id))
-        latest=None; evidence={}; links={}; timeline=[]; branched=False; rebuilt={}
-        stored_edges=store.edges_for(memory.owner,origins=[memory.id])
+        latest=None; evidence={}; timeline=[]; branched=False; rebuilt={}
         for original in ordered:
             patch=original.maintenance_patch
             if patch is None:
@@ -29,8 +28,7 @@ def replay_revisions(store, memories, edges):
                 patch=dict(fields=['participants' if k=='entity_ids' else k for k in changed],
                     values={k:deepcopy(getattr(original,k)) for k in FIELDS},participant_mode='replace',
                     participant_ids=original.entity_ids,evidence=[e.model_dump() for e in original.evidence],
-                    related_add=[e.target for e in stored_edges if e.revision_id==original.id and e.relation=='related'],
-                    related_remove=[],source_id=original.source_ids[0],base_revision_id=original.replaces_revision_id)
+                    source_id=original.source_ids[0],base_revision_id=original.replaces_revision_id)
             fields=patch['fields']; values=original.model_dump()
             if latest:
                 for key in FIELDS:
@@ -67,13 +65,8 @@ def replay_revisions(store, memories, edges):
                 replaces_revision_id=latest.id if latest else None,maintenance_patch=patch,
                 user_involvement='involved' if stable_id('obj_',memory.owner,'user') in values['entity_ids'] else 'not_involved')
             latest=Revision.model_validate(values);rebuilt[latest.id]=latest
-            for mid in patch['related_add']:links[mid]=own
-            for mid in patch['related_remove']:links.pop(mid,None)
             edges=[e for e in edges if e.revision_id!=latest.id]
             edges.extend(project_edges(memory,latest,latest.replaces_revision_id))
-            for target,sid in links.items():
-                edges.append(Edge(id=stable_id('edge_',latest.id,memory.id,target,'related'),owner=memory.owner,
-                    origin=memory.id,target=target,relation='related',revision_id=latest.id,memory_id=memory.id,source_id=sid))
         # Keep append order for checkpoints which inspect the just-created revision.
         result.append(Memory.model_validate({**memory.model_dump(),'revisions':[rebuilt[r.id].model_dump() for r in memory.revisions]}))
     return result,edges

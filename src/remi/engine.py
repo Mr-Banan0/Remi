@@ -243,17 +243,15 @@ class MemoryEngine:
         record_ids={edge.origin for edge in edges if edge.target in entities}
         visible_memories={m.id for original in self.store.memories(owner)
                           if (m:=visible_memory(original,as_of))}
-        frontier=set(sorted(mids & visible_memories)[:24]);related_ids=set(frontier)
+        seed_ids=set(sorted(mids & visible_memories)[:24]);related_ids=set(seed_ids)
         navigation=[edge for edge in active_connections(self.store,owner,as_of)
                     if edge.origin in visible_memories and edge.target in visible_memories]
-        for _ in range(2):
-            adjacent_ids=set()
-            for edge in navigation:
-                if edge.origin in frontier:adjacent_ids.add(edge.target)
-                if edge.target in frontier:adjacent_ids.add(edge.origin)
-            frontier=set(sorted(adjacent_ids-related_ids)[:max(0,24-len(related_ids))])
-            related_ids.update(frontier)
-            if not frontier:break
+        adjacent_ids=set()
+        for edge in navigation:
+            if edge.origin in seed_ids:adjacent_ids.add(edge.target)
+            if edge.target in seed_ids:adjacent_ids.add(edge.origin)
+        neighbors=set(sorted(adjacent_ids-seed_ids)[:max(0,24-len(seed_ids))])
+        related_ids.update(neighbors)
         record_ids.update(related_ids)
 
         sessions={};adjacent=set()
@@ -265,7 +263,16 @@ class MemoryEngine:
             for index,source in enumerate(group):
                 if source.id in source_ids:adjacent.update(s.id for s in group[max(0,index-1):index+2])
         pool=[d for d in documents if d.memory_id in record_ids or d.memory_id is None and d.source_ids and d.source_ids[0] in adjacent]
-        return self._hybrid(owner,query,pool,vector,limit=self.settings.graph_limit)
+        ranked=self._hybrid(owner,query,pool,vector,limit=max(self.settings.graph_limit,len(neighbors)))
+        structural=[]
+        for memory_id in sorted(neighbors):
+            hit=next(((document,score) for document,score in ranked if document.memory_id==memory_id),None)
+            if hit is None:
+                document=next((document for document in pool if document.memory_id==memory_id),None)
+                hit=(document,0.0) if document is not None else None
+            if hit is not None:structural.append(hit)
+        seen={document.id for document,_ in structural}
+        return [*structural,*[(document,score) for document,score in ranked if document.id not in seen]][:self.settings.graph_limit]
 
     def _card(self, owner, document, query, budget):
         sources = self.store.sources(owner, document.source_ids)

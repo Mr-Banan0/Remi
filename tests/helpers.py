@@ -70,11 +70,13 @@ def subject_decisions_fixture(state):
 
 class ScriptedModel:
     """Test-only fixtures for subject, extraction and memory-maintenance calls."""
-    def __init__(self, extract=None, decide=None):
+    def __init__(self, extract=None, decide=None, link=None):
         self.extractor = extract or (lambda state, errors: {'commands': [command(state)]})
         self.decider = decide or (lambda state: {'query_mode': 'direct', 'action_time_expression': None,
                                                   'searches': [], 'relevant_memory_ids': []})
+        self.linker = link or (lambda state: {'links': []})
         self.extractions, self.decisions = [], []
+        self.link_states = []
         self.oracle_candidates, self.raw_commands = [], []
         self.subject_calls=[]
         self.base_state = None
@@ -119,6 +121,10 @@ class ScriptedModel:
         commands=result.get('commands',[])
         names=list(dict.fromkeys(o['name'] for row in commands for o in row.get('objects',[]) if o['kind'] in {'user','person','animal','organization','team'}))
         return direct_subjects_fixture(state,names)
+
+    def link_memories(self,state,*,deadline):
+        self.link_states.append(deepcopy(state))
+        return self.linker(state)
 
     def decide(self, state, *, deadline):
         self.decisions.append(state)

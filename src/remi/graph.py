@@ -33,4 +33,6 @@ def active_edges(store, owner, as_of):
 
 def active_connections(store, owner, as_of):
     active = {m.id:m.current.id for original in store.memories(owner) if (m:=visible_memory(original,as_of))}
-    return [e for e in store.edges_for(owner) if e.relation=='related' and active.get(e.memory_id)==e.revision_id]
+    return [e for e in store.edges_for(owner) if e.relation=='related'
+            and active.get(e.origin)==e.revision_id
+            and active.get(e.target)==e.target_revision_id]

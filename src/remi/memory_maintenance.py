@@ -582,8 +582,7 @@ def materialize(store, state, bindings, accepted):
             values={key: deepcopy(values[key]) for key in ('content', 'entity_ids', 'mode', 'context', 'status', 'planned_at', 'event_at', 'time_evidence')},
             participant_mode='add' if previous else 'replace', participant_ids=current_ids,
             evidence=[entry.model_dump() for entry in patch_evidence], evidence_mode=item.mode,
-            related_add=[], related_remove=[], source_id=primary['id'],
-            base_revision_id=previous.id if previous else None)
+            source_id=primary['id'], base_revision_id=previous.id if previous else None)
         revision = Revision.model_validate(values)
         if memory:
             memory.revisions.append(revision)

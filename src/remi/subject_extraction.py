@@ -147,7 +147,6 @@ def prepare(state):
             origin_content=card.get('origin_content',card['content']),
             participants=[historical[oid]['label'] for oid in card.get('entity_ids',[])],
             sources=[source(row) for row in card.get('sources',[])],
-            related_memories=[memories[mid] for mid in card.get('related_memory_ids',[]) if mid in memories],
             **{key:deepcopy(card[key]) for key in ('mode','context','status','planned_at','event_at') if card.get(key)}))
     context=dict(handle_refs=handle_refs,ref_handles={ref:handle for handle,ref in handle_refs.items()},
                  current_source_handle=packet['new_user_source']['id'],
@@ -220,7 +219,7 @@ def feedback(value,context,key=None):
                 result[name]=_source_handle(item,context)
             elif name in {'source_ids','allowed_source_ids','expected_source_ids'}:
                 result[name]=[_source_handle(sid,context) for sid in item] if isinstance(item,list) else '(invalid source list)'
-            elif name in {'memory_ids','related_memory_ids','allowed_memory_ids'}:
+            elif name in {'memory_ids','allowed_memory_ids'}:
                 result[name]=[_memory_label(mid,context) for mid in item] if isinstance(item,list) else '(invalid memory list)'
             else:result[name]=feedback(item,context,name)
         return result
@@ -341,7 +340,6 @@ def render(packet):
                           '    Historical participants: '+(', '.join(card['participants']) or '(none)'),
                           '    Identity anchor: '+card['origin_content'],
                           '    Current view: '+card['content']])
-            if card.get('related_memories'):lines.append('    Linked event handles: '+', '.join(card['related_memories']))
             for key in ('mode','context','status','planned_at','event_at'):
                 if card.get(key):lines.append('    '+key+': '+str(card[key]))
             for source in card['sources']:

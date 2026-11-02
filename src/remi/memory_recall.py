@@ -90,7 +90,8 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
     vectors = ([None] * len(candidates) if not candidates or engine.embedder is None else
                engine._embed([row['content'] for row in candidates], deadline))
     documents = {memory.id: stable_id('doc_', memory.current.id) for memory in selected_pool}
-    selected=[];candidate_target_ids={};candidate_related_ids={};candidate_rankings={}
+    selected=[];candidate_target_ids={};candidate_link_ids={};candidate_rankings={}
+    link_selected=[]
     by_id={memory.id:memory for memory in selected_pool}
     labels=[]
     for obj in objects.values():
@@ -132,14 +133,17 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
                 semantic_similarity=score,
                 semantic_margin=margin)
         targets=same_kind[:3]
-        related=[]
+        link_ids=ranked_ids[:6]
         candidate_target_ids[candidate['ref']]=targets
-        candidate_related_ids[candidate['ref']]=related
+        candidate_link_ids[candidate['ref']]=link_ids
         candidate_rankings[candidate['ref']]=dict(
             keyword=lexical_ids[:6],semantic=semantic_ids[:6],fused=ranked_ids[:6],
             update_targets=targets,update_target_reasons=target_reasons,
-            related_targets=related)
-        for memory_id in [*targets,*related]:
+            link_candidates=link_ids)
+        for memory_id in link_ids:
+            if memory_id not in link_selected and len(link_selected)<MEMORY_LIMIT:
+                link_selected.append(memory_id)
+        for memory_id in targets:
             memory=by_id[memory_id]
             if memory not in selected:selected.append(memory)
     for subject_id in sorted(pending_candidates):
@@ -164,11 +168,6 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
             entity_ids=revision.entity_ids,
             sources=originals[memory.id],
             recall_lane=lanes[memory.id],
-            related_memory_ids=[
-                edge.target
-                for edge in engine.store.edges_for(owner, origins=[memory.id])
-                if edge.relation == 'related' and edge.revision_id == revision.id
-            ],
         ))
 
     prepared, trace = pack_history(
@@ -183,9 +182,12 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
     prepared['candidate_target_ids']={ref:[memory_id for memory_id in ids
         if memory_id in {card['id'] for card in prepared['history']}]
         for ref,ids in candidate_target_ids.items()}
-    prepared['candidate_related_ids']={ref:[memory_id for memory_id in ids
-        if memory_id in {card['id'] for card in prepared['history']}]
-        for ref,ids in candidate_related_ids.items()}
+    prepared['link_candidates']=[dict(id=memory.id,revision_id=memory.current.id,
+        record_type=memory.record_type,content=memory.current.content)
+        for memory_id in link_selected if (memory:=by_id.get(memory_id)) is not None]
+    link_ids={row['id'] for row in prepared['link_candidates']}
+    prepared['candidate_link_ids']={ref:[memory_id for memory_id in ids if memory_id in link_ids]
+        for ref,ids in candidate_link_ids.items()}
     needed = {object_id for row in prepared['history'] for object_id in row['entity_ids']}
     catalog = {row['id']: row for row in state['subject_catalog']}
     catalog.update({object_id: objects[object_id] for object_id in needed | confirmed if object_id in objects})
@@ -207,6 +209,7 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
         ),
         candidate_rankings=candidate_rankings,
         candidate_target_ids=prepared['candidate_target_ids'],
-        candidate_related_ids=prepared['candidate_related_ids'],
+        candidate_link_ids=prepared['candidate_link_ids'],
+        link_candidate_ids=sorted(link_ids),
         **trace,
     )

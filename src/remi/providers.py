@@ -30,6 +30,7 @@ class TextModel(Protocol):
     def propose(self, state: dict, *, deadline: float) -> dict: ...
     def extract_memories(self, state: dict, *, deadline: float) -> dict: ...
     def maintain_subjects(self, state: dict, *, deadline: float) -> dict: ...
+    def link_memories(self, state: dict, *, deadline: float) -> dict: ...
     def decide(self, state: dict, *, deadline: float) -> dict: ...
 
 
@@ -298,6 +299,10 @@ class GPTModel:
 
     def propose(self, state, *, deadline):
         from .memory_maintenance import provider_plan
+        return provider_plan(self, state, deadline=deadline)
+
+    def link_memories(self, state, *, deadline):
+        from .memory_linking import provider_plan
         return provider_plan(self, state, deadline=deadline)
 
     def decide(self, state, *, deadline):
