@@ -70,7 +70,10 @@ def execute(args):
     if planner_report is not None:
         engine.model.close()
         engine.model = FrozenSearchPlanner()
-    if getattr(args, 'role_only_rerank', False):
+    if getattr(args, 'action_condition_rerank', False):
+        from scripts.action_condition_rerank import configure
+        configure(engine.reranker)
+    elif getattr(args, 'role_only_rerank', False):
         from scripts.role_only_rerank import configure
         configure(engine.reranker)
     elif getattr(args, 'grounded_rerank', False):
@@ -122,7 +125,8 @@ def execute(args):
                    'planner_prefix':prefix,
                    'planner_prefix_sha256':hashlib.sha256(prefix.encode()).hexdigest() if prefix else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
-                   'rerank_input':('role_only' if getattr(args,'role_only_rerank',False) else
+                   'rerank_input':('action_condition' if getattr(args,'action_condition_rerank',False) else
+                                   'role_only' if getattr(args,'role_only_rerank',False) else
                                    'grounded_blend' if getattr(args,'grounded_rerank',False) else
                                    'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default')},
         "source_to_ref": mapping}
@@ -216,6 +220,8 @@ def main():
     parser.add_argument('--rerank-question-file', type=Path,
                         help='Experiment-only: override and record the bounded Jev support question')
     rerank = parser.add_mutually_exclusive_group()
+    rerank.add_argument('--action-condition-rerank',action='store_true',
+                        help='Experiment-only: score constraint-planned requests by feasibility evidence')
     rerank.add_argument('--role-only-rerank',action='store_true',
                         help='Experiment-only: omit generated navigation queries from rerank objectives')
     rerank.add_argument('--grounded-rerank',action='store_true',
