@@ -71,6 +71,10 @@ def main():
     parser.add_argument('--proposed',action='store_true')
     parser.add_argument('--evidence-budget',type=int,
                         help='Exercise production evidence cards with long conversational context.')
+    parser.add_argument('--corrupt-summaries',action='store_true',
+                        help='Stress source verification with misleading derived summaries.')
+    parser.add_argument('--source-only',action='store_true',
+                        help='Experiment-only: omit derived summary and memory fields from reranking.')
     args=parser.parse_args()
     if args.output.exists(): raise ValueError('fresh_output_required')
     load_environment(args.env_file)
@@ -87,6 +91,14 @@ def main():
                 cards = [dict(context_card(f'D{i}',speaker,text,context,query,args.evidence_budget),
                               retrieval_objectives=[dict(role=role,query=objective)])
                          for i,(speaker,text) in enumerate(evidence)]
+            if args.corrupt_summaries:
+                for i,card in enumerate(cards):
+                    claim = 'No particular answer fact was recorded.' if i == 0 else evidence[0][1]
+                    card['summary'] = claim
+                    card['memories'] = [dict(content=claim,record_type='fact',mode='asserted')]
+            if args.source_only:
+                cards = [{key:value for key,value in card.items() if key not in {'summary','memories'}}
+                         for card in cards]
             if repeat: cards.reverse()
             result=ranker.rank(query,cards,deadline=monotonic()+60)
             complete=len(result.scores)==len(cards)

@@ -144,7 +144,7 @@ TEMPORAL_MATCH_QUESTION = (
     "Does the original text in `target` support a specific instance of the activity and participants "
     "requested by `target.query`, with a status appropriate to the original `query`? "
     "Treat a shared person/topic, a different activity, and a denied occurrence as insufficient. "
-    "Use source words and speakers; the memory summary is a claim to check against the original."
+    "Use source words, speakers and dates."
 )
 
 
@@ -397,6 +397,7 @@ class JevReranker:
             return result
 
     def _batch(self, query, cards, deadline):
+        cards = [self._evidence_card(card) for card in cards]
         questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": SUPPORT_QUESTION},
             "criteria": {"true": "Strong contribution to the original answer under a matched retrieval objective.",
                          "false": "Lexical overlap or shared topic without useful answer evidence."}} for card in cards}
@@ -437,6 +438,18 @@ class JevReranker:
                 trace["seconds"] = monotonic() - started
                 self.calls.append(trace)
         return RankResult()
+
+    @staticmethod
+    def _evidence_card(card):
+        """Rank original evidence with retrieval metadata; preserve the caller's memory view."""
+        result = {key: card[key] for key in (
+            'id', 'original', 'source_ids', 'event_at', 'message_at',
+            'retrieval_roles', 'retrieval_objectives') if key in card}
+        if 'temporal_targets' in card:
+            result['temporal_targets'] = [
+                {key: target[key] for key in ('id', 'query', 'original', 'time') if key in target}
+                for target in card['temporal_targets']]
+        return result
 
     def close(self):
         self.client.close()
