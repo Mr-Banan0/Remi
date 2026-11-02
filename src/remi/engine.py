@@ -16,6 +16,7 @@ from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory,
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
 from .retrieval import clip_bytes, hybrid, tokenize, validate_vector
 from .settings import Settings
+from .source_context import source_context, with_source_context
 from .storage import MemoryStore
 from .add_pipeline import AddPipeline, DuplicateRequestConflict
 
@@ -902,7 +903,9 @@ class MemoryEngine:
             # Every channel is bounded and contributes ranks on the same RRF scale.
             merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
             baseline_order = {doc.id: index for index, (doc, _) in enumerate(merged)}
-            cards = [self._card(request.user_id, document, request.query, self.settings.evidence_bytes) for document, _ in merged]
+            context = source_context(self.store, request.user_id, [doc for doc, _ in merged], as_of)
+            cards = [self._card(request.user_id, with_source_context(document, context), request.query,
+                                self.settings.evidence_bytes) for document, _ in merged]
             _, source_memories = self._logical_groups(documents)
             retrieval_objectives = {}
             for channel in retrieval_channels:
@@ -929,7 +932,7 @@ class MemoryEngine:
                     if not stamp or card is None:
                         continue
                     target_id = stable_id("temporal_", index, document.id)
-                    target = self._card(request.user_id, document, step.query, self.settings.evidence_bytes)
+                    target = self._card(request.user_id, with_source_context(document, context), step.query, self.settings.evidence_bytes)
                     card.setdefault("temporal_targets", []).append({"id": target_id, "query": step.query,
                         "original": target["original"], "memories": target["memories"], "time": stamp})
                     temporal[target_id] = (index, document, stamp, card["id"])
@@ -1021,6 +1024,7 @@ class MemoryEngine:
                 "unavailable_condition_selection_count": unavailable_condition_count,
                 "candidates": [{"document_id": document.id, "source_ids": document.source_ids,
                     "memory_id": document.memory_id, "base_score": score, "rerank_score": scores.get(document.id),
+                    "evidence_source_ids": cards_by_id[document.id]["source_ids"],
                     "selected": document.id in {item.id for item in items}} for document, score in merged]}
             return SearchResponse(data=items)
 

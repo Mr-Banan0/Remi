@@ -23,3 +23,7 @@ The first adjacent run returned 47,572 bytes at ten results on average, compared
 Live planning still generated reminder and motivational advice queries for an action request; the first gold source then ranked tenth. MRR 85.38% remains below the historical 85.58% target. A combined private-history task prefix and adjacent-context run is being evaluated; stable superiority is not established.
 
 Historical source visibility now also bounds adjacent messages. The completed snapshot runs use query clocks later than all their source dates, so this added boundary does not change their comparison. An independent test excludes a future-dated neighbor while retaining visible neighbors.
+
+## Promotion and remaining gap
+
+V83 promotes adjacent context to the default Search evidence path. Its temporary experiment switch and duplicate implementation are removed. Use the original frozen `a5defcc` checkout to reproduce the earlier ablations. The private-history-prefix combination completed with MRR 78.46% and remains excluded from production. Full fresh-ingestion validation of V83 is still required.
