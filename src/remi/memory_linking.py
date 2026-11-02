@@ -33,6 +33,10 @@ Judge each supplied pair of memories. Return LinkPlan JSON using the supplied sc
 # Meaning of a link
 A related link is an internal search hint. Both memories remain separate. Select a pair when both describe the same identifiable activity, project or continuing situation and contribute different details, or when one supplies a specific applicable condition for the other. Contextual inference is allowed; explicit causation is optional.
 
+For each pair, first establish what A refers to from A and its supplied evidence, and what B refers to from B and its supplied evidence. A vague phrase such as "that experience" stays unresolved when its own evidence supplies no referent. The other candidate is a possible companion, not evidence for filling that gap.
+Then compare the actual participants, undertaking and applicable circumstances. A condition applies to the person or resource it describes, within its stated scope and time. A preference for one activity or setting requires a matching use in the other memory. A broad lesson or feeling and a possible illustration of it receive related=false; an experience grounded in one identified undertaking can connect to details of that undertaking.
+Write the pair's reason as a short concrete comparison of these established meanings. Return related=false when a shared undertaking or applicable condition remains unsupported. Judge each pair from its own A, B and evidence regardless of adjacent candidates or their order.
+
 Apply these rules to each pair:
 1. Same identifiable project or activity: different concrete details such as scope, resources, location and schedule receive related=true.
 2. Applicable condition: a current restriction, resource or preference that affects the activity receives related=true. Conflicting plans and constraints are especially useful together: related expresses relevance, not agreement or endorsement.
@@ -53,6 +57,32 @@ Return links with one decision per supplied L handle. reason names the concrete 
 
 
 EXAMPLES = [
+    (
+        'PAIR L1\nA: Learning alongside other people lifts my spirits.\nB: I played chess with my aunt on Sunday.\n'
+        'PAIR L2\nA: That experience lifted my spirits.\nB: I played chess with my aunt on Sunday.\n'
+        'E1: That experience lifted my spirits.',
+        {'links': [
+            {'pair_id': 'L1', 'reason': 'A is a broad feeling; B is a possible illustration without an identified shared undertaking.', 'related': False},
+            {'pair_id': 'L2', 'reason': 'A leaves the experience unidentified; B supplies no evidence that A refers to this chess game.', 'related': False},
+        ]},
+    ),
+    (
+        'PAIR L1\nA: That decision saved me time.\nB: I took the ferry to the island on July 3.\n'
+        'PAIR L2\nA: That decision saved me time.\nB: I took a bus to the airport in May.\n'
+        'E1: Taking the ferry to the island on July 3 was a good decision. That decision saved me time.',
+        {'links': [
+            {'pair_id': 'L1', 'reason': 'E1 identifies A as the July 3 ferry decision described in B.', 'related': True},
+            {'pair_id': 'L2', 'reason': 'E1 identifies A as a July ferry trip; B is a separate May bus trip.', 'related': False},
+        ]},
+    ),
+    (
+        'PAIR L1\nA: I require step-free access when choosing accommodation.\nB: My brother booked a room reached only by stairs for his solo trip.\n'
+        'PAIR L2\nA: I require step-free access when choosing accommodation.\nB: I am considering a room reached only by stairs for my trip.',
+        {'links': [
+            {'pair_id': 'L1', 'reason': 'The access requirement concerns me; B is accommodation for my brother alone.', 'related': False},
+            {'pair_id': 'L2', 'reason': 'My accommodation choice conflicts with my applicable access requirement.', 'related': True},
+        ]},
+    ),
     (
         'PAIR L1\nA: Lena rehearsed a piano piece at home.\n  Event time: 2025-03-02\nB: Lena rehearsed a piano piece at home using a new metronome.\n  Event time: 2025-03-18',
         {'links': [{'pair_id': 'L1', 'reason': 'Separate rehearsals; the new detail describes a later occasion without a specific connection to the earlier one.', 'related': False}]},
