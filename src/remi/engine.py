@@ -231,26 +231,51 @@ class MemoryEngine:
     def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of):
         from .graph import active_edges, active_connections
         from .subject_identity import visible_subject, matching_subjects
-        edges=active_edges(self.store,owner,as_of);mids={d.memory_id for d in seed_documents if d.memory_id}
+        edges=active_edges(self.store,owner,as_of)
         source_ids={sid for d in seed_documents for sid in d.source_ids}
+        visible_memories={}
+        by_source={}
         for original in self.store.memories(owner):
             memory=visible_memory(original,as_of)
-            if memory and source_ids.intersection(memory.current.source_ids):mids.add(memory.id)
+            if memory is None:
+                continue
+            visible_memories[memory.id]=memory
+            for source_id in memory.current.source_ids:
+                by_source.setdefault(source_id,[]).append(memory.id)
+        ordered_seeds=[]
+        for document in seed_documents:
+            candidates=([document.memory_id] if document.memory_id else [])
+            candidates.extend(mid for source_id in document.source_ids
+                              for mid in sorted(by_source.get(source_id,[])))
+            for mid in candidates:
+                if mid in visible_memories and mid not in ordered_seeds:
+                    ordered_seeds.append(mid)
+        mids=set(ordered_seeds)
         objects={obj.id:obj for raw in self.store.list('objects',owner) if (obj:=visible_subject(raw,owner,as_of))}
         users={obj.id for obj in objects.values() if obj.is_user}
         entities={e.target for e in edges if e.origin in mids}-users
         entities.update(obj.id for obj,matches in matching_subjects(self.store,owner,[query],as_of,limit=24) if matches and not obj.is_user)
         record_ids={edge.origin for edge in edges if edge.target in entities}
-        visible_memories={m.id for original in self.store.memories(owner)
-                          if (m:=visible_memory(original,as_of))}
-        seed_ids=set(sorted(mids & visible_memories)[:24]);related_ids=set(seed_ids)
+        seed_ids=set(ordered_seeds[:24]);related_ids=set(seed_ids)
         navigation=[edge for edge in active_connections(self.store,owner,as_of)
                     if edge.origin in visible_memories and edge.target in visible_memories]
         adjacent_ids=set()
         for edge in navigation:
             if edge.origin in seed_ids:adjacent_ids.add(edge.target)
             if edge.target in seed_ids:adjacent_ids.add(edge.origin)
-        neighbors=set(sorted(adjacent_ids-seed_ids)[:max(0,24-len(seed_ids))])
+        neighbor_ids=adjacent_ids-seed_ids
+        neighbor_documents=[d for d in documents if d.memory_id in neighbor_ids
+                            and d.revision_id==visible_memories[d.memory_id].current.id]
+        neighbor_ranked=(self._hybrid(owner,query,neighbor_documents,vector,
+                                     limit=len(neighbor_documents)) if neighbor_documents else [])
+        neighbor_order=list(dict.fromkeys(d.memory_id for d,_ in neighbor_ranked))
+        root_rank={mid:position for position,mid in enumerate(ordered_seeds[:24])}
+        proximity={mid:min(root_rank.get(edge.origin,24) if edge.target==mid else
+                           root_rank.get(edge.target,24) for edge in navigation
+                           if mid in (edge.origin,edge.target)) for mid in neighbor_ids}
+        neighbor_order.extend(mid for mid in sorted(neighbor_ids,key=lambda mid:(proximity[mid],mid))
+                              if mid not in neighbor_order)
+        neighbors=set(neighbor_order[:24])
         related_ids.update(neighbors)
         record_ids.update(related_ids)
 
@@ -265,10 +290,10 @@ class MemoryEngine:
         pool=[d for d in documents if d.memory_id in record_ids or d.memory_id is None and d.source_ids and d.source_ids[0] in adjacent]
         ranked=self._hybrid(owner,query,pool,vector,limit=max(self.settings.graph_limit,len(neighbors)))
         structural=[]
-        for memory_id in sorted(neighbors):
+        for memory_id in neighbor_order[:24]:
             hit=next(((document,score) for document,score in ranked if document.memory_id==memory_id),None)
             if hit is None:
-                document=next((document for document in pool if document.memory_id==memory_id),None)
+                document=next((document for document in neighbor_documents if document.memory_id==memory_id),None)
                 hit=(document,0.0) if document is not None else None
             if hit is not None:structural.append(hit)
         seen={document.id for document,_ in structural}
