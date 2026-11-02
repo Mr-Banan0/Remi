@@ -1,5 +1,5 @@
 """Single public version identity for the Remi runtime and evaluation tools."""
 
-VERSION = "0.2.8"
-PIPELINE = "remi-0.2.8"
+VERSION = "0.2.9"
+PIPELINE = "remi-0.2.9"
 

@@ -303,7 +303,9 @@ class MemoryEngine:
         sources = self.store.sources(owner, document.source_ids)
         window_ids = {span.source_id for span in document.source_windows}
         terms = set(tokenize(query))
+        primary_source = document.source_ids[0] if document.source_ids else None
         sources = sorted(sources, key=lambda source: (
+            source.id == primary_source,
             source.id in window_ids,
             len(terms & set(tokenize(source.content))),
             source.message_at or source.created_at,
@@ -321,7 +323,7 @@ class MemoryEngine:
                 blocks.append({"source_id": source.id, "role": source.role, "message_at": source.message_at,
                                "text": excerpt, "rendered": header + excerpt})
         raw = "\n\n".join(block["rendered"] for block in blocks)
-        return {"id": document.id, "source_ids": document.source_ids, "memory_id": document.memory_id,
+        return {"id": document.id, "source_ids": [block["source_id"] for block in blocks], "memory_id": document.memory_id,
                 "event_at": document.event_at, "message_at": document.message_at,
                 "original": raw, "summary": clip_bytes(document.text, 400),
                 "memories": [{"id": memory.memory_id, "revision_id": memory.revision_id,
