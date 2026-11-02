@@ -9,3 +9,9 @@
 结果文件为 `/private/tmp/remi-rerank-summary-stress.json`、`/private/tmp/remi-rerank-source-only-stress.json`、`/private/tmp/remi-v77-summary-stress.json`。完整离线回归 502 passed，版本和接口另验 10 passed。新增测试核验来源原文、时间目标与检索目的保留、派生字段隔离、调用方卡片不变。
 
 本版保留候选池、RRF、Jev 提示词主体、打分协议、返回顺序规则和模型调用次数。V75 与 V77 将复用 V74 的每题查询前快照，只比较 Search；V76 完整实验继续验证连边变化。各实验使用冻结目录。
+
+## 正确信息下的独立对照
+
+另用六类未参与上述压力测试的场景检查有效摘要被移除后的代价：相对日期改期、转述人物、偏好变化、选项指代、不同日期的事件、搬家后的当前住址。交换候选顺序，新旧输入均为 12/12。记录在 `/private/tmp/remi-v76-rerank-context.json` 与 `/private/tmp/remi-v77-rerank-context.json`。
+
+来源输入仍把最新偏好排在旧偏好之前，但其中一组分差由 0.16 缩至 0.01，当前住址与历史住址的分差也缩小。小样本显示基本解析保留，排序区分度仍需完整快照重放验证；不能由 12/12 推断所有历史状态查询均无退化。
