@@ -69,8 +69,8 @@ def resolve_time(expression: str | None, text: str, anchor: str | None) -> str |
     return None
 
 
-def calendar_dates(text, base):
-    """Resolve explicit English month/day expressions using the same source-year policy."""
+def _english_calendar_parts(text):
+    """Read calendar components while preserving an omitted year."""
     names = {name.casefold(): number for number in range(1, 13)
              for name in (calendar.month_name[number], calendar.month_abbr[number])}
     names["sept"] = 9
@@ -79,12 +79,43 @@ def calendar_dates(text, base):
                 rf"\b(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<month>{months})\.?(?:,?\s+(?P<year>\d{{4}}))?\b"]
     for pattern in patterns:
         for match in re.finditer(pattern, text, re.IGNORECASE):
-            year = int(match["year"]) if match["year"] else base.year if base else None
-            if year:
-                try:
-                    yield datetime(year, names[match["month"].casefold()], int(match["day"]), tzinfo=timezone.utc)
-                except ValueError:
-                    continue
+            yield (int(match['year']) if match['year'] else None,
+                   names[match['month'].casefold()], int(match['day']))
+
+
+def calendar_dates(text, base):
+    """Resolve English month/day expressions using the source-year policy for writes."""
+    for year, month, day in _english_calendar_parts(text):
+        year = year if year is not None else base.year if base else None
+        if year:
+            try:
+                yield datetime(year, month, day, tzinfo=timezone.utc)
+            except ValueError:
+                continue
+
+
+def yearless_calendar_day(expression, text):
+    """Preserve supported month/day precision for a query without a selected source."""
+    if not expression:
+        return None
+    def parts(value):
+        yield from _english_calendar_parts(value)
+        for match in re.finditer(r'(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日', value):
+            yield (int(match[1]) if match[1] else None, int(match[2]), int(match[3]))
+        for match in re.finditer(r'\b(\d{4})-(\d{2})-(\d{2})\b', value):
+            yield tuple(int(component) for component in match.groups())
+    supplied = list(parts(expression))
+    if len(supplied) != 1:
+        return None
+    year, month, day = supplied[0]
+    try:
+        datetime(year or 2000, month, day)
+    except ValueError:
+        return None
+    supported = list(parts(text))
+    if any(y is not None and (m,d) == (month,day) for y,m,d in supported):
+        return None
+    return (month,day) if (None,month,day) in supported else None
 
 
 def absolute_content(content: str, source_text: str, anchor: str | None) -> str:

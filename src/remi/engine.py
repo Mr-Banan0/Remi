@@ -9,7 +9,7 @@ from time import monotonic
 
 from pydantic import ValidationError
 
-from .clock import in_view, parse_time, resolve_time, utcnow
+from .clock import in_view, parse_time, resolve_time, utcnow, yearless_calendar_day
 from .heat import hot_view, visible_memory
 from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
@@ -450,15 +450,16 @@ class MemoryEngine:
                     'error':'anchor_source_not_available','allowed_source_ids':sorted(available_sources)})
                 continue
             supported_time = None
+            calendar_day = yearless_calendar_day(search.time_expression, question) if source is None else None
             if search.time_expression:
                 supported_time = resolve_time(search.time_expression,
                     source.content if source else question,source.message_at if source else as_of)
-                if supported_time is None:
+                if supported_time is None and calendar_day is None:
                     errors.append({'field': f'searches.{position}.time_expression',
                                    'error': 'time_not_supported_by_anchor_source' if source else 'time_not_supported_by_question',
                                    'expected':'One supported date phrase, or null; keep date ranges in query.'})
                     continue
-            purpose = ('scheduled' if supported_time and
+            purpose = ('scheduled' if supported_time and not calendar_day and
                        parse_time(supported_time).date() > parse_time(as_of).date() else 'history')
             temporal_role = search.role in {'premise_check', 'temporal_anchor', 'answer_detail'}
             steps.append(RecallStep(
@@ -472,6 +473,7 @@ class MemoryEngine:
     def _recall_step(self, owner, question, step, allowed_sources, documents, as_of, deadline,
                      prior_results=(), vector=None, allow_embedding=True):
         scope = None
+        calendar_day = None
         if step.anchor_step is not None:
             if step.anchor_step >= len(prior_results):
                 return [], "anchor_step_unavailable"
@@ -503,16 +505,29 @@ class MemoryEngine:
                     except ValueError:
                         pass
         elif step.time_expression:
-            scope = resolve_time(step.time_expression, question, as_of)
+            calendar_day = yearless_calendar_day(step.time_expression, question)
+            if calendar_day and step.relation in {'before', 'after'}:
+                return [], 'time_scope_unresolved'
+            if calendar_day is None:
+                scope = resolve_time(step.time_expression, question, as_of)
         restricted = bool(step.time_expression or step.anchor_source_id or step.anchor_step is not None
                           or step.relation != "independent")
-        if restricted and not scope:
+        if restricted and not scope and not calendar_day:
             return [], "time_scope_unresolved"
         if scope and step.purpose == "history" and parse_time(scope).date() > parse_time(as_of).date():
             return [], "action_time_is_not_history_scope"
         pool, unknown = [], 0
         for document in documents:
             stamp = document.message_at if step.time_basis == "message" else document.event_at
+            if stamp is None and step.role == 'premise_check':
+                stamp = document.message_at
+            if calendar_day:
+                if not stamp:
+                    unknown += 1
+                    continue
+                clock = parse_time(stamp)
+                if (clock.month, clock.day) != calendar_day:
+                    continue
             if scope:
                 if not stamp:
                     unknown += 1
@@ -528,6 +543,8 @@ class MemoryEngine:
                   if self.embedder and allow_embedding else None)
         hits = self._hybrid(owner, step.query, pool, vector, limit=self.settings.candidate_limit)
         coverage = "bounded_candidates" + ("_unknown_times" if unknown else "")
+        if calendar_day:
+            coverage += '_year_unspecified'
         return hits, coverage
 
     @staticmethod
