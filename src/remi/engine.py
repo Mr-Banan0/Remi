@@ -620,6 +620,22 @@ class MemoryEngine:
         return sorted(bundles.values(), key=lambda item: (-item[1], item[0].id))
 
     @classmethod
+    def _bundle_annotations(cls, bundles, documents, annotations):
+        """Retain every retrieved purpose contributing to a primary-source package."""
+        _, source_memories = cls._logical_groups(documents)
+        by_source = {}
+        for document in documents:
+            if document.source_ids:
+                key = cls._logical_key(document, source_memories)
+                by_source.setdefault(document.source_ids[0], set()).update(annotations.get(key, set()))
+        result = {key:set(values) for key,values in annotations.items()}
+        for document,_ in bundles:
+            if document.source_ids:
+                key = cls._logical_key(document, source_memories)
+                result.setdefault(key,set()).update(by_source.get(document.source_ids[0],set()))
+        return result
+
+    @classmethod
     def _fuse_channels(cls, channel_hits, documents):
         """Fuse independent ranked channels by logical Memory using rank, never raw score scale."""
         _, source_memories = cls._logical_groups(documents)
@@ -637,7 +653,8 @@ class MemoryEngine:
                 scores[key] = scores.get(key, 0.0) + channel.get('weight', 1.0) / (60 + position)
         hits = [(document, scores[cls._logical_key(document, source_memories)])
                 for document in unique.values()]
-        return cls._source_bundles(cls._merge(hits, documents)), roles
+        bundles = cls._source_bundles(cls._merge(hits, documents))
+        return bundles, cls._bundle_annotations(bundles, documents, roles)
 
     @staticmethod
     def _fallback_query_mode(query):
@@ -877,6 +894,7 @@ class MemoryEngine:
                 for document, _ in channel['hits']:
                     key = self._logical_key(document, source_memories)
                     retrieval_objectives.setdefault(key, set()).add(objective)
+            retrieval_objectives = self._bundle_annotations(merged, documents, retrieval_objectives)
             for card, (document, _) in zip(cards, merged):
                 key = self._logical_key(document, source_memories)
                 card['retrieval_roles'] = sorted(retrieval_roles.get(key, {'direct'}))
