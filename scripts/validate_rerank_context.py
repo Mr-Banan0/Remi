@@ -40,11 +40,15 @@ CASES = [
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--grounded',action='store_true')
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('fresh_output_required')
     load_environment(Path('.env'))
     _, _, ranker = providers_from_environment()
+    if args.grounded:
+        from scripts.grounded_reranker import GroundedReranker
+        ranker=GroundedReranker.from_existing(ranker)
     records = []
     for reverse in (False, True):
         for name, query, evidence in CASES:
@@ -54,9 +58,11 @@ def main():
                      for i,(source,summary) in enumerate(evidence)]
             if reverse:
                 cards.reverse()
-            result = ranker.rank(query,cards,deadline=monotonic()+60)
+            started = monotonic()
+            result = ranker.rank(query,cards,deadline=started+60)
             complete = len(result.scores) == len(cards)
             record = dict(case=name,reverse=reverse,scores=result.scores,complete=complete,
+                          seconds=monotonic()-started,components=ranker.calls[-1].get('components'),
                           passed=complete and result.scores['D0'] > max(result.scores['D1'],result.scores['D2']))
             records.append(record)
             args.output.write_text(json.dumps(records,ensure_ascii=False,indent=2))

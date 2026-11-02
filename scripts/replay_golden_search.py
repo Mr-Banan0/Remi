@@ -56,7 +56,10 @@ def execute(args):
     if planner_report is not None:
         engine.model.close()
         engine.model = FrozenSearchPlanner()
-    if getattr(args, 'full_rerank_cards', False):
+    if getattr(args, 'grounded_rerank', False):
+        from scripts.grounded_reranker import GroundedReranker
+        engine.reranker = GroundedReranker.from_existing(engine.reranker)
+    elif getattr(args, 'full_rerank_cards', False):
         engine.reranker._evidence_card = lambda card: card
     source_index_only = getattr(args, 'source_index_only', False)
     if source_index_only:
@@ -98,7 +101,8 @@ def execute(args):
                    'source_index_only':source_index_only,
                    'frozen_planner_report':str(planner_path) if planner_path else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
-                   'rerank_input':'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default'},
+                   'rerank_input':('grounded_blend' if getattr(args,'grounded_rerank',False) else
+                                   'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default')},
         "source_to_ref": mapping}
     def save(status):
         calls = diagnostics(engine)
@@ -184,7 +188,10 @@ def main():
                         help='Require the bank captured immediately before each original query')
     parser.add_argument('--frozen-planner',type=Path,
                         help='Replay all planner responses and clocks from this completed matching Search report')
-    parser.add_argument('--full-rerank-cards',action='store_true',
+    rerank = parser.add_mutually_exclusive_group()
+    rerank.add_argument('--grounded-rerank',action='store_true',
+                        help='Experiment-only: blend source and full scores using source support')
+    rerank.add_argument('--full-rerank-cards',action='store_true',
                         help='Experiment-only: include derived memory claims in Jev cards for paired ablation')
     execute(parser.parse_args())
 

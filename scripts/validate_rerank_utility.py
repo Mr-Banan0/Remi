@@ -75,11 +75,15 @@ def main():
                         help='Stress source verification with misleading derived summaries.')
     parser.add_argument('--source-only',action='store_true',
                         help='Experiment-only: omit derived summary and memory fields from reranking.')
+    parser.add_argument('--grounded',action='store_true')
     args=parser.parse_args()
     if args.output.exists(): raise ValueError('fresh_output_required')
     load_environment(args.env_file)
     if args.proposed: providers.SUPPORT_QUESTION=PROPOSED
     _,_,ranker=providers.providers_from_environment()
+    if args.grounded:
+        from scripts.grounded_reranker import GroundedReranker
+        ranker=GroundedReranker.from_existing(ranker)
     records=[]
     for repeat in range(2):
         for name,query,role,objective,*evidence in CASES:
@@ -100,10 +104,12 @@ def main():
                 cards = [{key:value for key,value in card.items() if key not in {'summary','memories'}}
                          for card in cards]
             if repeat: cards.reverse()
-            result=ranker.rank(query,cards,deadline=monotonic()+60)
+            started=monotonic()
+            result=ranker.rank(query,cards,deadline=started+60)
             complete=len(result.scores)==len(cards)
             passed=complete and result.scores['D0']>max(result.scores['D1'],result.scores['D2'])
-            records.append(dict(case=name,repeat=repeat,complete=complete,passed=passed,scores=result.scores))
+            records.append(dict(case=name,repeat=repeat,complete=complete,passed=passed,scores=result.scores,
+                                seconds=monotonic()-started,components=ranker.calls[-1].get('components')))
             args.output.write_text(json.dumps(records,ensure_ascii=False,indent=2))
             print(json.dumps(records[-1]),flush=True)
 
