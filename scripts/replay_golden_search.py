@@ -45,6 +45,13 @@ def execute(args):
         raise ValueError('complete_matching_planner_report_and_snapshots_required')
     if planner_report is not None and Path(planner_report.get('original_full_run',planner_path)).resolve() != args.original.resolve():
         raise ValueError('planner_report_must_use_the_same_original_bank')
+    prefix_path = getattr(args, 'planner_prefix_file', None)
+    prefix = prefix_path.read_text() if prefix_path else ''
+    if prefix_path and (planner_path or not prefix.strip() or len(prefix.encode()) > 4000):
+        raise ValueError('live_planner_and_nonempty_bounded_prefix_required')
+    if prefix:
+        import remi.providers as providers
+        providers.DECISION_PROMPT = prefix + '\n\n' + providers.DECISION_PROMPT
     os.umask(0o077)
     args.output.mkdir(parents=True)
     database = args.output / "memory.sqlite3"
@@ -100,6 +107,8 @@ def execute(args):
         "config": {**original["config"], 'settings':vars(engine.settings),
                    'source_index_only':source_index_only,
                    'frozen_planner_report':str(planner_path) if planner_path else None,
+                   'planner_prefix':prefix,
+                   'planner_prefix_sha256':hashlib.sha256(prefix.encode()).hexdigest() if prefix else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
                    'rerank_input':('grounded_blend' if getattr(args,'grounded_rerank',False) else
                                    'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default')},
@@ -186,7 +195,10 @@ def main():
                         help="Experiment-only source index ablation with graph and hot memory disabled")
     parser.add_argument('--require-query-snapshots', action='store_true',
                         help='Require the bank captured immediately before each original query')
-    parser.add_argument('--frozen-planner',type=Path,
+    planner = parser.add_mutually_exclusive_group()
+    planner.add_argument('--planner-prefix-file',type=Path,
+                         help='Experiment-only: prepend a bounded task definition and record it in the report')
+    planner.add_argument('--frozen-planner',type=Path,
                         help='Replay all planner responses and clocks from this completed matching Search report')
     rerank = parser.add_mutually_exclusive_group()
     rerank.add_argument('--grounded-rerank',action='store_true',
