@@ -17,3 +17,11 @@ Validation: full regression 517 passed; the extended Search integration test add
 `.local-data/search-v83-v81-boundaries-20261102-r1/result.json` uses the completed V81 fresh-ingestion snapshots and freezes that run's Planner and clocks. V83 reached R@10 95.73%, MRR 82.69%, R@100 97.44%; the original V81 run was 86.32%, 76.92%, 93.59%. Fresh-ingestion V83 is still running separately.
 
 Residual top-rank errors include an actual workshop on a different date, a morning preference above a physical constraint, photo-organization advice above a work-device report, and a proposed anecdote above an actual contact record. No explicit temporal-selection promotion caused these four errors. An experimental combination now retains adjacent context in returned evidence while separating primary-source contribution from auxiliary context for Jev. It uses the existing primary-source experiment and leaves production unchanged.
+
+## Completed fresh-ingestion validation
+
+Run `golden-v83-adjacent-20261102-r1/golden-gpt-4o-mini` completed all 47 Add calls, 13 main queries and three lifecycle queries. R@10 is 96.5812%, MRR@10 88.7179%, R@100 97.4359%, and lifecycle passes 3/3. These exceed the recorded historical bests of 88.0342%, 85.5769% and 92.3077%, respectively. This is one full run; repeated live validation remains necessary for a stability claim.
+
+Add mean/P95 latency is 56.98/138.74 seconds; Search mean/P95 is 11.35/14.08 seconds. Average returned evidence volume is 180,516 bytes across 39.54 cards. All requests completed. Diagnostics retain one recovered provider timeout and one repaired invalid model output.
+
+The remaining missing evidence in the last action query exists in the query-boundary source table and has two derived memories, but its source ID is absent from the final candidate pool. The Planner searched current physical limitations and recent training activities. This is a recall coverage gap rather than lost storage or final ranking. A separate misleading-action query has its first gold evidence at rank 5, and the device query at rank 3.
