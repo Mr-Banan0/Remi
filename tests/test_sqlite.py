@@ -90,7 +90,10 @@ def test_prior_user_and_assistant_context_survives_reopening(database):
         memory = second.store.memories("u1")[0]
         assert len(memory.current.source_ids) == 2
         assert memory.current.status == "planned"
-        assert second.store.edges_for("u1", origins={memory.id})[0].relation == "mentions"
+        evidence = second.store.sources("u1", memory.current.source_ids)
+        assert {source.role for source in evidence} == {'user', 'assistant'}
+        assert any('Thursday is the second' in source.content for source in evidence)
+        assert second.store.list('objects', 'u1') == []
     finally:
         second.close()
 
