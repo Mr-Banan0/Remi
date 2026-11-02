@@ -299,7 +299,7 @@ class MemoryEngine:
         seen={document.id for document,_ in structural}
         return [*structural,*[(document,score) for document,score in ranked if document.id not in seen]][:self.settings.graph_limit]
 
-    def _card(self, owner, document, query, budget):
+    def _source_blocks(self, owner, document, query, budget):
         sources = self.store.sources(owner, document.source_ids)
         window_ids = {span.source_id for span in document.source_windows}
         terms = set(tokenize(query))
@@ -328,6 +328,10 @@ class MemoryEngine:
             if excerpt:
                 blocks.append({"source_id": source.id, "role": source.role, "message_at": source.message_at,
                                "text": excerpt, "rendered": header + excerpt})
+        return blocks
+
+    def _card(self, owner, document, query, budget):
+        blocks = self._source_blocks(owner, document, query, budget)
         raw = "\n\n".join(block["rendered"] for block in blocks)
         return {"id": document.id, "source_ids": [block["source_id"] for block in blocks], "memory_id": document.memory_id,
                 "event_at": document.event_at, "message_at": document.message_at,
