@@ -67,7 +67,8 @@ def main():
                 state=packet(left,right);start=time.monotonic()
                 try:
                     output=provider(model,state,deadline=time.monotonic()+60)
-                    edges,issues=memory_linking.validate_plan(output,state)
+                    validator=old['validate_plan'] if version=='baseline' else memory_linking.validate_plan
+                    edges,issues=validator(output,state)
                     actual=bool(edges)
                     record=dict(case=label,repeat=repeat,version=version,expected=expected,
                         actual=actual,passed=actual==expected and not issues,output=output,issues=issues)

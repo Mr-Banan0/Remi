@@ -74,7 +74,9 @@ class ScriptedModel:
         self.extractor = extract or (lambda state, errors: {'commands': [command(state)]})
         self.decider = decide or (lambda state: {'query_mode': 'direct', 'action_time_expression': None,
                                                   'searches': [], 'relevant_memory_ids': []})
-        self.linker = link or (lambda state: {'links': []})
+        self.linker = link or (lambda state: {'links': [
+            dict(pair_id=pair['id'], reason='No specific connection.', related=False)
+            for pair in state['pairs']]})
         self.extractions, self.decisions = [], []
         self.link_states = []
         self.oracle_candidates, self.raw_commands = [], []

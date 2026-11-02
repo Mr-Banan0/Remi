@@ -19,15 +19,16 @@ from .subject_references import current_evidence
 
 class LinkChoice(StrictModel):
     pair_id: str = Field(pattern=r'^L[1-9][0-9]*$')
-    evidence_ids: list[str] = Field(min_length=1, max_length=1)
+    reason: str = Field(min_length=1, max_length=240)
+    related: bool
 
 
 class LinkPlan(StrictModel):
-    links: list[LinkChoice] = Field(max_length=24)
+    links: list[LinkChoice] = Field(max_length=48)
 
 
 PROMPT = """# Task
-Select a few useful associations between independent memories. Return LinkPlan JSON using the supplied schema. Each pair is a separate decision; an empty list is a complete answer.
+Judge each supplied pair of memories. Return LinkPlan JSON using the supplied schema. For every pair, write one short concrete reason, then decide related=true or false.
 
 # Meaning of a link
 A related link is an internal search hint. Both memories remain separate. Select a pair when both describe the same identifiable activity, project or continuing situation and contribute different details, or when one supplies a specific applicable condition for the other. Contextual inference is allowed; explicit causation is optional.
@@ -38,22 +39,22 @@ For each pair, identify the concrete shared situation and the additional informa
 CURRENT MEMORIES are the finalized memories written by this turn. RECALLED MEMORIES are bounded cross-type candidates. ELIGIBLE PAIRS are the only selectable pairs. EVIDENCE contains exact source fragments.
 
 # Output
-Return links only. For each selected pair, copy its L handle and select one allowed E handle containing the current context used for the inference. This quote records provenance, not proof of a causal claim. Select at most three pairs involving any current memory, prioritizing the most concrete connections. Each L handle appears once at most. Return links=[] when no pair qualifies.
+Return links with one decision per supplied L handle. reason names the concrete shared situation or explains the missing connection. related=true means that retrieving one memory makes the other a useful contextual companion. A shared named project with complementary details qualifies. A currently applicable preference or restriction and an activity affected by it qualify even when the source does not explicitly connect them. Broad similarity alone receives related=false. The program records provenance and applies the expansion budget. Judge pairs independently.
 """
 
 
 EXAMPLES = [
     (
         'PAIR L1\nA: The Cedar repair project needs replacement hinges.\nB: The Cedar repair project has a budget of 80 euros.\nE1: We set aside 80 euros for the Cedar repair project.\nAllowed evidence: E1',
-        {'links': [{'pair_id': 'L1', 'evidence_ids': ['E1']}]},
+        {'links': [{'pair_id': 'L1', 'reason': 'Complementary details of the Cedar repair project.', 'related': True}]},
     ),
     (
         'PAIR L1\nA: Last winter the bicycle had a flat tire.\nB: This autumn the bicycle needs new brake pads.\nE1: This autumn the bicycle needs new brake pads.\nAllowed evidence: E1',
-        {'links': []},
+        {'links': [{'pair_id': 'L1', 'reason': 'Separate bicycle repairs in different seasons.', 'related': False}]},
     ),
     (
         'PAIR L1\nA: The tenant currently lives in Bristol.\nB: The tenant completed a move to York last year.\nE1: The tenant has now moved from York to Bristol.\nAllowed evidence: E1\nReview the previously selected pair using the current contents.',
-        {'links': []},
+        {'links': [{'pair_id': 'L1', 'reason': 'The old York move does not describe current Bristol residence.', 'related': False}]},
     ),
     (
         """## CURRENT MEMORIES
@@ -69,7 +70,7 @@ L1 | N1 <-> N2
 ## EVIDENCE
 E1 | Mira cancelled the hike because her ankle injury still limits walking.
 """,
-        {"links": [{"pair_id": "L1", "evidence_ids": ["E1"]}]},
+        {'links': [{'pair_id': 'L1', 'reason': 'Walking limitation explains hike cancellation.', 'related': True}]},
     ),
     (
         """## CURRENT MEMORIES
@@ -87,7 +88,7 @@ E1 | Mira's phone stopped working.
 E2 | Because of that failure, Mira now uses a tablet for video calls.
 E3 | Mira's phone stopped working. Because of that failure, Mira now uses a tablet for video calls.
 """,
-        {"links": [{"pair_id": "L1", "evidence_ids": ["E3"]}]},
+        {'links': [{'pair_id': 'L1', 'reason': 'The tablet replaces the failed phone.', 'related': True}]},
     ),
     (
         """## CURRENT MEMORIES
@@ -103,7 +104,7 @@ L1 | N1 <-> N2
 ## EVIDENCE
 E1 | Mira likes jasmine tea. Her phone case is blue.
 """,
-        {"links": []},
+        {'links': [{'pair_id': 'L1', 'reason': 'Tea preference and phone-case color only share a person.', 'related': False}]},
     ),
 ]
 
@@ -225,6 +226,7 @@ def build_state(store, state, memories, dispositions):
                 if edge.origin not in current_ids and edge.target not in current_ids]
     return dict(owner=owner, current_memories=current, recalled_memories=recalled,
                 pairs=candidates, evidence=evidence,
+                source_provenance=dict(source_id=state['new_user_source']['id'],text=source_text),
                 handles=handle_rows,background_links=background,preserved_edges=preserved_edges,
                 truncated=truncated)
 
@@ -252,7 +254,6 @@ def provider_plan(model, state, *, deadline):
     schema = strict_schema(LinkPlan)
     choice = schema['$defs']['LinkChoice']['properties']
     choice['pair_id']['enum'] = [row['id'] for row in state['pairs']]
-    choice['evidence_ids']['items']['enum'] = [row['id'] for row in state['evidence']]
     body = render(state)
     messages = [dict(role='system', content=PROMPT)]
     for example, answer in EXAMPLES:
@@ -264,7 +265,8 @@ def provider_plan(model, state, *, deadline):
         trace = dict(kind='add_links', model=model.model, attempt=attempt + 1)
         try:
             response = model.client.chat.completions.create(model=model.model, temperature=0,
-                max_completion_tokens=2500, timeout=remaining(deadline, model.timeout), messages=messages,
+                max_completion_tokens=min(6500, 500 + 120 * len(state['pairs'])),
+                timeout=remaining(deadline, model.timeout), messages=messages,
                 response_format=dict(type='json_schema', json_schema=dict(
                     name='LinkPlan', strict=True, schema=schema)))
             if response.usage:
@@ -308,14 +310,17 @@ def validate_plan(raw, state):
         if pair is None or counts[choice.pair_id] != 1:
             issues.append(dict(code='link_pair_requires_unique_supplied_handle', pair_id=choice.pair_id))
             continue
-        if len(set(choice.evidence_ids)) != len(choice.evidence_ids) or any(
-                value not in pair['allowed_evidence_ids'] for value in choice.evidence_ids):
-            issues.append(dict(code='link_requires_allowed_unique_evidence', pair_id=choice.pair_id,
-                allowed_evidence_ids=pair['allowed_evidence_ids']))
+        if not choice.related:
             continue
         candidates.append((pair,choice))
+    for pair_id in pairs.keys() - counts.keys():
+        issues.append(dict(code='link_pair_decision_missing',pair_id=pair_id))
     edges=[Edge.model_validate(row) for row in state.get('preserved_edges',[])]
     degrees=Counter()
+    current_handles={row['memory_id']:row['handle'] for row in state['current_memories']}
+    for edge in edges:
+        degrees.update(current_handles[value] for value in (edge.origin,edge.target)
+                       if value in current_handles)
     for pair,choice in candidates:
         left,right=handles[pair['left']],handles[pair['right']]
         current=[row['handle'] for row in (left,right) if row['handle'].startswith('N')]
@@ -324,12 +329,16 @@ def validate_plan(raw, state):
             continue
         degrees.update(current)
         origin,target=sorted((left,right),key=lambda row:row['memory_id'])
-        selected=[evidence[value] for value in choice.evidence_ids]
-        quote=selected[0]['text']
+        selected=[evidence[value] for value in pair['allowed_evidence_ids'] if value in evidence]
+        if not selected:
+            issues.append(dict(code='link_source_missing',pair_id=pair['id']))
+            continue
+        provenance=state.get('source_provenance',selected[0])
+        quote=provenance['text']
         edges.append(Edge(id=stable_id('edge_',origin['revision_id'],target['revision_id'],
             origin['memory_id'],target['memory_id'],'related'),owner=state['owner'],
             origin=origin['memory_id'],target=target['memory_id'],relation='related',
             revision_id=origin['revision_id'],target_revision_id=target['revision_id'],
-            memory_id=origin['memory_id'],source_id=selected[0]['source_id'],quote=quote))
+            memory_id=origin['memory_id'],source_id=provenance['source_id'],quote=quote))
     return edges, issues
 

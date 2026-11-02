@@ -18,7 +18,7 @@ def linked_commands(state, errors):
 
 def select_first_pair(state):
     return {'links': [{'pair_id': state['pairs'][0]['id'],
-                       'evidence_ids': [state['pairs'][0]['allowed_evidence_ids'][0]]}]}
+                       'reason': 'Current restriction affects this activity.', 'related': True}]}
 
 
 def test_explicit_dependency_creates_one_version_bound_evidence_edge():
@@ -98,13 +98,13 @@ def test_graph_channel_keeps_a_direct_related_neighbor_for_final_reranking():
     assert fact.id in {document.memory_id for document,_ in hits}
 
 
-def test_link_validation_rejects_evidence_outside_the_pair_contract():
+def test_link_validation_rejects_unsupplied_pair():
     model=ScriptedModel(extract=linked_commands)
     engine=MemoryEngine(model=model)
     engine.add(request('Aster cancelled the hike because an ankle injury still limits walking.'))
     state=model.link_states[0]
-    edges,issues=validate_plan({'links':[{'pair_id':'L1','evidence_ids':['E999']}]},state)
-    assert edges==[] and issues[0]['code']=='link_requires_allowed_unique_evidence'
+    edges,issues=validate_plan({'links':[{'pair_id':'L999','reason':'Specific connection','related':True}]},state)
+    assert edges==[] and issues[0]['code']=='link_pair_requires_unique_supplied_handle'
     assert 'L1 | N1 <-> N2 | evidence: E1' in render(state)
 
 
@@ -117,7 +117,7 @@ def test_link_projection_keeps_individually_selected_triangle():
             dict(id='L1',left='N1',right='N2',allowed_evidence_ids=['E1'],existing=False,current_pair=True),
             dict(id='L2',left='N1',right='M1',allowed_evidence_ids=['E1'],existing=False,current_pair=False),
             dict(id='L3',left='N2',right='M1',allowed_evidence_ids=['E1'],existing=True,current_pair=False)],truncated=False)
-    edges,issues=validate_plan({'links':[{'pair_id':pair,'evidence_ids':['E1']} for pair in ('L1','L2','L3')]},state)
+    edges,issues=validate_plan({'links':[{'pair_id':pair,'reason':'Specific connection','related':True} for pair in ('L1','L2','L3')]},state)
     assert not issues and len(edges)==3
     assert {frozenset((edge.origin,edge.target)) for edge in edges}=={
         frozenset(('memory-N1','memory-N2')),frozenset(('memory-N2','memory-M1')),
@@ -130,9 +130,29 @@ def test_content_update_retires_old_link_when_model_rejects_new_pair():
     engine.add(request('Aster cancelled the hike because an ankle injury still limits walking.'))
     model.extractor=lambda state,errors:{'commands':[command(
         state,'Aster changed: the ankle injury no longer limits walking.',kind='fact')]}
-    model.linker=lambda state:{'links':[]}
+    model.linker=lambda state:{'links':[
+        dict(pair_id=pair['id'],reason='The limitation has ended.',related=False)
+        for pair in state['pairs']]}
     engine.add(request('Aster changed: the ankle injury no longer limits walking.',request_id='r2'))
     assert len(model.link_states)==2
     assert active_connections(engine.store,'u1','2025-01-01T00:00:00+00:00')==[]
     assert any(edge.relation=='related' for edge in engine.store.edges_for('u1'))
+
+
+def test_every_pair_has_explicit_decision_and_duplicate_pair_is_rejected():
+    model=ScriptedModel(extract=linked_commands)
+    engine=MemoryEngine(model=model)
+    engine.add(request('Aster cancelled the hike because an ankle injury still limits walking.'))
+    state=model.link_states[0]
+    edges,issues=validate_plan({'links':[]},state)
+    assert not edges and issues[0]['code']=='link_pair_decision_missing'
+    choice=dict(pair_id='L1',reason='Current limitation.',related=True)
+    edges,issues=validate_plan({'links':[choice,choice]},state)
+    assert not edges and all(issue['code']=='link_pair_requires_unique_supplied_handle' for issue in issues)
+
+
+def test_fewshots_match_current_schema():
+    from remi.memory_linking import EXAMPLES, LinkPlan
+    for _,answer in EXAMPLES:
+        assert LinkPlan.model_validate(answer)
 
