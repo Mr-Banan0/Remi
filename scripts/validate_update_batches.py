@@ -1,5 +1,6 @@
 """Check update identity with mixed candidates and shared-person distractors."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -93,6 +94,7 @@ def main():
     parser.add_argument('--env-file', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--holdout', action='store_true')
+    parser.add_argument('--individual', action='store_true')
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('fresh_output_required')
@@ -105,12 +107,24 @@ def main():
         for reverse in (False, True):
             for name, kind, old, new in HOLDOUT if args.holdout else CASES:
                 state = packet(kind, old, new, reverse)
-                raw = provider_plan(model, deepcopy(state), deadline=monotonic()+120)
+                started = monotonic()
+                if args.individual:
+                    def one(candidate):
+                        scoped = deepcopy(state)
+                        scoped['memory_candidates'] = [candidate]
+                        return provider_plan(model, scoped, deadline=started+120)
+                    with ThreadPoolExecutor(max_workers=3) as pool:
+                        parts = list(pool.map(one, state['memory_candidates']))
+                    raw = dict(reason='; '.join(part['reason'] for part in parts),
+                               items=[item for part in parts for item in part['items']])
+                else:
+                    raw = provider_plan(model, deepcopy(state), deadline=started+120)
                 plan = MemoryPlan.model_validate(raw)
                 actual = {item.ref: (item.operation, item.target_id) for item in plan.items}
                 expected = {f'C{i}': ('update' if target else 'add', target)
                             for i, (_, target) in enumerate(new, 1)}
                 results.append(dict(case=name, repeat=repeat, reverse=reverse,
+                    individual=args.individual, seconds=round(monotonic()-started,3),
                     passed=actual == expected, correct=sum(actual.get(k) == v for k,v in expected.items()),
                     expected=expected, output=raw))
                 args.output.write_text(json.dumps(results, ensure_ascii=False, indent=2))
