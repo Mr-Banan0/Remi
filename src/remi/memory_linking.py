@@ -27,22 +27,34 @@ class LinkPlan(StrictModel):
 
 
 PROMPT = """# Task
-Select sparse, source-grounded retrieval links between independent memories. Return LinkPlan JSON using the supplied schema.
+Select a few useful associations between independent memories. Return LinkPlan JSON using the supplied schema. Each pair is a separate decision; an empty list is a complete answer.
 
 # Meaning of a link
-A related link means that retrieving either memory can require the other memory to understand a cause, constraint, result or state change. The two memories retain independent value, while one supplies evidence needed to interpret or answer questions about the other.
+A related link is an internal search hint. Both memories remain separate. Select a pair when both describe the same identifiable activity, project or continuing situation and contribute different details, or when one supplies a specific applicable condition for the other. Contextual inference is allowed; explicit causation is optional.
 
-Select a pair only when one allowed evidence fragment explicitly states how the two endpoints are connected. A fragment that states only one endpoint does not support the link. A shared participant, topic, time, place, source turn or emotional tone by itself supplies no link. Two similar independent occurrences remain separate and unlinked. Revisions of one logical memory use the revision chain and are absent from the pair list. Select the smallest set of direct links that preserves the supported retrieval path; the program removes redundant cycles.
+For each pair, identify the concrete shared situation and the additional information each endpoint contributes. Check that participants, timing and circumstances support that connection. Shared mood, broad topic, person or routine alone is insufficient. Distinct occurrences require a concrete connection beyond similarity. When an interpretation requires inventing continuity or circumstances, leave the pair unselected. Judge both displayed endpoint contents, including updated contents, afresh. A previous link is a candidate for review. Cycles are allowed when each individual pair qualifies.
 
 # Input
 CURRENT MEMORIES are the finalized memories written by this turn. RECALLED MEMORIES are bounded cross-type candidates. ELIGIBLE PAIRS are the only selectable pairs. EVIDENCE contains exact source fragments.
 
 # Output
-Return links only. For each selected pair, copy its L handle and select one allowed E handle that explicitly expresses the dependency between both endpoints. Prefer a combined evidence span when adjacent sentences jointly express the dependency. Return links=[] when every pair is merely co-mentioned or topically similar. Each L handle appears at most once.
+Return links only. For each selected pair, copy its L handle and select one allowed E handle containing the current context used for the inference. This quote records provenance, not proof of a causal claim. Select at most three pairs involving any current memory, prioritizing the most concrete connections. Each L handle appears once at most. Return links=[] when no pair qualifies.
 """
 
 
 EXAMPLES = [
+    (
+        'PAIR L1\nA: The Cedar repair project needs replacement hinges.\nB: The Cedar repair project has a budget of 80 euros.\nE1: We set aside 80 euros for the Cedar repair project.\nAllowed evidence: E1',
+        {'links': [{'pair_id': 'L1', 'evidence_ids': ['E1']}]},
+    ),
+    (
+        'PAIR L1\nA: Last winter the bicycle had a flat tire.\nB: This autumn the bicycle needs new brake pads.\nE1: This autumn the bicycle needs new brake pads.\nAllowed evidence: E1',
+        {'links': []},
+    ),
+    (
+        'PAIR L1\nA: The tenant currently lives in Bristol.\nB: The tenant completed a move to York last year.\nE1: The tenant has now moved from York to Bristol.\nAllowed evidence: E1\nReview the previously selected pair using the current contents.',
+        {'links': []},
+    ),
     (
         """## CURRENT MEMORIES
 N1 | event | Mira cancelled the hike.
@@ -169,6 +181,9 @@ def build_state(store, state, memories, dispositions):
         left,right=by_memory_id.get(edge.origin),by_memory_id.get(edge.target)
         if left is None or right is None:continue
         origin,target=sorted((left,right),key=lambda row:row['memory_id'])
+        if (edge.revision_id != origin['revision_id'] or
+                edge.target_revision_id != target['revision_id']):
+            continue
         preserved_pairs.add(frozenset((origin['memory_id'],target['memory_id'])))
         preserved_edges.append(Edge(id=stable_id('edge_',origin['revision_id'],target['revision_id'],
             origin['memory_id'],target['memory_id'],'related'),owner=owner,
@@ -197,6 +212,10 @@ def build_state(store, state, memories, dispositions):
     for index, left in enumerate(current):
         for right in current[index + 1:]:
             add_pair(left['handle'], right['handle'])
+    for edge in preserved_raw:
+        left,right=by_memory_id.get(edge.origin),by_memory_id.get(edge.target)
+        if left is not None and right is not None:
+            add_pair(left['handle'],right['handle'])
     candidate_links = state.get('candidate_link_ids', {})
     for row in current:
         for memory_id in candidate_links.get(row['candidate_ref'], [])[:6]:
@@ -220,8 +239,10 @@ def render(state):
     if not state['recalled_memories']:
         lines.append('(none)')
     lines.extend(['', '## ELIGIBLE PAIRS'])
-    lines.extend(f"{row['id']} | {row['left']} <-> {row['right']} | evidence: {', '.join(row['allowed_evidence_ids'])} | existing: {'yes' if row['existing'] else 'no'}"
-                 for row in state['pairs'])
+    for row in state['pairs']:
+        left,right=state['handles'][row['left']],state['handles'][row['right']]
+        lines.extend([f"{row['id']} | {row['left']} <-> {row['right']} | evidence: {', '.join(row['allowed_evidence_ids'])}",
+                      'A: '+left['content'],'B: '+right['content']])
     lines.extend(['', '## EVIDENCE'])
     lines.extend(f"{row['id']} | {row['text']}" for row in state['evidence'])
     return '\n'.join(lines)
@@ -293,23 +314,15 @@ def validate_plan(raw, state):
                 allowed_evidence_ids=pair['allowed_evidence_ids']))
             continue
         candidates.append((pair,choice))
-    parent={}
-    def find(value):
-        parent.setdefault(value,value)
-        if parent[value]!=value:parent[value]=find(parent[value])
-        return parent[value]
-    def union(left,right):
-        left,right=find(left),find(right)
-        if left==right:return False
-        parent[right]=left;return True
-    for left,right in state.get('background_links',[]):union(left,right)
     edges=[Edge.model_validate(row) for row in state.get('preserved_edges',[])]
-    for edge in edges:union(edge.origin,edge.target)
-    for pair,choice in sorted(candidates,key=lambda row:(
-            0 if row[0]['existing'] else 1 if row[0]['current_pair'] else 2,row[0]['id'])):
+    degrees=Counter()
+    for pair,choice in candidates:
         left,right=handles[pair['left']],handles[pair['right']]
-        if not union(left['memory_id'],right['memory_id']):
+        current=[row['handle'] for row in (left,right) if row['handle'].startswith('N')]
+        if any(degrees[handle]>=3 for handle in current):
+            issues.append(dict(code='link_current_memory_budget',pair_id=pair['id']))
             continue
+        degrees.update(current)
         origin,target=sorted((left,right),key=lambda row:row['memory_id'])
         selected=[evidence[value] for value in choice.evidence_ids]
         quote=selected[0]['text']

@@ -108,7 +108,7 @@ def test_link_validation_rejects_evidence_outside_the_pair_contract():
     assert 'L1 | N1 <-> N2 | evidence: E1' in render(state)
 
 
-def test_link_projection_prunes_a_redundant_triangle():
+def test_link_projection_keeps_individually_selected_triangle():
     handles={name:dict(handle=name,memory_id='memory-'+name,revision_id='revision-'+name,
                        record_type='fact',content=name) for name in ('N1','N2','M1')}
     state=dict(owner='u1',handles=handles,background_links=[],current_memories=[handles['N1'],handles['N2']],
@@ -118,7 +118,21 @@ def test_link_projection_prunes_a_redundant_triangle():
             dict(id='L2',left='N1',right='M1',allowed_evidence_ids=['E1'],existing=False,current_pair=False),
             dict(id='L3',left='N2',right='M1',allowed_evidence_ids=['E1'],existing=True,current_pair=False)],truncated=False)
     edges,issues=validate_plan({'links':[{'pair_id':pair,'evidence_ids':['E1']} for pair in ('L1','L2','L3')]},state)
-    assert not issues and len(edges)==2
+    assert not issues and len(edges)==3
     assert {frozenset((edge.origin,edge.target)) for edge in edges}=={
-        frozenset(('memory-N1','memory-N2')),frozenset(('memory-N2','memory-M1'))}
+        frozenset(('memory-N1','memory-N2')),frozenset(('memory-N2','memory-M1')),
+        frozenset(('memory-N1','memory-M1'))}
+
+
+def test_content_update_retires_old_link_when_model_rejects_new_pair():
+    model=ScriptedModel(extract=linked_commands,link=select_first_pair)
+    engine=MemoryEngine(model=model)
+    engine.add(request('Aster cancelled the hike because an ankle injury still limits walking.'))
+    model.extractor=lambda state,errors:{'commands':[command(
+        state,'Aster changed: the ankle injury no longer limits walking.',kind='fact')]}
+    model.linker=lambda state:{'links':[]}
+    engine.add(request('Aster changed: the ankle injury no longer limits walking.',request_id='r2'))
+    assert len(model.link_states)==2
+    assert active_connections(engine.store,'u1','2025-01-01T00:00:00+00:00')==[]
+    assert any(edge.relation=='related' for edge in engine.store.edges_for('u1'))
 
