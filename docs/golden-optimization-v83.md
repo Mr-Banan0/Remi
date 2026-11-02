@@ -11,3 +11,9 @@ Evidence for adoption: two fixed-plan V76 bank replays reached R@10 96.58%, with
 The private-history Planner prefix combination did not improve MRR (78.46%) and is not part of production. The historical MRR target is 85.58%; live-plan stability and full fresh-ingestion validation remain outstanding. The goal is not complete.
 
 Validation: full regression 517 passed; the extended Search integration test additionally verifies ownership/request boundaries, future source exclusion, primary source preservation, byte budget, a single context-stage source scan, unchanged Planner source IDs and unchanged stored documents.
+
+## New-bank paired replay
+
+`.local-data/search-v83-v81-boundaries-20261102-r1/result.json` uses the completed V81 fresh-ingestion snapshots and freezes that run's Planner and clocks. V83 reached R@10 95.73%, MRR 82.69%, R@100 97.44%; the original V81 run was 86.32%, 76.92%, 93.59%. Fresh-ingestion V83 is still running separately.
+
+Residual top-rank errors include an actual workshop on a different date, a morning preference above a physical constraint, photo-organization advice above a work-device report, and a proposed anecdote above an actual contact record. No explicit temporal-selection promotion caused these four errors. An experimental combination now retains adjacent context in returned evidence while separating primary-source contribution from auxiliary context for Jev. It uses the existing primary-source experiment and leaves production unchanged.
