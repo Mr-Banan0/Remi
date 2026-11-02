@@ -36,9 +36,13 @@ A related link is an internal search hint. Both memories remain separate. Select
 Apply these rules to each pair:
 1. Same identifiable project or activity: different concrete details such as scope, resources, location and schedule receive related=true.
 2. Applicable condition: a current restriction, resource or preference that affects the activity receives related=true. Conflicting plans and constraints are especially useful together: related expresses relevance, not agreement or endorsement.
-3. Explicit continuation between distinct memories receives related=true.
+3. A specific continuation between distinct memories receives related=true: one is a step, outcome, prerequisite or response of the other's bounded undertaking. Repeating an activity on another occasion alone establishes recurrence, which receives related=false. A general habit or goal shared by many occasions supplies no pair-specific continuation.
 4. A shared person, emotion, broad subject or repeated routine alone receives related=false. Clearly different occurrences require an additional concrete connection. Ended conditions apply only to the matching historical circumstances.
 Use the displayed participants and timing. Keep every memory's original meaning. Judge updated contents afresh. Cycles are allowed when each pair qualifies.
+
+Event time identifies when an occurrence happened; planned time describes a schedule.
+Observed time records when the source reported the information, and alone establishes neither an event date nor the start or end of a preference.
+Compare the event dates of repeated activities. Separate occurrences become related only with an additional specific continuity, condition or dependency. Unknown times remain unknown.
 
 # Input
 CURRENT MEMORIES are the finalized memories written by this turn. RECALLED MEMORIES are bounded cross-type candidates. ELIGIBLE PAIRS are the only selectable pairs. EVIDENCE contains exact source fragments.
@@ -49,6 +53,14 @@ Return links with one decision per supplied L handle. reason names the concrete 
 
 
 EXAMPLES = [
+    (
+        'PAIR L1\nA: Lena rehearsed a piano piece at home.\n  Event time: 2025-03-02\nB: Lena rehearsed a piano piece at home using a new metronome.\n  Event time: 2025-03-18',
+        {'links': [{'pair_id': 'L1', 'reason': 'Separate rehearsals; the new detail describes a later occasion without a specific connection to the earlier one.', 'related': False}]},
+    ),
+    (
+        'PAIR L1\nA: The Solstice cabinet door broke.\n  Event time: 2025-03-02\nB: A replacement door for the broken Solstice cabinet was installed.\n  Event time: 2025-03-18',
+        {'links': [{'pair_id': 'L1', 'reason': 'The later repair addresses this specific cabinet failure.', 'related': True}]},
+    ),
     (
         'PAIR L1\nA: Elin has a maximum rental budget of 700 euros per month.\nB: Elin is considering a flat costing 950 euros per month.',
         {'links': [{'pair_id': 'L1', 'reason': 'The flat exceeds Elin\'s applicable rental budget, so these details should be retrieved together.', 'related': True}]},
@@ -120,7 +132,9 @@ E1 | Mira likes jasmine tea. Her phone case is blue.
 
 def _memory_row(handle, memory):
     return dict(handle=handle, memory_id=memory.id, revision_id=memory.current.id,
-                record_type=memory.record_type, content=memory.current.content)
+                record_type=memory.record_type, content=memory.current.content,
+                **{field:getattr(memory.current,field) for field in
+                   ('event_at','planned_at','observed_at','status','mode')})
 
 
 def build_state(store, state, memories, dispositions):
@@ -158,15 +172,19 @@ def build_state(store, state, memories, dispositions):
         memory = visible_memory(Memory.model_validate(raw), clock)
         if memory is None:
             continue
-        recalled_by_id.setdefault(other, dict(id=memory.id, revision_id=memory.current.id,
-            record_type=memory.record_type, content=memory.current.content))
+        recalled_by_id.setdefault(other, dict(id=memory.id))
 
     recalled = []
     for memory_id, row in list(recalled_by_id.items())[:12]:
         if memory_id in current_ids:
             continue
-        recalled.append(dict(handle='M' + str(len(recalled) + 1), memory_id=memory_id,
-            revision_id=row['revision_id'], record_type=row['record_type'], content=row['content']))
+        raw=store.get('memories',owner,memory_id)
+        if raw is None:
+            continue
+        memory=visible_memory(Memory.model_validate(raw),clock)
+        if memory is None:
+            continue
+        recalled.append(_memory_row('M' + str(len(recalled) + 1),memory))
     recalled_handles = {row['memory_id']: row['handle'] for row in recalled}
     handle_rows = {row['handle']: row for row in [*current, *recalled]}
 
@@ -241,11 +259,17 @@ def build_state(store, state, memories, dispositions):
 
 
 def render(state):
+    def describe(row):
+        timing='; '.join(f'{label}: {row[field]}' for field,label in (
+            ('event_at','Event time'),('planned_at','Planned time'),
+            ('observed_at','Observed time'),('status','Status'),('mode','Expression'))
+            if row.get(field) is not None)
+        return row['content'] + ('\n  '+timing if timing else '')
     lines = ['## CURRENT MEMORIES']
-    lines.extend(f"{row['handle']} | {row['record_type']} | {row['content']}"
+    lines.extend(f"{row['handle']} | {row['record_type']} | {describe(row)}"
                  for row in state['current_memories'])
     lines.extend(['', '## RECALLED MEMORIES'])
-    lines.extend((f"{row['handle']} | {row['record_type']} | {row['content']}"
+    lines.extend((f"{row['handle']} | {row['record_type']} | {describe(row)}"
                   for row in state['recalled_memories']),)
     if not state['recalled_memories']:
         lines.append('(none)')
@@ -253,7 +277,7 @@ def render(state):
     for row in state['pairs']:
         left,right=state['handles'][row['left']],state['handles'][row['right']]
         lines.extend([f"{row['id']} | {row['left']} <-> {row['right']} | evidence: {', '.join(row['allowed_evidence_ids'])}",
-                      'A: '+left['content'],'B: '+right['content']])
+                      'A: '+describe(left),'B: '+describe(right)])
     lines.extend(['', '## EVIDENCE'])
     lines.extend(f"{row['id']} | {row['text']}" for row in state['evidence'])
     return '\n'.join(lines)

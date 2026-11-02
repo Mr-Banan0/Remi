@@ -156,3 +156,29 @@ def test_fewshots_match_current_schema():
     for _,answer in EXAMPLES:
         assert LinkPlan.model_validate(answer)
 
+
+def test_link_packet_preserves_current_and_recalled_times():
+    model=ScriptedModel(extract=linked_commands,link=select_first_pair)
+    engine=MemoryEngine(model=model)
+    engine.add(request('Aster cancelled the hike because an ankle injury still limits walking.'))
+    model.extractor=lambda state,errors:{'commands':[command(
+        state,'Aster changed: the ankle injury no longer limits walking.',kind='fact')]}
+    engine.add(request('Aster changed: the ankle injury no longer limits walking.',request_id='r2'))
+    state=model.link_states[-1]
+    assert state['current_memories'] and state['recalled_memories']
+    for row in state['handles'].values():
+        memory=next(m for m in engine.store.memories('u1') if m.id==row['memory_id'])
+        for field in ('event_at','planned_at','observed_at','status','mode'):
+            assert row[field]==getattr(memory.current,field)
+    assert 'Observed time:' in render(state)
+
+
+def test_link_render_keeps_event_date_distinct_from_observation():
+    from scripts.validate_memory_links import packet
+    state=packet('A previous inspection.','A new inspection.')
+    state['handles']['M1'].update(event_at='2020-02-03',observed_at='2026-01-01')
+    state['handles']['N1'].update(event_at='2026-02-03',observed_at='2026-02-04')
+    body=render(state)
+    assert 'Event time: 2020-02-03; Observed time: 2026-01-01' in body
+    assert 'Event time: 2026-02-03; Observed time: 2026-02-04' in body
+
