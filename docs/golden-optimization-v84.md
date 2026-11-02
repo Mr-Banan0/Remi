@@ -25,3 +25,9 @@ Validation: 521 full regression tests passed, including the result-comparability
 The completed V83 fresh-ingestion bank was replayed with V84 using query-boundary snapshots and live Planner/Jev calls. Repeat 1 reached R@10 96.5812%, MRR@10 92.3077%, R@100 97.4359%; repeat 2 reached R@10 88.8889%, MRR@10 84.6154%, R@100 97.4359%. Both passed lifecycle 3/3 without request errors. Search mean/P95 was 11.63/14.18 seconds and 11.50/15.15 seconds. Reports are `search-v84-live-v83-20261102-r1` and `r2`.
 
 Repeat 2's action query produced navigation targets for reminder setup and motivational strategies under constraint/latest_state roles. Its two gold conditions fell from ranks 3/1 to 20/11. This demonstrates remaining Planner-to-ranker propagation of an incorrect retrieval objective. The stable-improvement criterion is still unmet despite the strong full V83 result. Production remains frozen while a generic objective-authority instruction is checked on independent synthetic examples.
+
+## Completed V84 fresh-ingestion run
+
+`golden-v84-primary-context-20261102-r1/golden-gpt-4o-mini` completed 47 Add calls, 13 main queries and all three lifecycle queries. R@10 is 92.7350%, MRR@10 92.3077%, R@100 97.4359%, and lifecycle passes 3/3. All requests succeeded. One invalid model response was repaired; no provider timeout was recorded. Add mean/P95 latency is 56.96/126.86 seconds, Search mean/P95 is 11.21/13.38 seconds. Average returned content is 179,977 bytes across 39.15 cards.
+
+The fresh run exceeds all recorded historical-best metrics, while the third-bank live-repeat regression above remains evidence against a stable-completion claim. Current production stays V84 while independent Planner experiments investigate action-query drift.

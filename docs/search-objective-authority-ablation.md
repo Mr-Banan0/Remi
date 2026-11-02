@@ -14,3 +14,7 @@ Both variants pass these simple pairs. Increased score separation alone does not
 Both runs use the V83 query-boundary bank and freeze all Planner outputs and clocks from `search-v84-live-v83-20261102-r2`. Control `search-v84-authority-control-v83-20261102-r1` scores R@10 92.7350%, MRR@10 85.3846%. Experimental `search-v84-authority-v83-paired-20261102-r1` scores R@10 88.8889%, MRR@10 83.3333%. Both have R@100 97.4359%, lifecycle 3/3 and zero request errors. Candidate IDs and base scores match in 16/16 queries.
 
 The instruction is rejected for production. The action query's first gold rank is 10 in control and 11 with the instruction. Synthetic pair improvements did not transfer to the complete candidate set. Correcting query construction requires a separate experiment; current production remains V84.
+
+## Small query-template check
+
+A separate embedding-only test compared original requests, advice-oriented navigation, and a programmatic feasibility template on the same six independent multilingual scenarios. It used twelve competing statements. The template placed the needed condition at ranks 3, 1, 2, 1, 4, 10 (study, pet adoption, dock compatibility, travel, Chinese study, Spanish budget), versus original-query ranks 3, 2, 2, 2, 3, 10. The weak improvement and remaining failures do not justify production or full Golden evaluation. Output is `/private/tmp/remi-action-query-check.json`.
