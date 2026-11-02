@@ -626,13 +626,14 @@ class MemoryEngine:
         scores, roles, unique = {}, {}, {}
         for channel in channel_hits:
             seen = set()
-            for position, (document, _) in enumerate(channel['hits'], 1):
+            for document, _ in channel['hits']:
                 key = cls._logical_key(document, source_memories)
                 unique.setdefault(document.id, document)
                 roles.setdefault(key, set()).add(channel['role'])
                 if key in seen:
                     continue
                 seen.add(key)
+                position = len(seen)
                 scores[key] = scores.get(key, 0.0) + channel.get('weight', 1.0) / (60 + position)
         hits = [(document, scores[cls._logical_key(document, source_memories)])
                 for document in unique.values()]
