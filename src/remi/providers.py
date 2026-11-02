@@ -70,7 +70,7 @@ anchor_step is JSON number 0 for a second search anchored to the first search; o
 
 Classify query_mode first. The program supplies mechanical retrieval fields after this decision.
 - direct: searches may be empty when the visible evidence already answers the question.
-- verify_premise: include premise_check. Preserve stable people, place and explicit date anchors; ask what actually happened without treating the asserted event or outcome as true.
+- verify_premise: include premise_check. Test independently checkable assumptions separately. For an assumed activity tied to a date, use one search for the user's actual activities on that date, and one for the assumed activity's actual occurrence, date and outcome across history. The date-only search leaves the assumed activity and venue open; the activity search leaves its date open. These independent searches allow a mistaken association to be corrected. Use a single search when only one assumption needs checking.
 - action: include constraint and latest_state. Translate the action into abilities, risks, practical limits and commitments; retrieve conditions that affect feasibility and later evidence showing whether they still apply.
 - temporal_join: include temporal_anchor followed by answer_detail. The second search uses anchor_step=0 and the requested before, after or same_day relation.
 - current_state: include latest_state; use the second search for a condition or answer detail needed to interpret that state.
@@ -94,13 +94,16 @@ DECISION_EXAMPLES = [
              "relation": "independent"}], "relevant_memory_ids": []},
     ),
     (
-        {"query": "I remember giving a budget lecture at Harbor School on May 4. How did students respond?",
-         "reference_time": "2028-06-01T00:00:00+00:00", "evidence": [], "current_conditions": []},
+        {"query": "I remember having an orchard picnic on June 12. Which dessert did we serve?",
+         "reference_time": "2028-07-01T00:00:00Z", "evidence": [], "current_conditions": []},
         {"query_mode": "verify_premise", "action_time_expression": None,
-         "searches": [{"role": "premise_check",
-             "query": "Actual activities involving the user at Harbor School on May 4",
-             "time_expression": "May 4", "anchor_source_id": None, "anchor_step": None,
-             "relation": "same_day"}], "relevant_memory_ids": []},
+         "searches": [
+             {"role": "premise_check", "query": "The user's actual activities on June 12",
+              "time_expression": "June 12", "anchor_source_id": None, "anchor_step": None,
+              "relation": "same_day"},
+             {"role": "premise_check", "query": "The user's orchard picnic: actual occurrence, date and food served",
+              "time_expression": None, "anchor_source_id": None, "anchor_step": None,
+              "relation": "independent"}], "relevant_memory_ids": []},
     ),
     (
         {"query": "Should I resume running tomorrow?", "reference_time": "2028-06-01T00:00:00+00:00",
