@@ -20,6 +20,7 @@ from remi.api import create_app, environment_engine
 from remi.settings import load_environment
 from remi.storage import SQLiteStore, TABLES
 from scripts.golden_snapshots import copy_query_snapshot
+from scripts.frozen_search_plan import FrozenSearchPlanner
 from scripts.golden_adapter import AML_METRIC_CUTOFFS, AML_TOP_K, actions, add_payload, input_catalog, metrics, score_case
 from scripts.run_golden import compare, diagnostics, fingerprint, latency, verify_baseline
 
@@ -37,6 +38,13 @@ def execute(args):
         *original['questions'], *original['lifecycle_searches']])
     if getattr(args, 'require_query_snapshots', False) and not query_snapshots:
         raise ValueError('query_boundary_snapshots_required')
+    planner_path = getattr(args, 'frozen_planner', None)
+    planner_report = json.loads(planner_path.read_text()) if planner_path else None
+    if planner_report is not None and (not query_snapshots or not planner_report['complete']
+            or planner_report['dataset_sha256'] != original['dataset_sha256']):
+        raise ValueError('complete_matching_planner_report_and_snapshots_required')
+    if planner_report is not None and Path(planner_report.get('original_full_run',planner_path)).resolve() != args.original.resolve():
+        raise ValueError('planner_report_must_use_the_same_original_bank')
     os.umask(0o077)
     args.output.mkdir(parents=True)
     database = args.output / "memory.sqlite3"
@@ -45,6 +53,11 @@ def execute(args):
     load_environment(args.env_file)
     os.environ["REMI_DB_PATH"] = str(database)
     engine = environment_engine()
+    if planner_report is not None:
+        engine.model.close()
+        engine.model = FrozenSearchPlanner()
+    if getattr(args, 'full_rerank_cards', False):
+        engine.reranker._evidence_card = lambda card: card
     source_index_only = getattr(args, 'source_index_only', False)
     if source_index_only:
         engine.settings = replace(engine.settings, graph_enabled=False, hot_enabled=False)
@@ -82,7 +95,11 @@ def execute(args):
         "add_calls": original["add_calls"], "lifecycle_add_calls": original["lifecycle_add_calls"],
         "questions": [], "lifecycle_searches": [], "errors": [], "database": str(database),
         "config": {**original["config"], 'settings':vars(engine.settings),
-                   'source_index_only':source_index_only}, "source_to_ref": mapping}
+                   'source_index_only':source_index_only,
+                   'frozen_planner_report':str(planner_path) if planner_path else None,
+                   'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
+                   'rerank_input':'full_card' if getattr(args,'full_rerank_cards',False) else 'runtime_default'},
+        "source_to_ref": mapping}
     def save(status):
         calls = diagnostics(engine)
         report["diagnostic_calls"] = calls
@@ -99,12 +116,20 @@ def execute(args):
             engine.store.close()
             copy_query_snapshot(record['query_snapshot'], database)
             engine.store = SQLiteStore(database)
+    def load_planner(record):
+        if planner_report is not None:
+            import remi.engine as engine_module
+            engine.model.load(record['trace'])
+            stamp = record['trace']['as_of']
+            engine_module.utcnow = lambda: stamp
     try:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"Authorization": "Bearer " + token}, timeout=180) as client:
             for case in dataset["cases"]:
                 question = case["question"]
                 old = next(row for row in original['questions'] if row['question_id'] == question['id'])
                 load_query_bank(old)
+                if planner_report is not None:
+                    load_planner(next(row for row in planner_report['questions'] if row['question_id']==question['id']))
                 started = time.monotonic()
                 response = client.post("/search", json={
                     "user_id": owner, "query": question["text"], "top_k": AML_TOP_K})
@@ -119,6 +144,8 @@ def execute(args):
                 save("running")
             for old in original["lifecycle_searches"]:
                 load_query_bank(old)
+                if planner_report is not None:
+                    load_planner(next(row for row in planner_report['lifecycle_searches'] if row['query']==old['query']))
                 started = time.monotonic()
                 response = client.post("/search", json={
                     "user_id": life_owner, "query": old["query"], "top_k": AML_TOP_K})
@@ -155,6 +182,10 @@ def main():
                         help="Experiment-only source index ablation with graph and hot memory disabled")
     parser.add_argument('--require-query-snapshots', action='store_true',
                         help='Require the bank captured immediately before each original query')
+    parser.add_argument('--frozen-planner',type=Path,
+                        help='Replay all planner responses and clocks from this completed matching Search report')
+    parser.add_argument('--full-rerank-cards',action='store_true',
+                        help='Experiment-only: include derived memory claims in Jev cards for paired ablation')
     execute(parser.parse_args())
 
 
