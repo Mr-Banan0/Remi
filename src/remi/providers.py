@@ -5,6 +5,7 @@ import json
 import math
 import os
 from collections import deque
+from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from time import monotonic, sleep
@@ -142,6 +143,8 @@ SUPPORT_QUESTION = (
     "for references, speaker attribution and dates. Credit the primary statement for what "
     "it adds or confirms; context alone does not turn an unrelated primary statement into direct evidence."
 )
+
+ACTION_CONDITION_QUESTION = "Does the primary original statement provide a concrete personal condition, obligation, limitation, requirement or permission that affects whether, when or how the user can carry out the action requested in query? Evaluate relevance to that action. Use context to resolve the statement's referent, speaker and time. An existing commitment or resource restriction is a condition; wanting an attractive plan, reminder or purchase is a preference. A current permission or resolved restriction can also determine feasibility. Score the condition stated by this source, using the original query."
 
 TEMPORAL_MATCH_QUESTION = (
     "Does the original text in `target` support a specific instance of the activity and participants "
@@ -389,9 +392,13 @@ class JevReranker:
         self.calls = deque(maxlen=2048)
 
     def rank(self, query, cards, *, deadline):
+        local = copy(self)
+        local._support_question = (ACTION_CONDITION_QUESTION
+            if any('constraint' in card.get('retrieval_roles', []) for card in cards)
+            else SUPPORT_QUESTION)
         batches = [cards[offset:offset + 8] for offset in range(0, len(cards), 8)]
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(self._batch, query, batch, deadline) for batch in batches]
+            futures = [pool.submit(local._batch, query, batch, deadline) for batch in batches]
             result = RankResult()
             for future in futures:
                 batch = future.result()
@@ -401,7 +408,7 @@ class JevReranker:
 
     def _batch(self, query, cards, deadline):
         cards = [self._evidence_card(card) for card in cards]
-        questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": SUPPORT_QUESTION},
+        questions = {card["id"]: {"type": "noul", "instructions": {"evidence": card, "question": getattr(self, "_support_question", SUPPORT_QUESTION)},
             "criteria": {"true": "Strong contribution to the original answer under a matched retrieval objective.",
                          "false": "Lexical overlap or shared topic without useful answer evidence."}} for card in cards}
         for card in cards:

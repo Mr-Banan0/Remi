@@ -1,0 +1,9 @@
+# V85 / remi-0.2.19: focused action-condition scoring
+
+A request with a constraint role in its candidate set asks Jev to score concrete personal conditions that affect whether, when or how the requested action can be carried out. The question includes obligations, limitations, requirements and permissions, including an ended restriction. Other requests keep the primary-statement contribution question from V84. Temporal verification keeps its separate operator. The complete candidate set chooses one question before batching; each request uses a private ranker copy, sharing only the existing transport and diagnostics.
+
+Add, Planner, retrieval, graph expansion, source context, external response and model/call budgets are unchanged. The experiment wrapper and switch were removed because the tested behavior is now the single production path. Historical ablations are reproducible from commit `849ab5f` in `/private/tmp/remi-runtime-v84-condition-r1`.
+
+Independent synthetic scoring passed 8/8 versus the previous 6/8. Fixed-Planner and two live-Planner Search runs on V83/V84 query-boundary banks each achieved R@10 96.5812%, MRR@10 92.3077%, R@100 97.4359%, lifecycle 3/3 and no failed requests. Live mean/P95 latency was 11.61/14.62 and 11.54/14.04 seconds. The fixed comparison has identical candidates/base scores for all 16 queries; its control scores 92.7350%/85.3846% at R@10/MRR@10.
+
+Full offline regression: 523 passed, one existing Starlette deprecation warning. Tests cover consistent scoring across batches, a subsequent direct request, source immutability, temporal scores, source context, provider-size recovery and API version consistency. Frozen production-path Search validation remains required before concluding stability. Fresh Add banks come from completed V83/V84 full runs; this release changes only Search scoring and version metadata.
