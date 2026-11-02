@@ -18,3 +18,9 @@ The instruction is rejected for production. The action query's first gold rank i
 ## Small query-template check
 
 A separate embedding-only test compared original requests, advice-oriented navigation, and a programmatic feasibility template on the same six independent multilingual scenarios. It used twelve competing statements. The template placed the needed condition at ranks 3, 1, 2, 1, 4, 10 (study, pet adoption, dock compatibility, travel, Chinese study, Spanish budget), versus original-query ranks 3, 2, 2, 2, 3, 10. The weak improvement and remaining failures do not justify production or full Golden evaluation. Output is `/private/tmp/remi-action-query-check.json`.
+
+## Planner examples small test
+
+Two generic input/output examples (pottery class planning and house-party invitations) were appended only inside an isolated process. Six independent English/Chinese/Spanish requests included distracting suggestion cards. The examples made outputs describe personal conditions and later changes more consistently, including laptop compatibility instead of market reviews. Actual embedding retrieval in the shared twelve-statement pool did not consistently improve: baseline needed-condition ranks were 3, 2, 1, 1, 3, 7; example-augmented ranks were 6, 1, 2, 2, 3, 5. This variant is not promoted.
+
+Evidence: `/private/tmp/remi-planner-action-examples.json`, `/private/tmp/remi-planner-extra-examples.json`, `/private/tmp/remi-planner-query-retrieval.json`. These are small semantic-navigation tests, not estimates of Golden accuracy. The evaluation follows diverse input/output example guidance from https://developers.openai.com/api/docs/guides/prompt-engineering; effectiveness is determined by local measurements.
