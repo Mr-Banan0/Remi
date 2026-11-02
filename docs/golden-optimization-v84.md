@@ -31,3 +31,7 @@ Repeat 2's action query produced navigation targets for reminder setup and motiv
 `golden-v84-primary-context-20261102-r1/golden-gpt-4o-mini` completed 47 Add calls, 13 main queries and all three lifecycle queries. R@10 is 92.7350%, MRR@10 92.3077%, R@100 97.4359%, and lifecycle passes 3/3. All requests succeeded. One invalid model response was repaired; no provider timeout was recorded. Add mean/P95 latency is 56.96/126.86 seconds, Search mean/P95 is 11.21/13.38 seconds. Average returned content is 179,977 bytes across 39.15 cards.
 
 The fresh run exceeds all recorded historical-best metrics, while the third-bank live-repeat regression above remains evidence against a stable-completion claim. Current production stays V84 while independent Planner experiments investigate action-query drift.
+
+## Own-bank live repeat
+
+`search-v84-live-ownbank-20261102-r1` repeats all queries on V84's own query-boundary snapshots with live Planner/Jev. R@10 92.7350%, MRR@10 92.3077% and R@100 97.4359% match the full run; lifecycle passes 3/3 and request errors remain empty. This supports reproducibility on this bank while the earlier V83-bank regression remains unresolved.
