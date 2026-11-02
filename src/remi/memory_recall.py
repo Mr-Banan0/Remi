@@ -90,9 +90,6 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
     vectors = ([None] * len(candidates) if not candidates or engine.embedder is None else
                engine._embed([row['content'] for row in candidates], deadline))
     documents = {memory.id: stable_id('doc_', memory.current.id) for memory in selected_pool}
-    connections = [edge for edge in engine.store.edges_for(owner)
-                   if edge.relation == 'related' and edge.revision_id == next(
-                       (memory.current.id for memory in selected_pool if memory.id == edge.memory_id), None)]
     selected=[];candidate_target_ids={};candidate_related_ids={};candidate_rankings={}
     by_id={memory.id:memory for memory in selected_pool}
     labels=[]
@@ -123,39 +120,26 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
             semantic_margins[memory_id]=(score-runner_up if score is not None and runner_up is not None
                                          else score if score is not None else None)
         target_reasons={}
-        for memory_id in same_kind:
+        for memory_id in same_kind[:3]:
             memory=by_id[memory_id]
             anchor=dict(content=memory.current.content,
                         origin_content=memory.revisions[0].content if memory.revisions else memory.current.content)
             lexical_continuity=concrete_topic_continuity(candidate['content'],anchor,labels)
             score=semantic.get(memory_id);margin=semantic_margins.get(memory_id)
-            semantic_continuity=(semantic_positions.get(memory_id)==0 and score is not None and margin is not None
-                and score>=engine.settings.memory_update_min_similarity
-                and margin>=engine.settings.memory_update_min_margin)
-            if lexical_continuity or semantic_continuity:
-                target_reasons[memory_id]=dict(
-                    lexical_continuity=lexical_continuity,
-                    semantic_similarity=score,
-                    semantic_margin=margin,
-                    semantic_continuity=semantic_continuity)
-        targets=[memory_id for memory_id in same_kind if memory_id in target_reasons][:3]
-        related=ranked_ids[:6]
+            target_reasons[memory_id]=dict(
+                fused_rank=same_kind.index(memory_id)+1,
+                lexical_continuity=lexical_continuity,
+                semantic_similarity=score,
+                semantic_margin=margin)
+        targets=same_kind[:3]
+        related=[]
         candidate_target_ids[candidate['ref']]=targets
         candidate_related_ids[candidate['ref']]=related
         candidate_rankings[candidate['ref']]=dict(
             keyword=lexical_ids[:6],semantic=semantic_ids[:6],fused=ranked_ids[:6],
             update_targets=targets,update_target_reasons=target_reasons,
-            update_min_similarity=engine.settings.memory_update_min_similarity,
-            update_min_margin=engine.settings.memory_update_min_margin,
             related_targets=related)
         for memory_id in [*targets,*related]:
-            memory=by_id[memory_id]
-            if memory not in selected:selected.append(memory)
-        seeds=set(targets[:2]);neighbors=[]
-        for edge in connections:
-            if edge.origin in seeds and edge.target in by_id:neighbors.append(edge.target)
-            if edge.target in seeds and edge.origin in by_id:neighbors.append(edge.origin)
-        for memory_id in neighbors[:2]:
             memory=by_id[memory_id]
             if memory not in selected:selected.append(memory)
     for subject_id in sorted(pending_candidates):

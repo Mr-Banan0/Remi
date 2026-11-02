@@ -25,11 +25,8 @@ def req(text,key,day=0,timestamp=True):
 
 def row(state,**kwargs):
     target_id=kwargs.get('target_id')
-    record_type=next((item['record_type'] for item in state.get('memory_candidates',[])
-                      if item['ref']==kwargs.get('ref','C1')),'event')
-    continuity=kwargs.get('continuity',
-        'independent' if target_id is None else 'same_occurrence' if record_type=='event' else 'same_proposition')
-    return dict(ref=kwargs.get('ref','C1'),target_id=target_id,continuity=continuity,
+    operation=kwargs.get('operation','update' if target_id else 'add')
+    return dict(ref=kwargs.get('ref','C1'),operation=operation,target_id=target_id,
         content=kwargs.get('content',state['new_user_source']['content']))
 
 
@@ -88,7 +85,7 @@ def test_same_event_reschedule_and_completion_preserve_id_and_planned_time():
     current=engine.store.memories(OWNER)[0].current
     assert current.planned_at.startswith('2030-01-05') and current.event_at.startswith('2030-01-06')
     assert len(engine.store.memories(OWNER)[0].revisions)==3
-    assert model.calls==['subjects','extract','memory']*3
+    assert model.calls==['extract','memory']*3
 
 
 def test_new_recurring_event_creates_distinct_memory():
@@ -140,10 +137,10 @@ def test_ambiguous_target_creates_independent_searchable_memory():
 
 def test_invalid_target_is_repaired_once_then_retained_as_validation_failure():
     engine,model=lifecycle();model.writer=lambda state:[row(state,operation='update',target_id='foreign')]
-    before=engine.store.list('memories',OWNER);engine.add(req('Aster corrected a different meeting.','bad',1))
+    before=engine.store.list('memories',OWNER);engine.add(req('Aster moved that workshop to January 5.','bad',1))
     assert len(engine.store.list('memories',OWNER))==len(before)
     disposition=unit(engine,'bad')['candidate_dispositions'][0]
-    assert disposition['operation']=='rejected' and disposition['status']=='validation_failed'
+    assert disposition['operation']=='pending' and disposition['status']=='pending'
     assert 'target_requires_recalled_same_kind_memory' in {issue['code'] for issue in unit(engine,'bad')['memory_rejections']}
     assert model.calls[-2:]==['memory','memory']
 
@@ -163,8 +160,8 @@ def test_provider_schema_contains_only_target_decision_fields_and_decodes_target
     result=provider_plan(model,packet,deadline=monotonic()+30)
     assert result['items'][0]['target_id']=='old'
     schema=captured[0]['response_format']['json_schema']['schema']
-    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','target_id','continuity','content','related_target_ids'}
-    assert all(set(item)=={'ref','target_id','continuity','content','related_target_ids'} for _,answer in examples() for item in answer['items'])
+    assert set(schema['$defs']['MemoryDecision']['properties'])=={'ref','operation','target_id','content'}
+    assert all(set(item)=={'ref','operation','target_id','content'} for _,answer in examples() for item in answer['items'])
 
 
 def test_examples_match_live_schema_and_validate_without_issues():
@@ -193,19 +190,19 @@ def test_concrete_continuity_checks_stable_anchor_and_current_view():
     assert not concrete_topic_continuity('Mira prefers early morning walks.',memory,['Mira'])
 
 
-def test_continuity_value_must_match_target_and_memory_kind():
+def test_operation_must_match_target_presence():
     event,_=list(examples())[1]
-    invalid=dict(items=[dict(ref='C1',target_id='old',continuity='same_proposition',
+    invalid=dict(items=[dict(ref='C1',operation='add',target_id='old',
         content='Mira plans the studio visit on June 4.')],reason='wrong continuity kind')
     accepted,issues=validate_plan(invalid,event,event['resolved_subjects'])
-    assert not accepted and 'continuity_requires_memory_kind' in {issue['code'] for issue in issues}
-    independent=dict(items=[dict(ref='C1',target_id=None,continuity='same_occurrence',
+    assert not accepted and 'add_requires_null_target' in {issue['code'] for issue in issues}
+    independent=dict(items=[dict(ref='C1',operation='update',target_id=None,
         content='Mira plans a separate studio visit.')],reason='target mismatch')
     accepted,issues=validate_plan(independent,event,event['resolved_subjects'])
-    assert not accepted and 'null_target_requires_independent_continuity' in {issue['code'] for issue in issues}
+    assert not accepted and 'update_requires_allowed_target' in {issue['code'] for issue in issues}
 
 
-def test_hybrid_recall_does_not_offer_same_kind_different_proposition_as_update_target():
+def test_hybrid_recall_exposes_same_kind_candidate_without_forcing_update():
     from tests.helpers import HashEmbedder
     model=Model();engine=MemoryEngine(model=model,embedder=HashEmbedder())
     model.extractor=lambda state:dict(items=[extracted(state,record_type='preference',status=None,
@@ -213,15 +210,14 @@ def test_hybrid_recall_does_not_offer_same_kind_different_proposition_as_update_
     engine.add(req('Aster prefers written agendas at work.','agenda'))
     engine.add(req('Aster prefers early morning walks.','walk',1))
     packet=next(state for kind,state in reversed(model.packets) if kind=='memory')
-    assert packet['candidate_target_ids']['C1']==[]
+    assert len(packet['candidate_target_ids']['C1'])==1
     ranking=packet['memory_recall_trace']['candidate_rankings']['C1'] if 'memory_recall_trace' in packet else None
-    assert ranking is None or ranking['update_targets']==[]
+    assert ranking is None or len(ranking['update_targets'])==1
 
 
 def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
     packet,_=list(examples())[3]
-    answer=dict(items=[dict(ref='C1',target_id='completed',
-        continuity='same_occurrence',
+    answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
         content='Mira plans another studio visit for June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
     assert not accepted
@@ -231,8 +227,7 @@ def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
 def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
     packet,_=list(examples())[3]
     packet['memory_candidates'][0].update(status='occurred',content='Mira completed another studio visit on June 8.')
-    answer=dict(items=[dict(ref='C1',target_id='completed',
-        continuity='same_occurrence',
+    answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
         content='Mira completed another studio visit on June 8.')],reason='invalid reuse')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
     assert not accepted
@@ -244,28 +239,28 @@ def test_embedding_failure_resumes_without_repeating_model_stages():
     model=Model();engine=MemoryEngine(model=model,embedder=FlakyEmbedder());request=req('Aster plans a picnic.','retry')
     with pytest.raises(ProviderUnavailable):engine.add(request)
     engine.add(request)
-    assert model.calls==['subjects','extract','memory'] and len(engine.store.memories(OWNER))==1
+    assert model.calls==['extract','memory'] and len(engine.store.memories(OWNER))==1
 
 
-def test_invalid_target_uses_one_memory_repair_call():
+def test_targetless_candidate_is_program_owned_add_without_repair_call():
     model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id='foreign')]
     engine.add(req('Aster plans a picnic.','invalid-target'))
-    assert model.calls==['subjects','extract','memory','memory']
-    assert len(engine.store.memories(OWNER))==0
-    assert unit(engine,'invalid-target')['candidate_dispositions'][0]['operation']=='rejected'
+    assert model.calls==['extract','memory']
+    assert len(engine.store.memories(OWNER))==1
+    assert unit(engine,'invalid-target')['candidate_dispositions'][0]['operation']=='created_fallback'
 
 
 def test_invalid_target_repair_can_return_a_valid_create_decision():
     model=Model();engine=MemoryEngine(model=model)
     model.writer=lambda state:[dict(row(state),target_id=None if state.get('previous_memory_output') else 'foreign')]
     engine.add(req('Aster plans a picnic.','repaired-target'))
-    assert model.calls==['subjects','extract','memory','memory']
+    assert model.calls==['extract','memory']
     assert len(engine.store.memories(OWNER))==1
-    assert unit(engine,'repaired-target')['candidate_dispositions'][0]['operation']=='created'
+    assert unit(engine,'repaired-target')['candidate_dispositions'][0]['operation']=='created_fallback'
 
 
-def test_cross_kind_hybrid_recall_can_materialize_a_related_memory_edge():
+def test_memory_maintenance_does_not_create_semantic_related_edges():
     model=Model();engine=MemoryEngine(model=model)
     model.extractor=lambda state:dict(items=[extracted(state,record_type='fact',status=None,
         content='Aster has an ankle injury.')],reason='injury fact')
@@ -278,7 +273,7 @@ def test_cross_kind_hybrid_recall_can_materialize_a_related_memory_edge():
     event_id=next(memory.id for memory in engine.store.memories(OWNER) if memory.id!=fact_id)
     related=[edge for edge in active_connections(engine.store,OWNER,'2031-01-01T00:00:00+00:00')
              if edge.relation=='related' and edge.memory_id==event_id]
-    assert [(edge.origin,edge.target) for edge in related]==[(event_id,fact_id)]
+    assert related==[]
 
 
 def test_snapshot_restore_requires_existing_six_collections():

@@ -57,7 +57,7 @@ def test_invalid_output_keeps_sources_and_a_retryable_checkpoint():
     model=ScriptedModel(lambda state,errors: (_ for _ in ()).throw(OutputInvalid('invalid')))
     engine=MemoryEngine(model=model)
     assert engine.add(request('My original evidence survives.')).success
-    assert len(model.extractions)==1 and len(model.subject_calls)==2
+    assert len(model.extractions)==1 and len(model.subject_calls)==0
     assert not engine.store.memories('u1')
     assert engine.store.get('requests','u1','r1')['status']=='complete'
     assert engine.store.list('sources','u1')[0]['content']=='My original evidence survives.'
@@ -142,7 +142,7 @@ def test_final_time_failure_preserves_content_with_unknown_time():
     memory=engine.store.memories("u1")[0]
     assert memory.current.event_at is None and memory.current.planned_at is None
     assert "completed the move" in engine.search(query("move")).data[0].content
-    assert len(model.extractions) == 1 and len(model.subject_calls) == 1
+    assert len(model.extractions) == 1 and len(model.subject_calls) == 0
 
 
 def test_separate_events_get_their_own_dates_and_absolute_references():

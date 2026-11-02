@@ -87,13 +87,13 @@ def request(text='Nolan is also called Nole.',key='r1'):
     return AddRequest(request_id=key,user_id='reference-owner',session_id='session',messages=[AddMessage(role='user',content=text,timestamp=1833000000000)])
 
 
-def test_complete_add_reuses_context_reference_and_search_returns_actual_original():
+def test_complete_subjectless_add_search_returns_actual_original():
     model=Model();engine=MemoryEngine(model=model)
     engine.add(request());engine.add(request('Nole likes jasmine tea.','r2'))
-    assert model.calls==['subject','extract','memory','subject','extract','memory']
+    assert model.calls==['extract','memory','extract','memory']
     objects=engine.store.list('objects','reference-owner');memories=engine.store.memories('reference-owner')
-    assert len(objects)==1 and len(memories)==2
-    assert all(m.current.entity_ids==[objects[0]['id']] for m in memories)
+    assert not objects and len(memories)==2
+    assert all(m.current.entity_ids==[] for m in memories)
     found=engine.search(SearchRequest(user_id='reference-owner',query='jasmine tea',top_k=5),'2029-01-01T00:00:00Z')
     assert any('Nole likes jasmine tea.' in item.content for item in found.data)
 
@@ -111,9 +111,9 @@ def test_embedding_failure_preserves_model_checkpoint_and_atomic_records_then_re
     model=Model();embedder=FlakyEmbedder();engine=MemoryEngine(model=model,embedder=embedder)
     with pytest.raises(ProviderUnavailable):engine.add(request())
     assert not engine.store.list('objects','reference-owner') and not engine.store.memories('reference-owner')
-    assert not engine.store.documents('reference-owner') and model.calls==['subject','extract']
+    assert not engine.store.documents('reference-owner') and model.calls==['extract']
     engine.add(request())
-    assert model.calls==['subject','extract','memory'] and len(engine.store.memories('reference-owner'))==1
+    assert model.calls==['extract','memory'] and len(engine.store.memories('reference-owner'))==1
 
 
 def test_snapshot_restore_keeps_idempotence_and_conflict_checks():
@@ -133,30 +133,24 @@ def test_new_pipeline_is_callable_through_existing_http_contract():
         assert response.status_code==200 and response.json()['data']
 
 
-def test_invalid_memory_output_uses_one_repair_call_then_rejects_the_candidate():
+def test_invalid_memory_output_uses_program_add_for_a_targetless_candidate():
     class InvalidMemory(Model):
         def propose(self,state,*,deadline):
             self.calls.append('memory')
             return {'items':[{'unrecognized':'field'}],'reason':'invalid model fixture'}
     model=InvalidMemory();engine=MemoryEngine(model=model)
     engine.add(request())
-    assert model.calls==['subject','extract','memory','memory']
-    assert len(engine.store.memories('reference-owner'))==0
-    assert not any(document.memory_id for document in engine.store.documents('reference-owner'))
+    assert model.calls==['extract','memory']
+    assert len(engine.store.memories('reference-owner'))==1
+    assert any(document.memory_id for document in engine.store.documents('reference-owner'))
     unit=engine.store.get('requests','reference-owner','r1')['units']['0']
     assert unit['memory_rejections'] and unit['phase']=='indexed'
-    assert unit['candidate_dispositions'][0]['operation']=='rejected'
+    assert unit['candidate_dispositions'][0]['operation']=='created_fallback'
 
 
-def test_graph_search_uses_query_matches_as_seeds_and_keeps_canonical_user_out_of_implicit_expansion(monkeypatch):
-    from remi.identity import stable_id
+def test_subjectless_graph_search_has_no_implicit_subject_expansion(monkeypatch):
     engine=MemoryEngine(model=Model());engine.add(request())
-    owner='reference-owner';person=engine.store.list('objects',owner)[0]
-    user=stable_id('obj_',owner,'user')
-    engine.store.put('objects',owner,user,dict(id=user,owner=owner,name='user',kind='person',is_user=True,
-        aliases=[],references=[],observed_at=person['observed_at']))
-    source=engine.store.list('sources',owner)[0]['id'];pair=sorted([user,person['id']]);key=stable_id('con_',owner,*pair)
-    engine.store.put('edges',owner,key,dict(id=key,owner=owner,endpoint_ids=pair,source_ids=[source]))
+    owner='reference-owner';assert engine.store.list('objects',owner)==[]
     captured=[]
     def hybrid(owner,query,pool,vector,limit):captured.append(list(pool));return []
     monkeypatch.setattr(engine,'_hybrid',hybrid)

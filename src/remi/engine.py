@@ -542,6 +542,26 @@ class MemoryEngine:
                 merged[key] = copy, max(score, previous[1])
         return sorted(merged.values(), key=lambda item: (-item[1], item[0].id))
 
+    @staticmethod
+    def _source_bundles(hits):
+        """Present memories backed by one source turn as one rerank evidence package."""
+        bundles = {}
+        for document, score in hits:
+            key = document.source_ids[0] if document.source_ids else document.id
+            previous = bundles.get(key)
+            if previous is None:
+                bundles[key] = document.model_copy(deep=True), score
+                continue
+            best, other = (document, previous[0]) if score > previous[1] else (previous[0], document)
+            copy = best.model_copy(deep=True)
+            copy.source_ids = list(dict.fromkeys([*best.source_ids, *other.source_ids]))
+            copy.source_windows = list({(span.source_id, span.start, span.stop): span
+                                       for span in [*best.source_windows, *other.source_windows]}.values())
+            copy.memory_evidence = list({evidence.revision_id: evidence for evidence in
+                                        [*best.memory_evidence, *other.memory_evidence]}.values())
+            bundles[key] = copy, max(score, previous[1])
+        return sorted(bundles.values(), key=lambda item: (-item[1], item[0].id))
+
     @classmethod
     def _fuse_channels(cls, channel_hits, documents):
         """Fuse independent ranked channels by logical Memory using rank, never raw score scale."""
@@ -559,7 +579,7 @@ class MemoryEngine:
                 scores[key] = scores.get(key, 0.0) + channel.get('weight', 1.0) / (60 + position)
         hits = [(document, scores[cls._logical_key(document, source_memories)])
                 for document in unique.values()]
-        return cls._merge(hits, documents), roles
+        return cls._source_bundles(cls._merge(hits, documents)), roles
 
     @staticmethod
     def _fallback_query_mode(query):
@@ -894,7 +914,7 @@ class MemoryEngine:
                 "decision_errors": decision_errors,
                 "planner_attempts": planner_attempts,
                 "direct_coverage": direct_coverage,
-                "fusion": "logical_memory_rrf",
+                "fusion": "logical_memory_rrf_then_source_bundle",
                 "revision_paths": revision_paths,
                 "memory_bundles": len({document.memory_id for document, _ in merged if document.memory_id}),
                 "candidate_channels": channels,

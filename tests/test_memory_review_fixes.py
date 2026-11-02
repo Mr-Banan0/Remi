@@ -20,7 +20,8 @@ def test_backdated_update_uses_historical_revision_and_preserves_later_view():
     assert 'extra demonstration' in stored.current.content
     assert historical.replaces_revision_id==first['id'] and historical.status=='planned'
     assert unit(engine,'backfill').get('concurrent_recomputations',0)==0
-    assert any(edge.revision_id==historical.id for edge in active_edges(engine.store,OWNER,'2030-01-02T23:59:59Z'))
+    assert any(edge.relation=='revises' and edge.revision_id==historical.id
+               for edge in engine.store.edges_for(OWNER))
 
 
 def test_valid_target_is_kept_while_invalid_sibling_is_rejected_after_repair():
@@ -34,7 +35,7 @@ def test_valid_target_is_kept_while_invalid_sibling_is_rejected_after_repair():
     memories=engine.store.memories(OWNER)
     updated=next(memory for memory in memories if memory.id==target)
     assert updated.current.content=='Aster added refreshments to the workshop.' and len(memories)==1
-    assert [entry['operation'] for entry in unit(engine,'mixed')['candidate_dispositions']]==['updated','rejected']
+    assert [entry['operation'] for entry in unit(engine,'mixed')['candidate_dispositions']]==['updated','pending']
 
 
 @pytest.mark.parametrize('bad_output',[
@@ -42,14 +43,14 @@ def test_valid_target_is_kept_while_invalid_sibling_is_rejected_after_repair():
     {'items':[{'ref':'C1','target_id':{},'content':'Aster plans a picnic.'}],'reason':'bad'},
     {'items':[{'ref':'C1','target_id':None,'content':None}],'reason':'bad'},
 ])
-def test_malformed_memory_decision_is_repaired_once_then_rejected(bad_output):
+def test_malformed_memory_decision_uses_program_add_when_no_update_target_exists(bad_output):
     model=Model();engine=MemoryEngine(model=model)
     model.propose=lambda state,deadline:bad_output
     key='malformed-'+str(len(str(bad_output)))
     engine.add(req('Aster plans a picnic.',key))
-    assert len(engine.store.memories(OWNER))==0
-    assert unit(engine,key)['candidate_dispositions'][0]['operation']=='rejected'
-    assert model.calls==['subjects','extract']
+    assert len(engine.store.memories(OWNER))==1
+    assert unit(engine,key)['candidate_dispositions'][0]['operation']=='created_fallback'
+    assert model.calls==['extract']
 
 
 def test_newer_concurrent_revision_after_recall_is_detected():

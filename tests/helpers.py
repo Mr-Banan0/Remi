@@ -107,9 +107,7 @@ class ScriptedModel:
         items=[]
         for row in state.get('memory_candidates',[]):
             target=targets[row['ref']][0] if continuation and len(targets.get(row['ref'],[]))==1 else None
-            items.append({'ref':row['ref'],'target_id':target,
-                          'continuity':('independent' if target is None else
-                                        'same_occurrence' if row['record_type']=='event' else 'same_proposition'),
+            items.append({'ref':row['ref'],'operation':'update' if target else 'add','target_id':target,
                           'content':row['content']})
         return {'items':items,
                 'reason':'offline fixture selects the only eligible recalled target'}

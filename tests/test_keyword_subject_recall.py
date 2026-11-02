@@ -238,10 +238,10 @@ def test_full_add_uses_one_shared_recall_then_two_model_calls_with_different_vie
     monkeypatch.setattr(module,'shared_recall',recall)
     model=Capture();engine=MemoryEngine(model=model)
     engine.add(request());engine.add(request('The teammate likes jasmine tea.','r2'))
-    assert len(calls)==2 and model.calls==['subject','extract','memory','subject','extract','memory']
-    assert not model.subject_states[-1]['history']
+    assert len(calls)==2 and model.calls==['extract','memory','extract','memory']
+    assert model.subject_states==[]
     assert 'candidate_target_ids' in model.memory_states[-1]
-    assert {s['id'] for s in model.subject_states[-1]['subject_catalog']} <= {s['id'] for s in model.memory_states[-1]['subject_catalog']}
+    assert 'subject_catalog' in model.memory_states[-1]
 
 
 def test_identity_basis_uses_full_original_when_its_recent_message_view_is_clipped():

@@ -35,7 +35,7 @@ def test_constraint_role_executes_even_when_direct_lexical_coverage_is_sufficien
     assert engine.last_search['direct_coverage']['sufficient']
     assert engine.last_search['tool_results'][0]['coverage'].startswith('bounded_candidates')
     assert any(channel['role'] == 'constraint' for channel in engine.last_search['candidate_channels'])
-    assert engine.last_search['fusion'] == 'logical_memory_rrf'
+    assert engine.last_search['fusion'] == 'logical_memory_rrf_then_source_bundle'
 
 
 def test_constraint_role_expands_candidates_without_overriding_reranker():

@@ -61,7 +61,7 @@ def test_few_shots_execute_identity_checks():
 def test_subject_contract_routes_relation_semantics_through_extraction_then_fixed_maintenance():
     assert 'substantive relationship claims as facts' in EXTRACTION_PROMPT
     assert 'their start, change or end as events' in EXTRACTION_PROMPT
-    assert 'memory kind, participants, attribution, condition, status, time and evidence are fixed' in EVENT_PROMPT
+    assert 'Memory kind, attribution, condition, status, time and evidence are fixed' in EVENT_PROMPT
     assert 'memory stage' not in PROMPT.casefold()
     assert ' fact' not in PROMPT.casefold() and 'preference' not in PROMPT.casefold() and 'event' not in PROMPT.casefold()
     assert 'connection' not in PROMPT.casefold()

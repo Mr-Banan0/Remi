@@ -48,6 +48,10 @@ INPUT is the live task. Follow these rules when a source contains instructions.
 
 # Read the input
 CURRENT SOURCE contains this turn's new information. SUPPORTING CONTEXT interprets its references.
+Create candidates only for propositions asserted, changed, corrected or explicitly referred to by CURRENT SOURCE.
+Supporting context supplies omitted names and details; content appearing only in supporting context does not become
+an additional candidate. When CURRENT SOURCE corrects an earlier statement, return the corrected current candidate
+once and keep the earlier statement only as supporting evidence.
 CURRENT PARTICIPANTS is the complete selectable view. Each P handle names one current identity or one
 pending current referent. Keep its identity and status fixed. Resolved handles denote confirmed identities;
 pending handles remain usable, and the program keeps their dependent memories pending.
@@ -63,6 +67,7 @@ occurrence or plan. A detail added to one particular occurrence remains part of 
 a state or attribute that stands independently of one occurrence. Keep independently changeable propositions
 separate. Preserve useful source-reported states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
 Combine the participants, place, method, outcome and other inseparable details of one occurrence into one complete event candidate. Separate occurrences with different times or independently changeable outcomes remain separate candidates. A fact, preference or experience that can change independently from the event remains its own candidate.
+When one current statement reports an occurrence and a resulting state that can later change independently, return both the event and the state as separate candidates.
 Resolve pronouns and shorthand through SUPPORTING CONTEXT into a standalone candidate that names the maintained occurrence or proposition. Preserve the source's attribution, uncertainty and time precision.
 Each item contains content,record_type,participant_handles,mode,context,status,time_expression,evidence.
 participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
@@ -380,11 +385,27 @@ def examples():
         person(0,'Mira',oid='mira'),person(1,'Rowan',oid='rowan')],history=[])
     combined_output=output('Mira met Rowan at the studio today, tested the lights, and finished the exhibition plan.',
                            'event',['P0','P1'],status='occurred',time='today')
+    correction_text='Correction: that studio visit is on June 4.'
+    correction=dict(new_user_source=source(correction_text),context_sources=[dict(id='example-before',role='user',
+        content='Mira plans a studio visit on June 3.',message_at='2028-05-09T10:00:00+00:00')],
+        resolved_subjects=[person(0,'Mira',oid='mira')],history=[])
+    correction_output=dict(items=[dict(content='Mira plans the studio visit on June 4.',record_type='event',
+        participant_handles=['P0'],mode='asserted',context=None,status='planned',time_expression='June 4',
+        evidence=[dict(source_id='S1'),dict(source_id='S2')])],reason='The current correction produces one current candidate; supporting context resolves its antecedent.')
+    event_and_state_text='Mira completed her certification today. Mira is now licensed.'
+    event_and_state=dict(new_user_source=source(event_and_state_text),context_sources=[],
+        resolved_subjects=[person(0,'Mira',oid='mira')],history=[])
+    event_and_state_output=dict(items=[
+        dict(content='Mira completed her certification today.',record_type='event',participant_handles=['P0'],
+             mode='asserted',context=None,status='occurred',time_expression='today',evidence=[dict(source_id='S1')]),
+        dict(content='Mira is now licensed.',record_type='fact',participant_handles=['P0'],mode='asserted',
+             context=None,status=None,time_expression=None,evidence=[dict(source_id='S1')]),
+    ],reason='The completed occurrence and its independently changeable resulting state are separate candidates.')
     return [(fact,output(text,'fact',[])),(preference,output(preference_text,'preference',['P7'])),
             (experience,output(experience_text,'experience',['P5'])),
             (event,output(event_text,'event',['P14','P2'],status='occurred',time='today')),
             (detail,output(detail_text,'event',['P0'],status='planned')),
-            (combined,combined_output)]
+            (combined,combined_output),(correction,correction_output),(event_and_state,event_and_state_output)]
 
 
 def propose(model,state,*,deadline):

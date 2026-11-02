@@ -32,18 +32,18 @@ def test_every_extracted_candidate_receives_a_disposition_including_omissions():
     engine.add(req('Aster plans a picnic and a walk.','coverage'))
     dispositions=unit(engine,'coverage')['candidate_dispositions']
     assert {(entry['candidate_id'],entry['operation']) for entry in dispositions}=={
-        ('C1','created'),('C2','rejected')}
+        ('C1','created'),('C2','created_fallback')}
     omitted=next(entry for entry in dispositions if entry['candidate_id']=='C2')
-    assert omitted['reason']=='candidate_omitted_by_model'
+    assert omitted['reason']=='no_eligible_update_target'
 
 
 def test_invalid_returned_target_has_specific_validation_failure_disposition():
     model=Model();engine=MemoryEngine(model=model)
-    model.writer=lambda state:[dict(row(state),target_id='missing',continuity='same_occurrence')]
+    model.writer=lambda state:[dict(row(state),operation='update',target_id='missing')]
     engine.add(req('Aster plans a picnic.','invalid'))
     disposition=unit(engine,'invalid')['candidate_dispositions'][0]
-    assert disposition['candidate_id']=='C1' and disposition['operation']=='rejected'
-    assert disposition['reason']=='target_requires_recalled_same_kind_memory'
+    assert disposition['candidate_id']=='C1' and disposition['operation']=='created_fallback'
+    assert disposition['reason']=='no_eligible_update_target'
 
 
 def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
@@ -56,9 +56,9 @@ def test_prompt_lists_fixed_candidate_fields_and_same_kind_targets():
     body=captured[0]['messages'][-1]['content']
     props=captured[0]['response_format']['json_schema']['schema']['$defs']['MemoryDecision']['properties']
     assert '# CANDIDATE MEMORIES' in body and 'participants: P0' in body
-    assert 'eligible same-kind targets: M1' in body
+    assert 'allowed update targets: M1' in body
     assert 'Identity anchor:' in body and 'Current view:' in body
-    assert set(props)=={'ref','target_id','continuity','content','related_target_ids'}
+    assert set(props)=={'ref','operation','target_id','content'}
 
 
 def test_program_owned_fields_are_absent_from_all_few_shot_answers():

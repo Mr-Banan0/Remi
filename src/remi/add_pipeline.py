@@ -17,8 +17,8 @@ from .retrieval import clip_bytes
 from .subject_recall import prepare_candidates, subject_stage_state
 from .subject_identity import CONTEXT_LIMIT, SubjectRecord, visible_subject, matching_subjects
 from .subject_maintenance import review
-from .subject_repair import build_repair_state, finish_repair
-from .memory_maintenance import validate_plan, candidates, materialize
+from .memory_maintenance import (accept_targetless_adds, candidates, materialize,
+                                 pending_candidates, validate_plan)
 from .memory_recall import recall_memories
 from .version import PIPELINE
 
@@ -177,33 +177,8 @@ class AddPipeline:
 
         outputs=cache.setdefault('outputs',{})
 
-        if 'subjects' not in outputs:
-
-            try:outputs['subjects']=self.model.maintain_subjects(subject_stage_state(state),deadline=deadline)
-
-            except OutputInvalid:outputs['subjects']={'output_error':'model_json_invalid'}
-
-            save()
-
+        outputs['subjects']={'subjects':[]}
         result=review(outputs['subjects'],state,self.store)
-
-        if result['issues'] and not cache.get('repair_used'):
-
-            cache.update(repair_used=True,repair_stage='subjects',
-
-                subject_repair=build_repair_state(outputs['subjects'],result,state));save()
-
-        if cache.get('repair_stage')=='subjects' and 'subject_repair' in cache:
-
-            if 'subjects_repair' not in outputs:
-
-                try:outputs['subjects_repair']=self.model.maintain_subjects(subject_stage_state(cache['subject_repair']),deadline=deadline)
-
-                except OutputInvalid:outputs['subjects_repair']={'output_error':'model_json_invalid'}
-
-                save()
-
-            result=finish_repair(cache['subject_repair'],outputs['subjects_repair'],state,self.store)
 
         cache['identity']=result
 
@@ -311,6 +286,9 @@ class AddPipeline:
 
         cache['memory_initial_issues']=deepcopy(errors)
 
+        accepted,errors,forced_adds=accept_targetless_adds(accepted,errors,state)
+        cache['memory_program_adds']=sorted(forced_adds)
+
         if errors:
             accepted_refs={row['ref'] for row in accepted.values()}
             repair_candidates=[row for row in state['memory_candidates'] if row['ref'] not in accepted_refs]
@@ -326,17 +304,23 @@ class AddPipeline:
                 protected={row['target_id'] for row in accepted.values() if row.get('target_id')}
                 repaired,repair_errors=validate_plan(outputs.get('propose_repair',{}),repair_state,view,
                                                       protected=protected)
+                repaired,repair_errors,repair_forced=accept_targetless_adds(
+                    repaired,repair_errors,repair_state)
+                cache['memory_program_adds']=sorted({*cache['memory_program_adds'],*repair_forced})
                 accepted.update({'repair:'+key:value for key,value in repaired.items()})
                 errors=[*protocol_issues.get('propose_repair',[]),*repair_errors]
 
         accepted_refs={row['ref'] for row in accepted.values()}
-        dispositions=[]
+        dispositions=[];unresolved=[]
         for candidate in state['memory_candidates']:
             if candidate['ref'] in accepted_refs:continue
             issue=next((row for row in errors if row.get('candidate_ref')==candidate['ref']),None)
-            dispositions.append(dict(candidate_id=candidate['ref'],status='validation_failed',operation='rejected',
+            dispositions.append(dict(candidate_id=candidate['ref'],status='pending',operation='pending',
                 memory_id=None,reason=(issue or {}).get('code','memory_decision_invalid')))
-        cache.update(memory_plan=accepted,items=candidates(accepted,state),memory_validation_dispositions=dispositions)
+            unresolved.append(candidate)
+        cache.update(memory_plan=accepted,items=candidates(accepted,state),
+            memory_validation_pending=[row.model_dump() for row in pending_candidates(unresolved,state)],
+            memory_validation_dispositions=dispositions)
 
         if errors:cache['memory_rejections']=deepcopy(errors)
 
@@ -450,6 +434,8 @@ class AddPipeline:
                         try:
 
                             objects,memories,edges,expected,pending,dispositions=materialize(self.store,state,bindings,cache['memory_plan'])
+                            pending.extend(Candidate.model_validate(row)
+                                           for row in cache.get('memory_validation_pending',[]))
 
                         except ProviderUnavailable as error:
 

@@ -57,10 +57,10 @@ def test_wire_rejection_is_recorded_and_repaired_once_before_rejection():
             raise error
     model=Fault();engine=MemoryEngine(model=model);cache={};saved=[]
     engine._memory_after_identity(cache,reviewed(),lambda:saved.append(deepcopy(cache)),monotonic()+10)
-    assert len(model.inputs)==2
+    assert len(model.inputs)==1
     assert cache['outputs']['propose']==raw and cache['memory_protocol_issues']['propose']==issues
     assert cache['memory_initial_issues'][:1]==issues
-    assert cache['items']==[]
-    assert cache['memory_validation_dispositions'][0]['operation']=='rejected'
+    assert len(cache['items'])==1
+    assert cache['memory_program_adds']==['C1']
     assert any(row.get('outputs',{}).get('propose')==raw for row in saved)
     engine.close()

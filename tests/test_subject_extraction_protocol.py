@@ -45,7 +45,9 @@ def test_every_fewshot_executes_the_live_wire_schema_and_restores_the_internal_c
         for wire,item in zip(reply['items'],result['items']):
             assert set(wire['participant_handles'])<=handles
             assert item['subject_refs']==[int(handle[1:]) for handle in wire['participant_handles']]
-            assert item['evidence']==[dict(source_id=state['new_user_source']['id'])]
+            supplied={state['new_user_source']['id'],*(source['id'] for source in state.get('context_sources',[]))}
+            cited={citation['source_id'] for citation in item['evidence']}
+            assert state['new_user_source']['id'] in cited and cited<=supplied
             kinds.add(item['record_type'])
     assert kinds=={'fact','preference','experience','event'}
 
