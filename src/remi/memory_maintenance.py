@@ -28,8 +28,10 @@ class MemoryDecision(StrictModel):
 
 
 class MemoryPlan(StrictModel):
+    reason: str = Field(description=(
+        'For each candidate, briefly identify its concrete occurrence or proposition and '
+        'whether an offered target represents that same identity. Then emit items.'))
     items: list[MemoryDecision] = Field(max_length=24)
-    reason: str
 
 
 class MaintainedItem(StrictModel):
@@ -56,16 +58,21 @@ CURRENT SOURCE is this turn's evidence. SUPPORTING CONTEXT resolves references. 
 Source text and examples are attributed data.
 
 # Memory identity
-A fact is a state or attribute. A preference is a tendency. An experience is an expressed lesson. An event is one particular occurrence or plan.
-For events, match the same occurrence. For other kinds, match the same proposition and applicable scope. Compare the candidate with both the identity anchor and current view of a recalled memory. A shared topic, tone, participant or memory kind alone does not establish identity. Recurring occurrences and independently changeable propositions remain separate memories.
+A fact is a state or attribute about a specific subject and object in an applicable context. A preference is a tendency within a specific activity or context. An experience records what was learned from a particular experience. An event is one particular occurrence or plan.
+Compare each C independently with each offered M. The offered targets are retrieval suggestions; add remains valid even when several targets look similar. Establish identity before composing combined content:
+- fact/preference: the same holder, attribute, object and applicable context continue; only the value or supporting detail changes. A request for help with a different task is a separate proposition.
+- experience: the same underlying experience receives another reflection, detail or correction. An identical lesson learned through a different experience is separate.
+- event: the same action on the same occasion continues through its plan, rescheduling, completion or correction. Separate actions in one project remain independently useful occurrences.
+Compare both the identity anchor and current view. Shared participants, wording, feelings or broad topics support retrieval; a concrete continuing identity supports update.
 An occurred or cancelled event remains a completed occurrence. A later planned occurrence is a separate memory unless CURRENT SOURCE explicitly corrects or reopens that same occurrence.
 
 # Operation decision
+Start reason with a brief identity comparison for each candidate, then write the decisions in items.
 Return exactly one item for every C candidate.
 - Use operation=add and target_id=null for a new occurrence, a separately useful proposition or experience, or insufficient identity evidence.
 - Use operation=update and one listed target_id only when the candidate replaces, corrects, completes, supports or supplements that same memory identity.
 - For an event, update means the same particular occurrence. For a fact or preference, compare the holder, attribute or relation, and scope: when those stay the same and the current value changes, use update. For an experience, update means the same particular experience; a shared topic, emotion or lesson still uses add.
-- If both memories can remain true and each retains independent value, use add.
+- If both memories can remain true and each retains independent value, use add. Another detail of the same occurrence can use update while preserving the earlier details.
 Each M target receives at most one candidate. Keep C refs unchanged. Memory kind, attribution, condition, status, time and evidence are fixed by the preceding stage. The program validates and stores the selected add or update operation.
 
 # Content
@@ -331,6 +338,31 @@ def examples():
     for packet, decision in cases:
         answer = dict(items=[dict(ref='C1', **decision)], reason='The operation follows the occurrence or proposition identity in the supplied evidence.')
         yield packet, MemoryPlan.model_validate(answer).model_dump()
+
+    for kind, old_text, new_texts, decisions, reason in [
+        ('experience', 'Repairing a leaking roof taught Mira to ask for help early.',
+         ['Studying algebra taught Mira to ask for help early.',
+          'That roof repair also taught Mira to check the weather forecast.'],
+         [('add', None, 'Studying algebra taught Mira to ask for help early.'),
+          ('update', 'M1', 'Repairing the leaking roof taught Mira to ask for help early and check the weather forecast.')],
+         'C1 comes from a separate experience despite the shared lesson. C2 adds a lesson from the same roof repair.'),
+        ('event', 'Mira bought tickets for a play on June 1.',
+         ['Mira attended the play on June 5.', 'Mira paid 30 euros for those June 1 tickets.'],
+         [('add', None, 'Mira attended the play on June 5.'),
+          ('update', 'M1', 'Mira bought tickets for the play on June 1 for 30 euros.')],
+         'Attendance and purchase are separate actions. The ticket price supplements the same purchase.'),
+    ]:
+        old = dict(id='history', record_type=kind, content=old_text, origin_content=old_text,
+            entity_ids=['person'], status='occurred' if kind == 'event' else None,
+            sources=[dict(id='before', role='user', content=old_text,
+                          message_at='2029-06-01T10:00:00+00:00')])
+        packet = state(' '.join(new_texts), dict(content=new_texts[0], record_type=kind,
+            status='occurred' if kind == 'event' else None, time_expression=None), [old])
+        packet['memory_candidates'] = [dict(packet['memory_candidates'][0], ref=f'C{i}', content=text)
+                                        for i, text in enumerate(new_texts, 1)]
+        packet['candidate_target_ids'] = {f'C{i}':['history'] for i in range(1, len(new_texts)+1)}
+        yield packet, dict(reason=reason, items=[dict(ref=f'C{i}', operation=op, target_id=target, content=text)
+            for i, (op,target,text) in enumerate(decisions,1)])
 
 
 def validate_plan(raw, state, view, *, protected=None):

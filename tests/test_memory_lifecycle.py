@@ -172,7 +172,7 @@ def test_examples_match_live_schema_and_validate_without_issues():
         for item in internal['items']:
             item['target_id']=mapping.get(item['target_id'],item['target_id'])
         accepted,issues=validate_plan(internal,state,state['resolved_subjects'])
-        assert not issues and len(accepted)==1
+        assert not issues and len(accepted)==len(state['memory_candidates'])
 
 
 def test_candidate_target_gate_requires_concrete_topic_continuity():
