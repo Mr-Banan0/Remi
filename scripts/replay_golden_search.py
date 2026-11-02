@@ -52,6 +52,13 @@ def execute(args):
     if prefix:
         import remi.providers as providers
         providers.DECISION_PROMPT = prefix + '\n\n' + providers.DECISION_PROMPT
+    rerank_question_path = getattr(args, 'rerank_question_file', None)
+    rerank_question = rerank_question_path.read_text() if rerank_question_path else ''
+    if rerank_question_path:
+        if not rerank_question.strip() or len(rerank_question.encode()) > 8000:
+            raise ValueError('nonempty_bounded_rerank_question_required')
+        import remi.providers as providers
+        providers.SUPPORT_QUESTION = rerank_question
     os.umask(0o077)
     args.output.mkdir(parents=True)
     database = args.output / "memory.sqlite3"
@@ -110,6 +117,8 @@ def execute(args):
         "config": {**original["config"], 'settings':vars(engine.settings),
                    'source_index_only':source_index_only,
                    'frozen_planner_report':str(planner_path) if planner_path else None,
+                   'rerank_question':rerank_question,
+                   'rerank_question_sha256':hashlib.sha256(rerank_question.encode()).hexdigest() if rerank_question else None,
                    'planner_prefix':prefix,
                    'planner_prefix_sha256':hashlib.sha256(prefix.encode()).hexdigest() if prefix else None,
                    'query_clock':'recorded_planner_clock' if planner_path else 'service_clock',
@@ -204,6 +213,8 @@ def main():
                          help='Experiment-only: prepend a bounded task definition and record it in the report')
     planner.add_argument('--frozen-planner',type=Path,
                         help='Replay all planner responses and clocks from this completed matching Search report')
+    parser.add_argument('--rerank-question-file', type=Path,
+                        help='Experiment-only: override and record the bounded Jev support question')
     rerank = parser.add_mutually_exclusive_group()
     rerank.add_argument('--role-only-rerank',action='store_true',
                         help='Experiment-only: omit generated navigation queries from rerank objectives')
