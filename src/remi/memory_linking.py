@@ -33,7 +33,12 @@ Judge each supplied pair of memories. Return LinkPlan JSON using the supplied sc
 # Meaning of a link
 A related link is an internal search hint. Both memories remain separate. Select a pair when both describe the same identifiable activity, project or continuing situation and contribute different details, or when one supplies a specific applicable condition for the other. Contextual inference is allowed; explicit causation is optional.
 
-For each pair, identify the concrete shared situation and the additional information each endpoint contributes. Check that participants, timing and circumstances support that connection. Shared mood, broad topic, person or routine alone is insufficient. Distinct occurrences require a concrete connection beyond similarity. When an interpretation requires inventing continuity or circumstances, leave the pair unselected. Judge both displayed endpoint contents, including updated contents, afresh. A previous link is a candidate for review. Cycles are allowed when each individual pair qualifies.
+Apply these rules to each pair:
+1. Same identifiable project or activity: different concrete details such as scope, resources, location and schedule receive related=true.
+2. Applicable condition: a current restriction, resource or preference that affects the activity receives related=true. Conflicting plans and constraints are especially useful together: related expresses relevance, not agreement or endorsement.
+3. Explicit continuation between distinct memories receives related=true.
+4. A shared person, emotion, broad subject or repeated routine alone receives related=false. Clearly different occurrences require an additional concrete connection. Ended conditions apply only to the matching historical circumstances.
+Use the displayed participants and timing. Keep every memory's original meaning. Judge updated contents afresh. Cycles are allowed when each pair qualifies.
 
 # Input
 CURRENT MEMORIES are the finalized memories written by this turn. RECALLED MEMORIES are bounded cross-type candidates. ELIGIBLE PAIRS are the only selectable pairs. EVIDENCE contains exact source fragments.
@@ -44,6 +49,10 @@ Return links with one decision per supplied L handle. reason names the concrete 
 
 
 EXAMPLES = [
+    (
+        'PAIR L1\nA: Elin has a maximum rental budget of 700 euros per month.\nB: Elin is considering a flat costing 950 euros per month.',
+        {'links': [{'pair_id': 'L1', 'reason': 'The flat exceeds Elin\'s applicable rental budget, so these details should be retrieved together.', 'related': True}]},
+    ),
     (
         'PAIR L1\nA: The Cedar repair project needs replacement hinges.\nB: The Cedar repair project has a budget of 80 euros.\nE1: We set aside 80 euros for the Cedar repair project.\nAllowed evidence: E1',
         {'links': [{'pair_id': 'L1', 'reason': 'Complementary details of the Cedar repair project.', 'related': True}]},
