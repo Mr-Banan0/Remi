@@ -407,20 +407,57 @@ class JevReranker:
                     "question": TEMPORAL_MATCH_QUESTION}, "criteria": {
                         "true": "The source supports the requested activity, participants and applicable status.",
                         "false": "Different activity, shared topic only, denied occurrence or unsupported summary."}}
+        temporal_ids = {target['id'] for card in cards for target in card.get('temporal_targets', [])}
+        return self._score_questions(query, questions, temporal_ids, deadline)
+
+    @staticmethod
+    def _context_limit(response):
+        if response.status_code == 413:
+            return True
+        if response.status_code != 400:
+            return False
+        try:
+            body = response.json()
+            error = body.get('error', body) if isinstance(body, dict) else {}
+            if not isinstance(error, dict):
+                return False
+            codes = {error.get('error_type'), error.get('code')}
+            message = error.get('message')
+            if isinstance(message, str):
+                try:
+                    detail, _ = json.JSONDecoder().raw_decode(message)
+                except (ValueError, TypeError):
+                    detail = {}
+                if isinstance(detail, dict):
+                    codes.add(detail.get('error_type'))
+            return bool(codes & {'max_tokens_exceeded', 'context_length_exceeded'})
+        except (ValueError, TypeError):
+            return False
+
+    def _score_questions(self, query, questions, temporal_ids, deadline):
         for attempt in range(2):
             started = monotonic()
-            trace = {"kind": "rerank", "model": self.model, "batch_size": len(cards), "attempt": attempt + 1}
+            trace = {"kind": "rerank", "model": self.model, "batch_size": len(set(questions) - temporal_ids), "question_count": len(questions), "attempt": attempt + 1}
             try:
                 response = self.client.post("systemone", json={"model": self.model, "state": {"query": query}, "questions": questions},
                                             timeout=remaining(deadline, self.timeout))
                 trace["http_status"] = response.status_code
+                if self._context_limit(response) and len(questions) > 1:
+                    trace.update(error_type='context_limit', split=True, seconds=monotonic()-started)
+                    entries = list(questions.items())
+                    middle = len(entries) // 2
+                    combined = RankResult()
+                    for part in (entries[:middle], entries[middle:]):
+                        scored = self._score_questions(query, dict(part), temporal_ids, deadline)
+                        combined.scores.update(scored.scores)
+                        combined.temporal_scores.update(scored.temporal_scores)
+                    return combined
                 response.raise_for_status()
                 body = response.json()
                 answers = body.get("answers", {}) if isinstance(body, dict) else {}
                 if not isinstance(answers, dict):
                     raise OutputInvalid("reranker_answers_invalid")
                 result = RankResult()
-                temporal_ids = {target["id"] for card in cards for target in card.get("temporal_targets", [])}
                 for key in questions:
                     answer = answers.get(key, {})
                     value = answer.get("noul") if isinstance(answer, dict) else None
@@ -435,7 +472,7 @@ class JevReranker:
                     continue
                 return RankResult()
             finally:
-                trace["seconds"] = monotonic() - started
+                trace.setdefault("seconds", monotonic() - started)
                 self.calls.append(trace)
         return RankResult()
 
