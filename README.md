@@ -39,5 +39,86 @@ reference time. Returned evidence retains dates and attribution.
 
 The runtime version is defined in `src/remi/version.py`. Versioned experiment
 reports under `docs/` distinguish offline tests, small provider checks, fixed-bank
-Search replays and complete Golden runs. A Search replay over a completed bank
-can include later-ingested evidence and is compared only with equivalent replays.
+Search replays and complete Golden runs. Query-boundary snapshot replays preserve
+the evidence available at each query. Replays over a complete final bank can include
+later-ingested evidence and are reported separately.
+
+## Local setup
+
+Use Python 3.12 or newer, starting in the repository root:
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+cp .env.example .env
+```
+
+Fill in the LLM, embedding and reranker credentials in the ignored `.env` file.
+Review the provider base URLs for your own account. Configuration is loaded through
+an explicit `--env-file` argument or `REMI_ENV_FILE`; existing process environment
+variables take precedence. `check-config` reports credential presence without
+printing key values:
+
+```sh
+.venv/bin/remi --env-file .env check-config
+```
+
+After approving creation of the six tables (`sources`, `memories`, `objects`,
+`edges`, `requests`, `search_documents`), initialize a new local database explicitly:
+
+```sh
+.venv/bin/remi --env-file .env init-db --path .local-data/remi.sqlite3 --allow-create-schema
+.venv/bin/remi --env-file .env serve --host 127.0.0.1 --port 8011
+```
+
+Set `REMI_DB_PATH` to the initialized path. `/health` reports process status;
+`/ready` checks service configuration and storage initialization. Set
+`MEMORY_API_KEY` when exposing the service and supply it through `Authorization:
+Bearer <key>` or `X-API-Key`. Interactive API documentation is served at `/docs`.
+
+## API contract
+
+- `POST /add`: `request_id`, `user_id`, `session_id`, and `messages`. Each message
+  has a `role`, `content`, and optional Unix-millisecond `timestamp`. Retry a paused
+  request with the same ID and payload so its checkpoint can resume.
+- `POST /search`: `user_id`, `query`, required `top_k` (1–100), and optional
+  `options`. Returns `data` containing source-backed `id`, `content`, `score`, and
+  `created_at` fields.
+
+The complete request and response definitions are in
+[`src/remi/models.py`](src/remi/models.py); HTTP behavior is in
+[`src/remi/api.py`](src/remi/api.py).
+
+## Code map
+
+| Module | Responsibility |
+| --- | --- |
+| `add_pipeline.py` | Source ingestion, checkpoints and atomic Add orchestration |
+| `memory_recall.py` | Candidate-specific keyword and semantic recall |
+| `memory_maintenance.py` | Add/update validation and revision materialization |
+| `memory_linking.py` | Proposed retrieval links and their validation |
+| `engine.py`, `retrieval.py`, `graph.py` | Search orchestration, ranking and graph traversal |
+| `source_context.py` | Bounded context for interpreting original evidence |
+| `providers.py` | LLM, embedding and Jev adapters, schemas and prompts |
+| `storage.py`, `revision_replay.py` | Persistence and historical view reconstruction |
+| `settings.py`, `version.py` | Runtime configuration and public version identity |
+
+The `subject_*` modules include existing-bank identity support and historical
+validation helpers. The current Add path supplies an empty identity decision and
+performs no subject-maintenance model call. Versioned reports describe the
+architecture used by their own experiment, rather than the current runtime.
+
+## Validation
+
+After approving temporary test databases with the existing six-table schema, run:
+
+```sh
+REMI_TEST_SCHEMA_APPROVED=1 PYTHONPATH=src:. .venv/bin/python -B -m pytest -q -p no:cacheprovider
+```
+
+The test suite covers mocked providers and local invariants. Live provider checks
+and Golden experiments are separate, credentialed runs. See
+[`docs/golden-optimization-v85.md`](docs/golden-optimization-v85.md) for the V85
+acceptance results, configuration, and remaining retrieval gaps. Those results
+measure local Golden retrieval; they do not establish public leaderboard SOTA or
+long-duration production performance.

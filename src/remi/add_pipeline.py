@@ -1,4 +1,4 @@
-"""Unified Remi Add pipeline: subject identity, memory candidates and revision maintenance."""
+"""Remi Add pipeline: source-backed candidates, revision maintenance and retrieval links."""
 from __future__ import annotations
 
 from copy import deepcopy
