@@ -31,3 +31,9 @@
 ## 私人历史职责前缀回放
 
 `.local-data/search-v81-private-history-v76-20261102-r1/result.json` 使用实时 Planner 与相同 V76 查询边界。R@10 76.07%、MRR@10 80.77%、R@100 97.44%，平均 Search 12.06 秒。行动题的两项限制证据进入候选但排在第 14、26 位。职责前缀提高这一题的覆盖，整体前十召回仍下降，因此保留实验记录，生产提示词保持 V81。
+
+## Completed full sequential run
+
+`.local-data/golden-v81-unified-20261102-r1/golden-gpt-4o-mini/result.json` completed 47 Add requests, 13 main queries and 3 lifecycle queries from a fresh approved six-table bank. Main memory count: 330. R@10 86.32%, MRR@10 76.92%, R@100 93.59%; lifecycle 3/3. Add success 100%, mean Add 56.87 seconds, P95 139.05; mean Search 10.72 seconds, P95 12.43. Mean returned evidence size: 145,101 bytes. The report has no request errors and records one ExtractionInvalid provider-output error handled within the run.
+
+The action query generated a generic feasibility search and an unrelated motivational-strategy latest_state search. One required constraint source was absent from the candidate pool; the other ranked eighteenth. Thus the full run does not reproduce the earlier single replay high score. V83 is being checked against this new bank with its recorded Planner as well as by an independent fresh-ingestion full run.
