@@ -19,3 +19,9 @@ Live replay mean latency was 11.22, 11.41 and 11.24 seconds; P95 was 13.63, 13.2
 On the V81 fixed-plan comparison, all 16 candidate pools, RRF values and returned cards were identical before and after splitting the Jev view. The action condition improved from rank 4 to 1 and the actual contact from 2 to 1. Wrong-date workshop and device evidence remained at rank 2. V83's adjacent context increases average evidence volume; V84 does not further increase returned content.
 
 Validation: 521 full regression tests passed, including the result-comparability audit tests. Seven focused provider tests passed after explicitly limiting the scoring-view override to `original` and `context`. Tests check actual Jev payloads, full external original preservation, source IDs, temporal operators, context-limit recovery and unchanged input cards. A full V84 fresh-bank run is required before completion; the frozen V83 run continues as a baseline.
+
+## Third-bank live stability check
+
+The completed V83 fresh-ingestion bank was replayed with V84 using query-boundary snapshots and live Planner/Jev calls. Repeat 1 reached R@10 96.5812%, MRR@10 92.3077%, R@100 97.4359%; repeat 2 reached R@10 88.8889%, MRR@10 84.6154%, R@100 97.4359%. Both passed lifecycle 3/3 without request errors. Search mean/P95 was 11.63/14.18 seconds and 11.50/15.15 seconds. Reports are `search-v84-live-v83-20261102-r1` and `r2`.
+
+Repeat 2's action query produced navigation targets for reminder setup and motivational strategies under constraint/latest_state roles. Its two gold conditions fell from ranks 3/1 to 20/11. This demonstrates remaining Planner-to-ranker propagation of an incorrect retrieval objective. The stable-improvement criterion is still unmet despite the strong full V83 result. Production remains frozen while a generic objective-authority instruction is checked on independent synthetic examples.
