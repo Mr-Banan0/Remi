@@ -20,6 +20,7 @@ from remi.api import create_app, environment_engine
 from remi.settings import load_environment
 from remi.storage import SQLiteStore, TABLES
 from remi.version import PIPELINE
+from scripts.golden_snapshots import capture_query_snapshot
 from scripts.golden_adapter import (AML_MESSAGE_LIMIT, AML_METRIC_CUTOFFS, AML_TOP_K, AML_WORD_LIMIT,
     actions, add_payload, input_catalog, metrics, score_case)
 
@@ -286,11 +287,12 @@ def execute(args):
                     question = action["question"]
                     if any(record["question_id"] == question["id"] and record.get('http_status') == 200 for record in report["questions"]):
                         continue
+                    snapshot = capture_query_snapshot(database, args.output, question['id'])
                     response, seconds = post(client, "/search", {
                         "user_id": owner, "query": question["text"], "top_k": AML_TOP_K})
                     candidates = response.json()["data"] if response.status_code == 200 else []
                     record = score_case(action, candidates, mapping, catalog)
-                    record.update(seconds=seconds, http_status=response.status_code, candidates=candidates,
+                    record.update(seconds=seconds, http_status=response.status_code, candidates=candidates, query_snapshot=snapshot,
                                   trace=engine.last_search, input_complete=all(ref in mapping.values() for ref in question["evidence"]))
                     if response.status_code != 200:
                         report["errors"].append({"operation": "search", "question_id": question["id"], "http_status": response.status_code})
@@ -326,12 +328,13 @@ def execute(args):
                 ("李明现在住在哪里？", ("李明现在住杭州", "2026-10-01"))):
                 if any(record["query"] == question for record in report["lifecycle_searches"]):
                     continue
+                snapshot = capture_query_snapshot(database, args.output, 'lifecycle:'+question)
                 response, seconds = post(client, "/search", {
                     "user_id": life_owner, "query": question, "top_k": AML_TOP_K})
                 if response.status_code != 200:
                     raise RuntimeError('golden_lifecycle_search_interrupted')
                 candidates = response.json()["data"]
-                report["lifecycle_searches"].append({"query": question, "seconds": seconds, "http_status": response.status_code,
+                report["lifecycle_searches"].append({"query": question, "seconds": seconds, "http_status": response.status_code, "query_snapshot":snapshot,
                     "top1_expected_evidence": bool(candidates) and all(term in candidates[0]["content"] for term in expected),
                     "candidates": candidates, "trace": engine.last_search})
                 save("running")

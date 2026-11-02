@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -17,7 +18,8 @@ import uvicorn
 
 from remi.api import create_app, environment_engine
 from remi.settings import load_environment
-from remi.storage import TABLES
+from remi.storage import SQLiteStore, TABLES
+from scripts.golden_snapshots import copy_query_snapshot
 from scripts.golden_adapter import AML_METRIC_CUTOFFS, AML_TOP_K, actions, add_payload, input_catalog, metrics, score_case
 from scripts.run_golden import compare, diagnostics, fingerprint, latency, verify_baseline
 
@@ -31,6 +33,10 @@ def execute(args):
         verify_baseline(dataset, baseline)
     if not original["complete"] or args.output.exists() or not args.allow_copy_bank:
         raise ValueError("complete_original_fresh_output_and_explicit_bank_copy_required")
+    query_snapshots = all(row.get('query_snapshot') for row in [
+        *original['questions'], *original['lifecycle_searches']])
+    if getattr(args, 'require_query_snapshots', False) and not query_snapshots:
+        raise ValueError('query_boundary_snapshots_required')
     os.umask(0o077)
     args.output.mkdir(parents=True)
     database = args.output / "memory.sqlite3"
@@ -39,6 +45,12 @@ def execute(args):
     load_environment(args.env_file)
     os.environ["REMI_DB_PATH"] = str(database)
     engine = environment_engine()
+    source_index_only = getattr(args, 'source_index_only', False)
+    if source_index_only:
+        engine.settings = replace(engine.settings, graph_enabled=False, hot_enabled=False)
+        visible_documents = engine._visible_documents
+        engine._visible_documents = lambda owner, as_of: [
+            document for document in visible_documents(owner, as_of) if document.memory_id is None]
     if {row[0] for row in engine.store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")} != TABLES:
         raise ValueError("exactly_six_tables_required")
     owner = original["derivation"]["rhelm"]["memories"][0]["owner"]
@@ -63,13 +75,14 @@ def execute(args):
     if not server.started:
         raise RuntimeError("local_service_start_failed")
     root = Path(__file__).resolve().parents[1]
-    report = {"mode": "all_search_replay_using_frozen_ingestion", "complete": False,
+    report = {"mode": "query_boundary_snapshot_replay" if query_snapshots else "all_search_replay_using_frozen_ingestion", "complete": False,
         "original_full_run": str(args.original), "dataset": original["dataset"], "dataset_sha256": original["dataset_sha256"],
         "baseline_result": original["baseline_result"], "ingestion_code_fingerprint": original["runtime_code_fingerprint"],
         "runtime_directory": str(root), "runtime_code_fingerprint": fingerprint(root), "started_at": time.time(),
         "add_calls": original["add_calls"], "lifecycle_add_calls": original["lifecycle_add_calls"],
         "questions": [], "lifecycle_searches": [], "errors": [], "database": str(database),
-        "config": {**original["config"], 'settings':vars(engine.settings)}, "source_to_ref": mapping}
+        "config": {**original["config"], 'settings':vars(engine.settings),
+                   'source_index_only':source_index_only}, "source_to_ref": mapping}
     def save(status):
         calls = diagnostics(engine)
         report["diagnostic_calls"] = calls
@@ -81,10 +94,17 @@ def execute(args):
             "questions_completed": len(report["questions"]), "lifecycle_queries_completed": len(report["lifecycle_searches"]),
             "planned_questions": 13, "planned_lifecycle_queries": 3, "pid": os.getpid()}, indent=2))
     save("running")
+    def load_query_bank(record):
+        if query_snapshots:
+            engine.store.close()
+            copy_query_snapshot(record['query_snapshot'], database)
+            engine.store = SQLiteStore(database)
     try:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", headers={"Authorization": "Bearer " + token}, timeout=180) as client:
             for case in dataset["cases"]:
                 question = case["question"]
+                old = next(row for row in original['questions'] if row['question_id'] == question['id'])
+                load_query_bank(old)
                 started = time.monotonic()
                 response = client.post("/search", json={
                     "user_id": owner, "query": question["text"], "top_k": AML_TOP_K})
@@ -98,6 +118,7 @@ def execute(args):
                 print(f"Search replay {len(report['questions'])}: recall={record['evidence_recall']:.3f}", flush=True)
                 save("running")
             for old in original["lifecycle_searches"]:
+                load_query_bank(old)
                 started = time.monotonic()
                 response = client.post("/search", json={
                     "user_id": life_owner, "query": old["query"], "top_k": AML_TOP_K})
@@ -130,6 +151,10 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--allow-copy-bank", action="store_true")
+    parser.add_argument("--source-index-only", action="store_true",
+                        help="Experiment-only source index ablation with graph and hot memory disabled")
+    parser.add_argument('--require-query-snapshots', action='store_true',
+                        help='Require the bank captured immediately before each original query')
     execute(parser.parse_args())
 
 
