@@ -175,6 +175,13 @@ def execute(args):
         SQLiteStore.initialize(database, allow_create_schema=True)
     os.environ["REMI_DB_PATH"] = str(database)
     engine = environment_engine()
+    indexed = getattr(args, "search_index", False)
+    if indexed and not engine.store._indexed:
+        engine.store.rebuild_search_index(allow_create_schema=True)
+    expected_tables = {row[0] for row in engine.store.connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if previous_report and previous_report["config"].get("search_index", False) != indexed:
+        raise ValueError("resume_requires_same_index_configuration")
     token = uuid4().hex
     owners = [row[0] for row in engine.store.connection.execute("SELECT DISTINCT owner FROM requests")] if args.resume else []
     owner = next((value for value in owners if value.startswith("golden:")), "golden:" + token)
@@ -203,7 +210,7 @@ def execute(args):
             kind == "add" for kind, action in plan) + len(dataset["lifecycle"]), "planned_questions": len(dataset["cases"]),
         "add_calls": [], "questions": [], "lifecycle_add_calls": [], "lifecycle_searches": [],
         "protocol_checks": [], "errors": [], "diagnostic_calls": [], "source_to_ref": {},
-        "config": {"top_k": AML_TOP_K,
+        "config": {"top_k": AML_TOP_K, "search_index": indexed,
             "add_chunking": {"message_limit": AML_MESSAGE_LIMIT, "word_limit": AML_WORD_LIMIT,
                              "word_counter": "unicode_word_units_v1"},
             "search_reference_time": "not_sent", "scoring": "visible_raw_source_v2", "model": engine.model.model,
@@ -342,7 +349,8 @@ def execute(args):
                 "requests": engine.store.list("requests", user)} for name, user in (("rhelm", owner), ("lifecycle", life_owner))}
             actual = {row[0] for row in engine.store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             report["tables"] = sorted(actual)
-            report["protocol_checks"].append({"name": "exactly_six_tables", "passed": actual == TABLES})
+            report["protocol_checks"].append({"name": "approved_index_tables" if indexed else "exactly_six_tables",
+                "passed": actual == expected_tables if indexed else actual == TABLES})
             report["complete"], report["ended_at"] = True, time.time()
             save("complete")
             if baseline:
@@ -369,6 +377,8 @@ def main():
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--allow-create-schema", action="store_true")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--search-index", action="store_true",
+                        help="Explicitly build the approved FTS index in this experimental bank")
     args = parser.parse_args()
     if args.execute:
         execute(args)
