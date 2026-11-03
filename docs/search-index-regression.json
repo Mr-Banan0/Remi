@@ -1,0 +1,135 @@
+{
+  "baseline_commit": "b5e4da6bb9ba56c9d49af46814857a7187986714",
+  "scope": "offline fixed decisions and synthetic model scores; query-boundary copies",
+  "checks": [
+    {
+      "question_id": "fact_ef36b7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_ef6a39",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_30220c",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_a952ee",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_6c5283",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_e1dfb2",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_87dba1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_8f6beb",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_665da1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_5a7990",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_e1f411",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_f67ca7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_e91747",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "13",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "14",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "15",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    }
+  ],
+  "scale": [
+    {
+      "documents": 1000,
+      "lexical_baseline_seconds": 0.023340916028246284,
+      "indexed_seconds": 0.0013597920769825578,
+      "matching": 10,
+      "full_documents_loaded": 0
+    },
+    {
+      "documents": 10000,
+      "lexical_baseline_seconds": 0.24204554199241102,
+      "indexed_seconds": 0.012539249961264431,
+      "matching": 100,
+      "full_documents_loaded": 0
+    }
+  ],
+  "offline_tests_passed": 541
+}

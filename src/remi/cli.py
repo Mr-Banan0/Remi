@@ -16,6 +16,9 @@ def main():
     init = sub.add_parser("init-db", help="Create the six approved tables in a new database")
     init.add_argument("--path", default=".local-data/remi.sqlite3")
     init.add_argument("--allow-create-schema", action="store_true", help="Use after explicit approval of the six table scope")
+    index = sub.add_parser("index-db", help="Build the approved incremental lexical index")
+    index.add_argument("--path", default=".local-data/remi.sqlite3")
+    index.add_argument("--allow-create-schema", action="store_true")
     sub.add_parser("check-config", help="Report only model names and credential presence")
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
@@ -25,6 +28,13 @@ def main():
     if args.command == "init-db":
         SQLiteStore.initialize(args.path, allow_create_schema=args.allow_create_schema)
         print(json.dumps({"created": args.path, "tables": sorted(TABLES)}))
+    elif args.command == "index-db":
+        store = SQLiteStore(args.path)
+        try:
+            store.rebuild_search_index(allow_create_schema=args.allow_create_schema)
+        finally:
+            store.close()
+        print(json.dumps({"indexed": args.path}))
     elif args.command == "check-config":
         print(json.dumps({"version": VERSION, "pipeline": PIPELINE,
             "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),

@@ -4,6 +4,35 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+
+# Request-local memoization preserves each candidate pool's BM25 statistics.
+# Limits bound retained text and token entries even for very large history banks.
+_lexical_cache = ContextVar("remi_lexical_cache", default=None)
+
+
+@contextmanager
+def retrieval_cache():
+    token = _lexical_cache.set({"entries": {}, "units": 0})
+    try:
+        yield
+    finally:
+        _lexical_cache.reset(token)
+
+
+def term_counts(text):
+    cache = _lexical_cache.get()
+    if cache is not None and text in cache["entries"]:
+        return cache["entries"][text]
+    counts = Counter(tokenize(text))
+    if cache is not None:
+        units = len(text) + sum(len(term) + 1 for term in counts)
+        if len(cache["entries"]) < 4096 and cache["units"] + units <= 1_000_000:
+            cache["entries"][text] = counts
+            cache["units"] += units
+    return counts
 
 
 def tokenize(text: str) -> list[str]:
@@ -20,15 +49,16 @@ def tokenize(text: str) -> list[str]:
 
 
 def bm25(query: str, documents) -> dict[str, float]:
-    counters = {d.id: Counter(tokenize(d.text)) for d in documents}
+    counters = {d.id: term_counts(d.text) for d in documents}
     df = Counter(term for terms in counters.values() for term in terms)
     lengths = {key: sum(counter.values()) for key, counter in counters.items()}
     n = len(counters)
     average = sum(lengths.values()) / max(n, 1) or 1
     result = {}
+    query_terms = set(tokenize(query))
     for key, terms in counters.items():
         score = 0.0
-        for term in set(tokenize(query)):
+        for term in query_terms:
             tf = terms.get(term, 0)
             if tf:
                 idf = math.log(1 + (n - df[term] + .5) / (df[term] + .5))
@@ -53,8 +83,8 @@ def cosine(left, right) -> float:
     return numerator / denominator if denominator else 0.0
 
 
-def hybrid(query, documents, vector=None, limit=40, semantic_scores=None):
-    lexical = bm25(query, documents)
+def hybrid(query, documents, vector=None, limit=40, semantic_scores=None, lexical_scores=None):
+    lexical = bm25(query, documents) if lexical_scores is None else lexical_scores
     lexical_ids = sorted(lexical, key=lambda key: (-lexical[key], key))
     semantic_ids = []
     if vector is not None:

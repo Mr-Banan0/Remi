@@ -17,10 +17,18 @@ pytestmark = pytest.mark.skipif(os.getenv("REMI_TEST_SCHEMA_APPROVED") != "1",
                                reason="Enable the approved six-table database test scope")
 
 
-@pytest.fixture
-def database(tmp_path):
+@pytest.fixture(params=[False, True], ids=["legacy", "indexed"])
+def database(tmp_path, request):
+    if request.param and os.getenv("REMI_TEST_INDEX_APPROVED") != "1":
+        pytest.skip("Explicit temporary index-schema approval required")
     path = tmp_path / "remi.sqlite3"
     SQLiteStore.initialize(path, allow_create_schema=True)
+    if request.param:
+        store = SQLiteStore(path)
+        try:
+            store.rebuild_search_index(allow_create_schema=True)
+        finally:
+            store.close()
     return path
 
 
@@ -134,6 +142,7 @@ def test_vector_and_graph_queries_respect_owner(database):
 def test_existing_database_initialization_preserves_records(database):
     store = SQLiteStore(database)
     store.put("requests", "u1", "existing", {"status": "retained"})
+    original_tables = {row[0] for row in store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     store.close()
     with pytest.raises(FileExistsError):
         SQLiteStore.initialize(database, allow_create_schema=True)
@@ -141,7 +150,8 @@ def test_existing_database_initialization_preserves_records(database):
     try:
         assert reopened.get("requests", "u1", "existing") == {"status": "retained"}
         tables = {row[0] for row in reopened.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert tables == TABLES
+        assert tables == original_tables
+        assert TABLES <= tables
     finally:
         reopened.close()
 

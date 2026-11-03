@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import RLock
 
 from .models import Document, Edge, GraphObject, Memory, Source, SCHEMA_VERSION
+from .search_index import RecordCache, DocumentHandle, encoded_terms, lexical_scores
 
 
 SCHEMA = """
@@ -78,6 +79,13 @@ class MemoryStore:
         values = self.list("memories", owner) if ids is None else [self.get("memories", owner, key) for key in dict.fromkeys(ids)]
         return [Memory.model_validate(value) for value in values if value is not None]
 
+    def search_documents(self, owner):
+        return self.documents(owner)
+
+    def lexical_scores(self, owner, query, documents):
+        from .retrieval import bm25
+        return bm25(query, documents)
+
     def documents(self, owner):
         return [Document.model_validate(value) for value in self.list("search_documents", owner)]
 
@@ -134,6 +142,9 @@ class SQLiteStore(MemoryStore):
         finally:
             self.connection.enable_load_extension(False)
         self._depth = 0
+        self.record_cache = RecordCache()
+        self._data_version = self.connection.execute("PRAGMA data_version").fetchone()[0]
+        self._indexed = {'search_lexical', 'search_lexical_vocab'} <= actual
 
     @staticmethod
     def initialize(path: str | Path, *, allow_create_schema=False):
@@ -152,12 +163,66 @@ class SQLiteStore(MemoryStore):
         finally:
             connection.close()
 
+    def _check_external_changes(self):
+        version = self.connection.execute("PRAGMA data_version").fetchone()[0]
+        if version != self._data_version:
+            self.record_cache.clear()
+            self._data_version = version
+            tables = {row[0] for row in self.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            self._indexed = {'search_lexical', 'search_lexical_vocab'} <= tables
+
     def get(self, table, owner, key):
         self._table(table)
         with self.lock:
-            row = self.connection.execute(f"SELECT record_json, {self._vector_column(table)} FROM {table} WHERE owner=? AND id=?",
-                                          (owner, key)).fetchone()
+            self._check_external_changes()
+            cache_key = (table, owner, key)
+            row = self.record_cache.get(cache_key)
+            if row is None:
+                row = self.connection.execute(
+                    f"SELECT record_json, {self._vector_column(table)} FROM {table} WHERE owner=? AND id=?",
+                    (owner, key)).fetchone()
+                if row is not None:
+                    self.record_cache.put(cache_key, row)
             return self._decode(table, row) if row else None
+
+    def search_documents(self, owner):
+        with self.lock:
+            self._check_external_changes()
+        if not self._indexed:
+            return super().search_documents(owner)
+        fields = ('id', 'owner', 'source_ids', 'memory_id', 'revision_id',
+                  'message_at', 'event_at', 'created_at')
+        expressions = ','.join("json_extract(record_json,'$." + field + "')" for field in fields)
+        with self.lock:
+            rows = self.connection.execute(
+                f"SELECT {expressions} FROM search_documents WHERE owner=? ORDER BY id", (owner,)).fetchall()
+        handles = []
+        for row in rows:
+            metadata = dict(zip(fields, row))
+            metadata['source_ids'] = json.loads(metadata['source_ids'])
+            handles.append(DocumentHandle(self, metadata))
+        return handles
+
+    def lexical_scores(self, owner, query, documents):
+        if not self._indexed:
+            return super().lexical_scores(owner, query, documents)
+        with self.lock:
+            return lexical_scores(self.connection, owner, query, [document.id for document in documents])
+
+    def rebuild_search_index(self, *, allow_create_schema=False):
+        """Explicit, transactional migration; existing banks remain untouched until requested."""
+        if not allow_create_schema:
+            raise PermissionError('explicit_schema_approval_required')
+        with self.transaction():
+            self.connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS search_lexical USING fts5("
+                "owner UNINDEXED, document_id UNINDEXED, token_count UNINDEXED, terms, tokenize='ascii')")
+            self.connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS search_lexical_vocab USING "
+                "fts5vocab(search_lexical, 'instance')")
+            self.connection.execute('DELETE FROM search_lexical')
+            for rowid, owner, key, raw in self.connection.execute('SELECT rowid,owner,id,record_json FROM search_documents'):
+                length, terms = encoded_terms(json.loads(raw)['text'])
+                self.connection.execute('INSERT INTO search_lexical(rowid,owner,document_id,token_count,terms) VALUES(?,?,?,?,?)', (rowid,owner,key,length,terms))
+        self._indexed = True
 
     def list(self, table, owner):
         self._table(table)
@@ -168,7 +233,9 @@ class SQLiteStore(MemoryStore):
     def put(self, table, owner, key, value):
         self._table(table)
         record = dict(value)
-        with self.lock:
+        with self.transaction():
+            self._check_external_changes()
+            self.record_cache.discard((table, owner, key))
             if table == "edges":
                 self.connection.execute("INSERT INTO edges VALUES(?,?,?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET "
                     "origin=excluded.origin,target=excluded.target,relation=excluded.relation,record_json=excluded.record_json",
@@ -179,6 +246,11 @@ class SQLiteStore(MemoryStore):
                 blob = sqlite_vec.serialize_float32(vector) if vector is not None else None
                 self.connection.execute("INSERT INTO search_documents VALUES(?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET "
                     "record_json=excluded.record_json,vector=excluded.vector", (owner, key, json.dumps(record, ensure_ascii=False), blob))
+                if self._indexed:
+                    rowid = self.connection.execute('SELECT rowid FROM search_documents WHERE owner=? AND id=?', (owner,key)).fetchone()[0]
+                    self.connection.execute('DELETE FROM search_lexical WHERE rowid=?', (rowid,))
+                    length, terms = encoded_terms(record['text'])
+                    self.connection.execute('INSERT INTO search_lexical(rowid,owner,document_id,token_count,terms) VALUES(?,?,?,?,?)', (rowid,owner,key,length,terms))
             else:
                 self.connection.execute(f"INSERT INTO {table} VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET record_json=excluded.record_json",
                                         (owner, key, json.dumps(record, ensure_ascii=False)))
@@ -197,7 +269,12 @@ class SQLiteStore(MemoryStore):
 
     def delete(self, table, owner, key):
         self._table(table)
-        with self.lock:
+        with self.transaction():
+            self._check_external_changes()
+            self.record_cache.discard((table, owner, key))
+            if table == 'search_documents' and self._indexed:
+                self.connection.execute('DELETE FROM search_lexical WHERE rowid IN '
+                    '(SELECT rowid FROM search_documents WHERE owner=? AND id=?)', (owner,key))
             self.connection.execute(f"DELETE FROM {table} WHERE owner=? AND id=?", (owner, key))
 
     def edges_for(self, owner, origins=None, targets=None, limit=None):
@@ -245,11 +322,13 @@ class SQLiteStore(MemoryStore):
             except Exception:
                 if top:
                     self.connection.execute("ROLLBACK")
+                self.record_cache.clear()
                 raise
             finally:
                 self._depth -= 1
 
     def close(self):
+        self.record_cache.clear()
         self.connection.close()
 
     @staticmethod

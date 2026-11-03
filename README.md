@@ -122,3 +122,22 @@ and Golden experiments are separate, credentialed runs. See
 acceptance results, configuration, and remaining retrieval gaps. Those results
 measure local Golden retrieval; they do not establish public leaderboard SOTA or
 long-duration production performance.
+
+## Incremental Search index and bounded cache
+
+An explicitly migrated SQLite bank uses a persistent lexical index and loads full
+candidate documents on demand. The index preserves Remi's tokenization and BM25
+scores within each visible candidate pool. Vector ranking remains exact.
+
+After approving the FTS index tables and SQLite-managed shadow tables, build the
+index on a test copy first:
+
+```sh
+.venv/bin/remi index-db --path /path/to/test-copy.sqlite3 --allow-create-schema
+```
+
+Document writes maintain the index transactionally. A bounded process-local record
+cache invalidates on writes, rollback, and external commits. Existing banks keep
+the previous read path during the explicit migration window. See
+[`docs/search-index-performance.md`](docs/search-index-performance.md) for migration,
+validation scope, remaining scale limits, and the decision to keep Redis optional.

@@ -14,7 +14,7 @@ from .heat import hot_view, visible_memory
 from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
-from .retrieval import clip_bytes, hybrid, tokenize, validate_vector
+from .retrieval import clip_bytes, hybrid, tokenize, validate_vector, retrieval_cache
 from .settings import Settings
 from .source_context import source_context, with_source_context
 from .storage import MemoryStore
@@ -153,7 +153,7 @@ class MemoryEngine:
             if memory:
                 revisions.update({r.id: r for r in memory.revisions})
         documents = []
-        for document in self.store.documents(owner):
+        for document in self.store.search_documents(owner):
             if parse_time(document.message_at or document.created_at) <= parse_time(as_of):
                 if document.revision_id and document.revision_id not in revisions:
                     continue
@@ -227,7 +227,8 @@ class MemoryEngine:
 
     def _hybrid(self, owner, query, documents, vector=None, limit=40):
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
-        return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic)
+        return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic,
+                      lexical_scores=self.store.lexical_scores(owner, query, documents))
 
     def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of):
         from .graph import active_edges, active_connections
@@ -753,7 +754,7 @@ class MemoryEngine:
     def search(self, request, reference_time=None):
         deadline = monotonic() + self.settings.search_timeout
         as_of = parse_time(reference_time or utcnow()).isoformat()
-        with self._scope(request.user_id, deadline):
+        with self._scope(request.user_id, deadline), retrieval_cache():
             documents = self._visible_documents(request.user_id, as_of)
             vector = None
             degradation = []
