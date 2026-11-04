@@ -1,0 +1,3313 @@
+{
+  "baseline_commit": "6a5eb92",
+  "current": "uncommitted workspace",
+  "source_sha256": "96786626c2eddd11af098467c317bdce8dd4296e134c4479439ccd4a5b2db9db",
+  "online_calls": 0,
+  "repeats_per_query_time": 3,
+  "platform": "macOS; ru_maxrss in bytes",
+  "scale": [
+    {
+      "memories": 10000,
+      "input": {
+        "sha256": "7d89dee9bf95a550e1776c9ef8198ccb0a04087e961f10fb29abd9dbc6112eb0",
+        "identical_copies": true
+      },
+      "before": {
+        "migration_seconds": 1.6693957149982452e-07,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 3.260243500000797,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 0.4385087079135701
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.06725425005424768
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06654979102313519
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.6843256249558181
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.275003008544445e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.041311209090054035
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.015615666867233813
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.06101237586699426
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 1.176437749993056
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00020204088650643826
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.6131245419383049
+                },
+                "storage.get_many": {
+                  "calls": 89,
+                  "seconds": 0.0011252870317548513
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 4.66697383671999e-06,
+                "storage.list.returned": 62000,
+                "visible_memory_records": 50000,
+                "visible_revision_records": 60000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 166
+              },
+              "success": true,
+              "total_seconds": 3.26015066599939
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 3.309233999927528,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 0.4269391249399632
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.06587358308024704
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06857158394996077
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.6918205830734223
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 8.883303962647915e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.05285908293444663
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.014246499980799854
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.07134212506935
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 1.1219012079527602
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00019954098388552666
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.6577842500992119
+                },
+                "storage.get_many": {
+                  "calls": 89,
+                  "seconds": 0.0009985431097447872
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.2919848561286926e-06,
+                "storage.list.returned": 62000,
+                "visible_memory_records": 50000,
+                "visible_revision_records": 60000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 160
+              },
+              "success": true,
+              "total_seconds": 3.3091447500046343
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 3.280261875013821,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 0.44360933278221637
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.10148345807101578
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06922654109075665
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.6876483330270275
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.895791739225388e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.04003462486434728
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.014733083080500364
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.05871491692960262
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 1.137990584014915
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002078331308439374
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.6418417079839855
+                },
+                "storage.get_many": {
+                  "calls": 89,
+                  "seconds": 0.0009249199647456408
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.5830155462026596e-06,
+                "storage.list.returned": 62000,
+                "visible_memory_records": 50000,
+                "visible_revision_records": 60000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 160
+              },
+              "success": true,
+              "total_seconds": 3.280182042042725
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 0.7219664580188692,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 4,
+                  "seconds": 0.09574670786969364
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.06122549995779991
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06620029103942215
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.5014510829932988
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.170799653977156e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.02100374992005527
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.012522208853624761
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.03560479183215648
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.005847250111401081
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0001692919759079814
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.07059445895720273
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0009394926019012928
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.5420373529195786e-06,
+                "storage.list.returned": 22000,
+                "visible_memory_records": 10000,
+                "visible_revision_records": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "derived_cache_hits": 6,
+                "storage.edges_for.returned": 2,
+                "storage.get_many.returned": 159
+              },
+              "success": true,
+              "total_seconds": 0.7218737080693245
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 0.7487463329453021,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 4,
+                  "seconds": 0.09108716703485698
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.09206308401189744
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06782691704574972
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.5146265409421176
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.174990605562925e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.022197042126208544
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.012897040927782655
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.03746495896484703
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.006266250042244792
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00016966601833701134
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.04612704203464091
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.000914869480766356
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.750071533024311e-06,
+                "storage.list.returned": 22000,
+                "visible_memory_records": 10000,
+                "visible_revision_records": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "derived_cache_hits": 6,
+                "storage.edges_for.returned": 2,
+                "storage.get_many.returned": 159
+              },
+              "success": true,
+              "total_seconds": 0.7486634580418468
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 0.7297386659774929,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 4,
+                  "seconds": 0.09496524906717241
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.060287041938863695
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06518662488088012
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.5021639580372721
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.295794785022736e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.027197209070436656
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.012755000847391784
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.04219691711477935
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.03511991701088846
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00016950105782598257
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.04400754196103662
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0008567397017031908
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.5830155462026596e-06,
+                "storage.list.returned": 22000,
+                "visible_memory_records": 10000,
+                "visible_revision_records": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "derived_cache_hits": 6,
+                "storage.edges_for.returned": 2,
+                "storage.get_many.returned": 159
+              },
+              "success": true,
+              "total_seconds": 0.7296405839733779
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          4.216702654957771e-05,
+          0.000374958966858685,
+          0.00013670790940523148,
+          8.525000885128975e-05,
+          8.587504271417856e-05,
+          8.245895151048899e-05,
+          0.00011516700033098459,
+          7.833307608962059e-05,
+          6.533297710120678e-05,
+          6.312504410743713e-05,
+          7.179193198680878e-05,
+          6.216601468622684e-05,
+          6.229104474186897e-05,
+          6.187497638165951e-05,
+          7.016700692474842e-05,
+          6.229197606444359e-05,
+          6.108405068516731e-05,
+          6.137497257441282e-05,
+          7.525004912167788e-05,
+          5.9416983276605606e-05
+        ],
+        "peak_rss_native": 255672320,
+        "database_bytes": 160272384
+      },
+      "after": {
+        "migration_seconds": 0.3211503749480471,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 0.608997790957801,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.047993583022616804
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.1372824580175802
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.09241045895032585
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06798479205463082
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.1620802499819547
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.324991747736931e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.040850042947568
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.018185417051427066
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.06581179203931242
+                },
+                "storage.get_many": {
+                  "calls": 165,
+                  "seconds": 0.0024641278432682157
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.01639725104905665
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.021795291104353964
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002150830114260316
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.06687183305621147
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 8.458038792014122e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382226,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 10000,
+                "visible_revision_headers": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.get_many.returned": 242,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.6088874170091003
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 0.6281740829581395,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.038008749950677156
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.12235349998809397
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.09391266701277345
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06825370818842202
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.16512424999382347
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.787502206861973e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.044303208123892546
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.014637333923019469
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.06304250110406429
+                },
+                "storage.get_many": {
+                  "calls": 165,
+                  "seconds": 0.0022454606369137764
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.015475791995413601
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.022069582948461175
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00021870899945497513
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.06764891697093844
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.0420411601662636e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382456,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 10000,
+                "visible_revision_headers": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.get_many.returned": 236,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.6280901250429451
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 0.6232669160235673,
+            "response_sha256": "e5ca790455478e7f0424b25f7d42109506c35cc0c9363f6b3818b4cf6bb97ba5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.028440208989195526
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.13944733410608023
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.0691433340543881
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06771545892115682
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.16491275001317263
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.337498780339956e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.04057149903383106
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.014562458032742143
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.0599630419164896
+                },
+                "storage.get_many": {
+                  "calls": 165,
+                  "seconds": 0.002265163930132985
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.01576604088768363
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.022340834024362266
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0001765410415828228
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.044932291959412396
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.7499551177024841e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382456,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 10000,
+                "visible_revision_headers": 12000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 12032,
+                "storage.vector_scores.returned": 12032,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 110,
+                "storage.get_many.returned": 236,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 3,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.623151957988739
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 0.4423379999352619,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.04409104201477021
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.0897490419447422
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.06123670807573944
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06746887497138232
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.14381437504198402
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.583298090845346e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.029421083047054708
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.013820542022585869
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.045457457075826824
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0021157371811568737
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.007911625085398555
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.02271695900708437
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00014000001829117537
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.036948207998648286
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.125045284628868e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382456,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 5124,
+                "visible_revision_headers": 6132,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "storage.get_many.returned": 235,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.4422481249785051
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 0.4422589159803465,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.042615666054189205
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.08872787503059953
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.060719583998434246
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06821683305315673
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.14639079093467444
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.749993190169334e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.022978332941420376
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.01316037483047694
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.038399334996938705
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0022133280290290713
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.007828750996850431
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.0232243319042027
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00014291703701019287
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.037296957918442786
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.834006980061531e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382479,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 5124,
+                "visible_revision_headers": 6132,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "storage.get_many.returned": 235,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.4421682079555467
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 0.44840954209212214,
+            "response_sha256": "f9f59fe1e96252aa82c0b5f6f3550ae1a376b4e76c106cee726efdbe77115d55",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.02799945801962167
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.09309450001455843
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.06179558299481869
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.06607100088149309
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.12209308298770338
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.600003689527512e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.021283083013258874
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.013509707059711218
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.037347958073951304
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0023545476142317057
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.02831804205197841
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.022761291125789285
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0001401259796693921
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.03886916604824364
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.125045284628868e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 3382479,
+                "storage.memory_projections.returned": 10000,
+                "visible_memory_headers": 5124,
+                "visible_revision_headers": 6132,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 12000,
+                "storage.source_headers.returned": 24000,
+                "vector_candidate_ids": 6160,
+                "storage.vector_scores.returned": 6160,
+                "lexical_stat_rows": 12000,
+                "storage.lexical_scores.returned": 62,
+                "storage.get_many.returned": 235,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 12000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 0.4482544999336824
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          0.0004077079938724637,
+          0.00011512497439980507,
+          9.504100307822227e-05,
+          7.983297109603882e-05,
+          9.174994193017483e-05,
+          9.308394510298967e-05,
+          7.991702295839787e-05,
+          8.541601710021496e-05,
+          8.55419784784317e-05,
+          9.841693099588156e-05,
+          9.67920059338212e-05,
+          8.545909076929092e-05,
+          8.233392145484686e-05,
+          0.0001093749888241291,
+          7.866602391004562e-05,
+          8.92080133780837e-05,
+          8.766702376306057e-05,
+          8.708308450877666e-05,
+          8.470797911286354e-05,
+          7.783295586705208e-05
+        ],
+        "peak_rss_native": 137461760,
+        "database_bytes": 180797440
+      }
+    },
+    {
+      "memories": 50000,
+      "input": {
+        "sha256": "1e43c97585cee47a30512a1677d0fcad976a5c8e92ebafd0547dc700794e0bfd",
+        "identical_copies": true
+      },
+      "before": {
+        "migration_seconds": 2.50060111284256e-07,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 19.05672345799394,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 2.812658751034178
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.3472241669660434
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.36753474990837276
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 3.952901832992211
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.595890201628208e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2799006251152605
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.08301408390980214
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.3903850009664893
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 6.548476667026989
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00029587489552795887
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 3.746091124950908
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0013496683677658439
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 9.167008101940155e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 163
+              },
+              "success": true,
+              "total_seconds": 19.056584458914585
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 19.067863499978557,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 2.984895500005223
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.35692125000059605
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.3836552510038018
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 3.9788957920391113
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.449998520314693e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.21406558284070343
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.07918329094536602
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.32107533304952085
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 6.44127066701185
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002676240401342511
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 3.7138291669543833
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0013272890355437994
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.4581095203757286e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 157
+              },
+              "success": true,
+              "total_seconds": 19.067744457977824
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 20.31868070899509,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 3.914402958122082
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.5989549170481041
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.38994074997026473
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 4.524494333076291
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.858399137854576e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2820253340760246
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.07972337491810322
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.3882405830081552
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 6.830476374947466
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00028570799622684717
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 3.787688042037189
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0011847090208902955
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.2919848561286926e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 157
+              },
+              "success": true,
+              "total_seconds": 20.31851908308454
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 14.042646166984923,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 3.022341792937368
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.4443257919047028
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.38514091598335654
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 3.227490624994971
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.220893166959286e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.11498991819098592
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.08258833398576826
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.21388199902139604
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 5.1414088340243325
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0003022501477971673
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 2.6037380419438705
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0011575415264815092
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.374988980591297e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 163
+              },
+              "success": true,
+              "total_seconds": 14.042527958983555
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 14.308345583966002,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 2.931846833904274
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.5978611670434475
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.3912446249742061
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 3.3534321249462664
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 8.041702676564455e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.14943083410616964
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.20405170903541148
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.38983129197731614
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 4.92272137501277
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00023666583001613617
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 2.725562124978751
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.001223086379468441
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.6249250620603561e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 163
+              },
+              "success": true,
+              "total_seconds": 14.308229041984305
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 15.539778250036761,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 3.056175041012466
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.540575041086413
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.40328075003344566
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 3.983374167000875
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.358298171311617e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.11176075087860227
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.07404941599816084
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.2012193329865113
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 5.287487416062504
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00027829280588775873
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 2.9882925000274554
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0010831208201125264
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.2080494090914726e-06,
+                "storage.list.returned": 310000,
+                "visible_memory_records": 250000,
+                "visible_revision_records": 300000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 163
+              },
+              "success": true,
+              "total_seconds": 15.539686542004347
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          5.283299833536148e-05,
+          0.0005940409610047936,
+          0.00011445803102105856,
+          9.962497279047966e-05,
+          0.0014284579083323479,
+          9.29159577935934e-05,
+          7.345899939537048e-05,
+          6.995792500674725e-05,
+          0.0001145420828834176,
+          7.095804903656244e-05,
+          7.84589210525155e-05,
+          7.537507917732e-05,
+          0.0001412091078236699,
+          0.0001828750828281045,
+          0.0001360829919576645,
+          0.00011258397717028856,
+          0.00011475000064820051,
+          7.695902604609728e-05,
+          8.066697046160698e-05,
+          7.099995855242014e-05
+        ],
+        "peak_rss_native": 1022951424,
+        "database_bytes": 801353728
+      },
+      "after": {
+        "migration_seconds": 1.4232790839159861,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 3.94594783289358,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.24389983294531703
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.089513708022423
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.5073519160505384
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.4288180419243872
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.0863686660304666
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 8.02499707788229e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.248622415936552
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.0930917909136042
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.37405737477820367
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0028847919311374426
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.08456912497058511
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11553141695912927
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002244170755147934
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.34772087493911386
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 5.292007699608803e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062226,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 50000,
+                "visible_revision_headers": 60000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.get_many.returned": 239,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 3.945853166980669
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 3.9289649999700487,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.23570974997710437
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.1579064580146223
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.5397770409472287
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.394701375043951
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.9724582500057295
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.904208566993475e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2252170410938561
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.08725829096511006
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.34232033300213516
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0024486270267516375
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.1766345000360161
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11966504203155637
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002367070410400629
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.2231473340652883
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.415967173874378e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062456,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 50000,
+                "visible_revision_headers": 60000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.get_many.returned": 233,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 3.9288526660529897
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 3.6622731670504436,
+            "response_sha256": "658df584e7be781b7690b63b5acfbc5210b96695c1274ae7cd5a11e90ede1235",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.19213962508365512
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.073441082960926
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.5447302079992369
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.3976015420630574
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.9791004159487784
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.933393888175488e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2171513339271769
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.08134783187415451
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.32516033295542
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0021465442841872573
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.07966558402404189
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11470883304718882
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00022024998906999826
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.2933655839879066
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.084067091345787e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062456,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 50000,
+                "visible_revision_headers": 60000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 60028,
+                "storage.vector_scores.returned": 60028,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 510,
+                "storage.get_many.returned": 233,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 3.6621761249843985
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 2.797652625013143,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.24052537500392646
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.6123640409205109
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.42983183392789215
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.5528456248575822
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.9726625840412453
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.154210470616817e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.15387554210610688
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.0730721668805927
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.24078250001184642
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.002442082273773849
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.10078933299519122
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11977354204282165
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002203750191256404
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.19514308299403638
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.8749851733446121e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062456,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 25248,
+                "visible_revision_headers": 30216,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.get_many.returned": 239,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 2.7975610840367153
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 2.5311071660835296,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.2246777079999447
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.5888425000011921
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.4372927079675719
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.38585441594477743
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.8134693329920992
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.304106839001179e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.14738720911554992
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.0705116658937186
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.23211241594981402
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0024054954992607236
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.09504112601280212
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11158508202061057
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002919588005170226
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.19009887496940792
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.5420373529195786e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062548,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 25248,
+                "visible_revision_headers": 30216,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.get_many.returned": 239,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 2.531016958062537
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 2.515418375027366,
+            "response_sha256": "60aaed401d46e70d70bc7a4ddc609cc9a28710cde7a0830b225079d99bff0c8d",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.2190672910073772
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 0.6020136669976637
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.4424994169967249
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.3882277909433469
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 0.8758140410063788
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.12500186637044e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.10829687397927046
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.06934287503827363
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.19232904096134007
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0021281231893226504
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.04188029107172042
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.11289166694041342
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00023145799059420824
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.19115029193926603
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.9170187190175056e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 17062548,
+                "storage.memory_projections.returned": 50000,
+                "visible_memory_headers": 25248,
+                "visible_revision_headers": 30216,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 60000,
+                "storage.source_headers.returned": 120000,
+                "vector_candidate_ids": 30244,
+                "storage.vector_scores.returned": 30244,
+                "lexical_stat_rows": 60000,
+                "storage.lexical_scores.returned": 265,
+                "storage.get_many.returned": 239,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 60000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 2.515317957964726
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          0.0003787080058827996,
+          0.00010891701094806194,
+          0.00012404099106788635,
+          9.741703979671001e-05,
+          8.945807348936796e-05,
+          0.00015966698992997408,
+          0.00014437490608543158,
+          0.00011004193220287561,
+          0.00010754098184406757,
+          0.00010599999222904444,
+          0.00010366691276431084,
+          9.766698349267244e-05,
+          9.583297651261091e-05,
+          8.208304643630981e-05,
+          8.504197467118502e-05,
+          7.983297109603882e-05,
+          9.770807810127735e-05,
+          8.991605136543512e-05,
+          9.254098404198885e-05,
+          8.691602852195501e-05
+        ],
+        "peak_rss_native": 363659264,
+        "database_bytes": 903999488
+      }
+    },
+    {
+      "memories": 100000,
+      "input": {
+        "sha256": "9c8167be7447211f00a69c85b665c23784e30f28e6793501d1244de944def03d",
+        "identical_copies": true
+      },
+      "before": {
+        "migration_seconds": 1.25030055642128e-07,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 38.84635091701057,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 5.794597333180718
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.7389268329134211
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.789555124938488
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 8.579305499908514
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 8.066697046160698e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.5948432909790426
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.17872624995652586
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.8329617908457294
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 13.764860083116218
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00028520904015749693
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 7.160588000086136
+                },
+                "storage.get_many": {
+                  "calls": 91,
+                  "seconds": 0.001287869643419981
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 5.458015948534012e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 159
+              },
+              "success": true,
+              "total_seconds": 38.84625329100527
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 38.16669058299158,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 5.88913516595494
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 1.2466828329488635
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.795530833886005
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 8.496989167062566
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.17920484021306e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.45220100006554276
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.1695868739625439
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.6789393749786541
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 12.85101820807904
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00025487609673291445
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 7.541870124987327
+                },
+                "storage.get_many": {
+                  "calls": 91,
+                  "seconds": 0.0011532134376466274
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.2919848561286926e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 153
+              },
+              "success": true,
+              "total_seconds": 38.1665541670518
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 38.37512708292343,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 5.880830167909153
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.8293137499131262
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8796717080986127
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 8.410882042022422
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.520895451307297e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.4744606240419671
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.17377012397628278
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.7073084570001811
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 13.753474791068584
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00026158313266932964
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 7.120873457984999
+                },
+                "storage.get_many": {
+                  "calls": 91,
+                  "seconds": 0.001030630897730589
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.9170111045241356e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 153
+              },
+              "success": true,
+              "total_seconds": 38.37494799995329
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 28.278428208082914,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 6.33199737383984
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.6899098750436679
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.7911036260193214
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 6.621685457997955
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.758293602615595e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2954909169347957
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.14494770800229162
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.47042333404533565
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 9.900189458858222
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002561669098213315
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 5.371299457969144
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.001289626583456993
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.3329630494117737e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 157
+              },
+              "success": true,
+              "total_seconds": 28.278293582960032
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 28.298870124970563,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 6.220752749708481
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.8973154589766636
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8217090419493616
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 6.411549707991071
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.812496576458216e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2939622509293258
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.14349116606172174
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.46775216702371836
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 10.117313750088215
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002492490457370877
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 5.204914959031157
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0011422932147979736
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.2909371182322502e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 157
+              },
+              "success": true,
+              "total_seconds": 28.298733042087406
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 28.53001437499188,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.list": {
+                  "calls": 8,
+                  "seconds": 6.240213959012181
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.6897837090073153
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.7981456679990515
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 6.462046333937906
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.475008558481932e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.3021138320909813
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.14613391598686576
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.47832700016442686
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 9.81740945787169
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002638740697875619
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 5.397506957990117
+                },
+                "storage.get_many": {
+                  "calls": 87,
+                  "seconds": 0.0010126647539436817
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.00001522898674e-06,
+                "storage.list.returned": 620000,
+                "visible_memory_records": 500000,
+                "visible_revision_records": 600000,
+                "derived_cache_builds": 6,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2,
+                "storage.get_many.returned": 157
+              },
+              "success": true,
+              "total_seconds": 28.529899874934927
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          4.9708993174135685e-05,
+          0.0003702089888975024,
+          0.00010520906653255224,
+          9.38749872148037e-05,
+          0.000128250103443861,
+          9.316601790487766e-05,
+          9.65840881690383e-05,
+          9.087508078664541e-05,
+          9.941600728780031e-05,
+          9.270897135138512e-05,
+          9.583297651261091e-05,
+          8.745805826038122e-05,
+          0.0001027500256896019,
+          9.67920059338212e-05,
+          9.454204700887203e-05,
+          9.145890362560749e-05,
+          0.00011116708628833294,
+          9.5625058747828e-05,
+          9.32919792830944e-05,
+          9.120907634496689e-05
+        ],
+        "peak_rss_native": 1968340992,
+        "database_bytes": 1603948544
+      },
+      "after": {
+        "migration_seconds": 2.754242290975526,
+        "queries": [
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 7.707540374947712,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.5478765000589192
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 2.4589490829966962
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.9307098750723526
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.776599416974932
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.9407785839866847
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.437507156282663e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.460130708059296
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.18857929296791553
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.708043250022456
+                },
+                "storage.get_many": {
+                  "calls": 167,
+                  "seconds": 0.0025181651581078768
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.17547695897519588
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.2226583749288693
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002600840525701642
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.6239956250647083
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 4.749977961182594e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162226,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 100000,
+                "visible_revision_headers": 120000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.get_many.returned": 235,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 7.707447582972236
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 7.664111374993809,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.4901117499684915
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 2.336660166969523
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 1.057203667005524
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.7989451659377664
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.9536603329470381
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.758394349366426e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.44471666612662375
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.16858695691917092
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.6719656251370907
+                },
+                "storage.get_many": {
+                  "calls": 167,
+                  "seconds": 0.0023200815776363015
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.48094966704957187
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.22432387503795326
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.0002366668777540326
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.43633549998048693
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.208980731666088e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162456,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 100000,
+                "visible_revision_headers": 120000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.get_many.returned": 229,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 7.663997250027023
+            }
+          },
+          {
+            "clock": "2025-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 7.700378249981441,
+            "response_sha256": "ea203b2476991308f7a07e2e607e1c21ef9309de9659e8235576713b990326d5",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.5292623749701306
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 2.3844081670977175
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.9412513329880312
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8174912080867216
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.990486208931543
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.1333022788167e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.4656344170216471
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.17286966706160456
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.6992616257630289
+                },
+                "storage.get_many": {
+                  "calls": 167,
+                  "seconds": 0.0023589564952999353
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.17204708303324878
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.22225920914206654
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00022458203602582216
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.6177857080474496
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.6249250620603561e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162456,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 100000,
+                "visible_revision_headers": 120000,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 120036,
+                "storage.vector_scores.returned": 120036,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 1010,
+                "storage.get_many.returned": 229,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 4,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 7.700281750061549
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 0,
+            "seconds": 5.475933791021816,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.5074391659582034
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.5230653749313205
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.8802780830301344
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8016471250448376
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.6704812078969553
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 7.195794023573399e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.2932685420382768
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.14446612494066358
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.4687339578522369
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0022442867048084736
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.18396841688081622
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.22288116614799947
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00021029217168688774
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.37900812504813075
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.875101588666439e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162456,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 50496,
+                "visible_revision_headers": 60431,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.get_many.returned": 233,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 5.475823167013004
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 1,
+            "seconds": 5.493834457942285,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.4849154578987509
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.5224205830600113
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.8809863749193028
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8118549999780953
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.685138083063066
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.7290966399014e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.3103697501355782
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.1512237909482792
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.4954097920563072
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0022809940855950117
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.29493437509518117
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.22532037587370723
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00021970807574689388
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.3884757909690961
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 1.8749851733446121e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162548,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 50496,
+                "visible_revision_headers": 60431,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.get_many.returned": 233,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 5.493722249986604
+            }
+          },
+          {
+            "clock": "2022-01-01T00:00:00Z",
+            "repeat": 2,
+            "seconds": 5.284669832908548,
+            "response_sha256": "8f80b8f8756b35e44795a1b3f2a9a0ec5478132236d3337fc2c2252e2e9cdeab",
+            "performance": {
+              "operation": "search",
+              "stages": {
+                "storage.memory_projections": {
+                  "calls": 1,
+                  "seconds": 0.5388990839710459
+                },
+                "engine.visible_memories": {
+                  "calls": 1,
+                  "seconds": 1.2971072499640286
+                },
+                "storage.search_documents": {
+                  "calls": 1,
+                  "seconds": 0.9519510839600116
+                },
+                "storage.source_headers": {
+                  "calls": 2,
+                  "seconds": 0.8057610830292106
+                },
+                "engine._visible_documents": {
+                  "calls": 1,
+                  "seconds": 1.8491044170223176
+                },
+                "engine._embed": {
+                  "calls": 1,
+                  "seconds": 6.71660527586937e-05
+                },
+                "storage.vector_scores": {
+                  "calls": 3,
+                  "seconds": 0.29673591698519886
+                },
+                "storage.lexical_scores": {
+                  "calls": 3,
+                  "seconds": 0.14171254204120487
+                },
+                "engine._hybrid": {
+                  "calls": 3,
+                  "seconds": 0.4704112489707768
+                },
+                "storage.get_many": {
+                  "calls": 163,
+                  "seconds": 0.0021821199916303158
+                },
+                "engine._expand_revision_chains": {
+                  "calls": 2,
+                  "seconds": 0.18424116808455437
+                },
+                "storage.list": {
+                  "calls": 3,
+                  "seconds": 0.2245266669197008
+                },
+                "storage.edges_for": {
+                  "calls": 4,
+                  "seconds": 0.00021158310119062662
+                },
+                "engine._graph_candidates": {
+                  "calls": 1,
+                  "seconds": 0.3792440830729902
+                }
+              },
+              "work": {
+                "read_snapshot_queue_seconds": 2.1670712158083916e-06,
+                "memory_projection_fallback_records": 0,
+                "memory_projection_bytes": 34162548,
+                "storage.memory_projections.returned": 100000,
+                "visible_memory_headers": 50496,
+                "visible_revision_headers": 60431,
+                "derived_cache_builds": 2,
+                "storage.search_documents.returned": 120000,
+                "storage.source_headers.returned": 240000,
+                "vector_candidate_ids": 60459,
+                "storage.vector_scores.returned": 60459,
+                "lexical_stat_rows": 120000,
+                "storage.lexical_scores.returned": 520,
+                "storage.get_many.returned": 233,
+                "visible_memory_bodies_loaded": 76,
+                "storage.list.returned": 120000,
+                "storage.edges_for.returned": 2,
+                "derived_cache_hits": 2
+              },
+              "success": true,
+              "total_seconds": 5.284564791945741
+            }
+          }
+        ],
+        "memory_write_seconds": [
+          0.00020591693464666605,
+          0.00013070902787148952,
+          0.00010349997319281101,
+          9.362504351884127e-05,
+          9.095796849578619e-05,
+          9.308394510298967e-05,
+          8.845899719744921e-05,
+          9.012501686811447e-05,
+          9.166600648313761e-05,
+          9.008310735225677e-05,
+          9.020802099257708e-05,
+          9.341700933873653e-05,
+          9.279197547584772e-05,
+          8.987495675683022e-05,
+          8.725002408027649e-05,
+          8.39160056784749e-05,
+          7.979199290275574e-05,
+          8.77090496942401e-05,
+          8.587504271417856e-05,
+          8.729205001145601e-05
+        ],
+        "peak_rss_native": 641662976,
+        "database_bytes": 1808187392
+      }
+    }
+  ],
+  "query_snapshot_equivalence": [
+    {
+      "id": "fact_ef36b7",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "hallucination_ef6a39",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "aggregation_30220c",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "misleading_a952ee",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "temporal_6c5283",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "aggregation_e1dfb2",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "hallucination_87dba1",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "fact_8f6beb",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "aggregation_665da1",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "fact_5a7990",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "temporal_e1f411",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "temporal_f67ca7",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "misleading_e91747",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "李明那次从北京搬到上海的搬家最终是哪天完成的？",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "李明在2026年9月24日住在哪里？",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    },
+    {
+      "id": "李明现在住在哪里？",
+      "response": true,
+      "planner_inputs": true,
+      "reranker_inputs": true,
+      "semantic_trace": true
+    }
+  ],
+  "validation": {
+    "offline_tests_passed": 573,
+    "warnings": "existing Starlette deprecation",
+    "online_golden_run": false,
+    "business_database_migrated": false
+  }
+}

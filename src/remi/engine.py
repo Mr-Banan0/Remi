@@ -169,9 +169,9 @@ class MemoryEngine:
         return vectors
 
     @measured("engine._visible_documents")
-    def _visible_documents(self, owner, as_of):
+    def _visible_documents(self, owner, as_of, views=None):
         revisions = {}
-        for memory in visible_memories(self.store, owner, as_of).values():
+        for memory in (views if views is not None else visible_memories(self.store, owner, as_of)).headers.values():
             revisions.update({r.id: r for r in memory.revisions})
         documents = []
         candidates = self.store.search_documents(owner)
@@ -188,7 +188,7 @@ class MemoryEngine:
         return documents
 
     @measured("engine._expand_revision_chains")
-    def _expand_revision_chains(self, owner, hits, documents, as_of):
+    def _expand_revision_chains(self, owner, hits, documents, as_of, views=None):
         """Activate a logical Memory from any visible version/source hit and include its path to current."""
         by_memory, by_revision = {}, {}
         for document in documents:
@@ -210,7 +210,7 @@ class MemoryEngine:
                     matched.setdefault(memory_id, set()).update(candidate.revision_id for candidate in by_memory.get(memory_id, [])
                         if candidate.revision_id and set(candidate.source_ids).intersection(document.source_ids))
         paths = []
-        views = visible_memories(self.store, owner, as_of) if activated else {}
+        views = views if views is not None else (visible_memories(self.store, owner, as_of) if activated else {})
         for memory_id, score in activated.items():
             memory = views.get(memory_id)
             if memory is None:
@@ -257,11 +257,11 @@ class MemoryEngine:
                       lexical_scores=self.store.lexical_scores(owner, query, documents))
 
     @measured("engine._graph_candidates")
-    def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of):
+    def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of,views=None):
         from .graph import active_edges, active_connections
         from .subject_identity import visible_subject, matching_subjects
         source_ids={sid for d in seed_documents for sid in d.source_ids}
-        memory_views=visible_memories(self.store,owner,as_of)
+        memory_views=(views if views is not None else visible_memories(self.store,owner,as_of)).headers
         by_source={}
         for memory in memory_views.values():
             for source_id in memory.current.source_ids:
@@ -811,7 +811,8 @@ class MemoryEngine:
         as_of = parse_time(reference_time or utcnow()).isoformat()
         scope = nullcontext() if getattr(self, "_snapshot_read", False) else self._scope(request.user_id, deadline)
         with scope, retrieval_cache(), read_cache():
-            documents = self._visible_documents(request.user_id, as_of)
+            views = visible_memories(self.store, request.user_id, as_of)
+            documents = self._visible_documents(request.user_id, as_of, views)
             vector = None
             degradation = []
             if self.embedder:
@@ -820,11 +821,11 @@ class MemoryEngine:
                 except ProviderUnavailable:
                     degradation.append("query_embedding_unavailable")
             base = self._hybrid(request.user_id, request.query, documents, vector, self.settings.candidate_limit)
-            base_expanded, revision_paths = self._expand_revision_chains(request.user_id, base, documents, as_of)
+            base_expanded, revision_paths = self._expand_revision_chains(request.user_id, base, documents, as_of, views)
             graph_seeds = [document for document, _ in base[:min(20, len(base))]]
-            graph = self._graph_candidates(request.user_id, request.query, graph_seeds, documents, vector, as_of) \
+            graph = self._graph_candidates(request.user_id, request.query, graph_seeds, documents, vector, as_of, views) \
                 if self.settings.graph_enabled else []
-            graph_expanded, graph_paths = self._expand_revision_chains(request.user_id, graph, documents, as_of)
+            graph_expanded, graph_paths = self._expand_revision_chains(request.user_id, graph, documents, as_of, views)
             revision_paths.extend(graph_paths)
             retrieval_channels = [
                 {'channel': 'base', 'role': 'direct', 'query': request.query,
@@ -834,7 +835,7 @@ class MemoryEngine:
             ]
             merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
             direct_coverage = self._retrieval_coverage(request.query, base)
-            current = hot_from_visible(visible_memories(self.store, request.user_id, as_of).values(), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
+            current = [views[m.id] for m in hot_from_visible(views.headers.values(), as_of, self.settings.hot_limit)] if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
             source_ids = {source_id for card in state['evidence'] for source_id in card['source_ids']}
             source_ids.update(source_id for item in state['current_conditions'] for source_id in item['source_ids'])
@@ -937,11 +938,11 @@ class MemoryEngine:
                     graph_vector = broad_vector if broad_query else step_vector
                     extra_graph = self._graph_candidates(request.user_id, graph_query,
                         role_graph_seeds, documents,
-                        graph_vector, as_of) \
+                        graph_vector, as_of, views) \
                         if self.settings.graph_enabled else []
-                    expanded_hits, extra_paths = self._expand_revision_chains(request.user_id, initial_hits, documents, as_of)
-                    expanded_broad, broad_paths = self._expand_revision_chains(request.user_id, broad_hits, documents, as_of)
-                    expanded_graph, graph_step_paths = self._expand_revision_chains(request.user_id, extra_graph, documents, as_of)
+                    expanded_hits, extra_paths = self._expand_revision_chains(request.user_id, initial_hits, documents, as_of, views)
+                    expanded_broad, broad_paths = self._expand_revision_chains(request.user_id, broad_hits, documents, as_of, views)
+                    expanded_graph, graph_step_paths = self._expand_revision_chains(request.user_id, extra_graph, documents, as_of, views)
                     revision_paths.extend([*extra_paths, *broad_paths, *graph_step_paths])
                     new_channels = [
                         {'channel': f'tool_{index}', 'role': step.role, 'query': step.query,

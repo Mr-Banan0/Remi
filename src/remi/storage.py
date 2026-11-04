@@ -10,13 +10,17 @@ from time import monotonic
 
 from .performance import measured, count
 from .read_cache import derived
+from .memory_projection import project_memory
 from .models import Document, Edge, GraphObject, Memory, Source, SCHEMA_VERSION
 from .search_index import RecordCache, DocumentHandle, encoded_terms, lexical_scores
 
 
 SCHEMA = """
 CREATE TABLE sources (owner TEXT NOT NULL, id TEXT NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY(owner,id));
-CREATE TABLE memories (owner TEXT NOT NULL, id TEXT NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY(owner,id));
+CREATE TABLE memories (owner TEXT NOT NULL, id TEXT NOT NULL, record_json TEXT NOT NULL,
+                       search_projection TEXT, PRIMARY KEY(owner,id));
+CREATE TRIGGER memory_projection_invalidated AFTER UPDATE OF record_json ON memories
+BEGIN UPDATE memories SET search_projection=NULL WHERE owner=NEW.owner AND id=NEW.id; END;
 CREATE TABLE objects (owner TEXT NOT NULL, id TEXT NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY(owner,id));
 CREATE TABLE edges (owner TEXT NOT NULL, id TEXT NOT NULL, origin TEXT NOT NULL, target TEXT NOT NULL,
                     relation TEXT NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY(owner,id));
@@ -96,6 +100,10 @@ class MemoryStore:
                 and (value["created_at"], value["ordinal"]) < (source.created_at, source.ordinal)
                 and (not source.message_at or not value["message_at"] or parse_time(value["message_at"]) <= parse_time(source.message_at))]
         return sorted(rows, key=lambda row: (row.created_at, row.ordinal), reverse=True)[:limit]
+
+    @measured("storage.memory_projections", records=True)
+    def memory_projections(self, owner):
+        return [project_memory(row) for row in self.list("memories", owner)]
 
     def memories(self, owner, ids=None):
         values = self.list("memories", owner) if ids is None else self.get_many("memories", owner, ids)
@@ -193,6 +201,42 @@ class SQLiteStore(MemoryStore):
             connection.executescript("BEGIN;" + SCHEMA + "COMMIT;")
         finally:
             connection.close()
+
+    def _has_memory_projection(self):
+        return "search_projection" in {row[1] for row in self.connection.execute("PRAGMA table_info(memories)")}
+
+    def rebuild_memory_projection(self):
+        """Explicit migration/backfill in the existing table; records remain unchanged."""
+        with self.transaction():
+            if not self._has_memory_projection():
+                self.connection.execute("ALTER TABLE memories ADD COLUMN search_projection TEXT")
+            self.connection.execute("CREATE TRIGGER IF NOT EXISTS memory_projection_invalidated "
+                "AFTER UPDATE OF record_json ON memories BEGIN UPDATE memories SET search_projection=NULL "
+                "WHERE owner=NEW.owner AND id=NEW.id; END")
+            cursor = self.connection.execute("SELECT owner,id,record_json FROM memories ORDER BY owner,id")
+            total = 0
+            while batch := cursor.fetchmany(200):
+                for owner, key, raw in batch:
+                    self.connection.execute("UPDATE memories SET search_projection=? WHERE owner=? AND id=?",
+                        (json.dumps(project_memory(json.loads(raw)), ensure_ascii=False), owner, key))
+                    total += 1
+        return total
+
+    @measured("storage.memory_projections", records=True)
+    def memory_projections(self, owner):
+        with self.lock:
+            self._check_external_changes()
+            projected = self._has_memory_projection()
+            if not projected:
+                # Existing deployments use the same projection built from their original rows
+                # until the explicit migration has been applied.
+                return super().memory_projections(owner)
+            rows = self.connection.execute("SELECT search_projection, "
+                "CASE WHEN search_projection IS NULL THEN record_json END "
+                "FROM memories WHERE owner=? ORDER BY id", (owner,)).fetchall()
+        count("memory_projection_fallback_records", sum(raw is None for raw, _ in rows))
+        count("memory_projection_bytes", sum(len((raw or original).encode()) for raw, original in rows))
+        return [json.loads(raw) if raw else project_memory(json.loads(original)) for raw, original in rows]
 
     def enable_wal(self):
         """Explicit migration for existing deployments; the six tables stay intact."""
@@ -392,8 +436,11 @@ class SQLiteStore(MemoryStore):
                     length, terms = encoded_terms(record['text'])
                     self.connection.execute('INSERT INTO search_lexical(rowid,owner,document_id,token_count,terms) VALUES(?,?,?,?,?)', (rowid,owner,key,length,terms))
             else:
-                self.connection.execute(f"INSERT INTO {table} VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET record_json=excluded.record_json",
+                self.connection.execute(f"INSERT INTO {table}(owner,id,record_json) VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET record_json=excluded.record_json",
                                         (owner, key, json.dumps(record, ensure_ascii=False)))
+                if table == "memories" and self._has_memory_projection():
+                    self.connection.execute("UPDATE memories SET search_projection=? WHERE owner=? AND id=?",
+                        (json.dumps(project_memory(record), ensure_ascii=False), owner, key))
 
     def context_before(self, owner, session_id, source, limit=1):
         with self.lock:

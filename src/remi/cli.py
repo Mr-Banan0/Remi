@@ -19,6 +19,8 @@ def main():
     index = sub.add_parser("index-db", help="Build the approved incremental lexical index")
     index.add_argument("--path", default=".local-data/remi.sqlite3")
     index.add_argument("--allow-create-schema", action="store_true")
+    projection = sub.add_parser("project-memories", help="Backfill compact search metadata in the existing memories table")
+    projection.add_argument("--path", required=True)
     wal = sub.add_parser("enable-wal", help="Enable snapshot reads for an existing database")
     wal.add_argument("--path", required=True)
     for name in ("backup-db", "restore-db"):
@@ -43,6 +45,13 @@ def main():
         finally:
             store.close()
         print(json.dumps({"indexed": args.path}))
+    elif args.command == "project-memories":
+        store = SQLiteStore(args.path)
+        try:
+            count = store.rebuild_memory_projection()
+        finally:
+            store.close()
+        print(json.dumps({"projected_memories": count, "path": args.path}))
     elif args.command == "enable-wal":
         store = SQLiteStore(args.path)
         try:

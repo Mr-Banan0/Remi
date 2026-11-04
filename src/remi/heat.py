@@ -1,7 +1,7 @@
 """Knowledge-time views and bounded background from source-reported statements."""
 from datetime import timedelta
 from .read_cache import derived
-from .performance import count
+from .performance import measured
 from .clock import in_view, parse_time
 
 
@@ -42,28 +42,25 @@ def hot_from_visible(memories, as_of, limit=24, recent_days=30):
     return [memory for _, memory in sorted(eligible, key=lambda item: item[0], reverse=True)[:limit]]
 
 
+@measured("engine.visible_memories")
 def visible_memories(store, owner, as_of):
     """Read-only request projection; persisted originals remain independently mutable."""
     def build():
         import sys
-        originals = store.memories(owner)
-        count('visible_memory_records', len(originals))
-        count('visible_revision_records', sum(len(memory.revisions) for memory in originals))
-        views = {memory.id: memory for original in originals
-                 if (memory := visible_memory(original, as_of)) is not None}
-        # Recursively estimate retained Python objects, with shared objects counted once.
+        from .memory_projection import VisibleMemories
+        views = VisibleMemories(store, owner, as_of)
         seen = set()
         def size(value):
             if id(value) in seen:
                 return 0
             seen.add(id(value))
-            result = sys.getsizeof(value)
+            total = sys.getsizeof(value)
             if isinstance(value, dict):
-                result += sum(size(k) + size(v) for k, v in value.items())
-            elif isinstance(value, (list, tuple, set, frozenset)):
-                result += sum(size(v) for v in value)
-            elif hasattr(type(value), 'model_fields'):
-                result += size(value.__dict__)
-            return result
-        return views, size(views)
+                total += sum(size(k) + size(v) for k, v in value.items())
+            elif isinstance(value, (list, tuple)):
+                total += sum(size(v) for v in value)
+            elif hasattr(value, '__dict__'):
+                total += size(value.__dict__)
+            return total
+        return views, size(views.headers)
     return derived(('visible_memories', id(store), owner, as_of, store.change_token()), build)
