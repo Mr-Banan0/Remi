@@ -12,6 +12,8 @@ from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from time import monotonic, sleep
+from random import uniform
+from threading import Event, Lock
 from typing import Protocol
 
 import httpx
@@ -426,6 +428,34 @@ class DashScopeEmbedder:
         self.client.close()
 
 
+class _RerankConnectionHealth:
+    """A circuit shared by batches of one rank request, reset on the next request."""
+    def __init__(self):
+        self.lock = Lock()
+        self.stopped = Event()
+        self.failures = 0
+
+    def record(self, failed):
+        with self.lock:
+            self.failures = self.failures + 1 if failed else 0
+            if self.failures >= 3:
+                self.stopped.set()
+            return self.failures
+
+
+def _connection_diagnostics(error):
+    # Exception messages can contain URLs, credentials and source text.
+    chain, seen = [], set()
+    while error is not None and id(error) not in seen and len(chain) < 5:
+        seen.add(id(error))
+        item = {"type": type(error).__name__}
+        if isinstance(getattr(error, "errno", None), int):
+            item["errno"] = error.errno
+        chain.append(item)
+        error = error.__cause__ or error.__context__
+    return chain
+
+
 class JevReranker:
     """The verified gateway's native System One protocol, restricted to evidence ranking."""
     def __init__(self, api_key, base_url="https://api.quickrouter.ai/v1", model="jev-1.13.0", timeout=8, transport=None):
@@ -441,6 +471,7 @@ class JevReranker:
     def rank(self, query, cards, *, deadline):
         # Keep the scoring question local to this request while sharing the HTTP client.
         local = copy(self)
+        local._connection_health = _RerankConnectionHealth()
         local._support_question = (
             ACTION_CONDITION_QUESTION
             if any("constraint" in card.get("retrieval_roles", []) for card in cards)
@@ -506,12 +537,22 @@ class JevReranker:
             return False
 
     def _score_questions(self, query, questions, temporal_ids, deadline):
+        health = self._connection_health
         for attempt in range(2):
+            if health.stopped.is_set() or deadline <= monotonic():
+                self.calls.append({"kind": "rerank_skipped", "model": self.model,
+                                   "reason": "connection_circuit_open" if health.stopped.is_set() else "processing_deadline",
+                                   "question_count": len(questions), "attempt": attempt + 1})
+                return RankResult()
             started = monotonic()
             trace = {"kind": "rerank", "model": self.model, "batch_size": len(set(questions) - temporal_ids), "question_count": len(questions), "attempt": attempt + 1}
+            def network_trace(name, info):
+                if name.endswith(".failed"):
+                    trace["connection_phase"] = name
             try:
                 response = self.client.post("systemone", json={"model": self.model, "state": {"query": query}, "questions": questions},
-                                            timeout=remaining(deadline, self.timeout))
+                                            timeout=remaining(deadline, self.timeout), extensions={"trace": network_trace})
+                health.record(False)
                 trace["http_status"] = response.status_code
                 if self._context_limit(response) and len(questions) > 1:
                     trace.update(error_type='context_limit', split=True, seconds=monotonic()-started)
@@ -538,9 +579,18 @@ class JevReranker:
                 return result
             except Exception as error:
                 trace.update(error_label(error))
-                if attempt == 0 and transient(error) and deadline - monotonic() > .25:
-                    sleep(.05)
-                    continue
+                trace["exception_chain"] = _connection_diagnostics(error)
+                if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError)):
+                    trace["consecutive_connection_failures"] = health.record(True)
+                trace["circuit_open"] = health.stopped.is_set()
+                trace["request_seconds"] = monotonic() - started
+                if attempt == 0 and transient(error) and not health.stopped.is_set():
+                    delay = uniform(.5, 1.0)
+                    if deadline - monotonic() > delay + .25:
+                        trace["retry_delay_seconds"] = delay
+                        health.stopped.wait(delay)
+                        continue
+                    trace["retry_skipped"] = "insufficient_deadline"
                 return RankResult()
             finally:
                 trace.setdefault("seconds", monotonic() - started)
