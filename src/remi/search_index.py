@@ -82,11 +82,12 @@ def encoded_terms(text):
     return len(terms), ' '.join(term.encode('utf-8').hex() for term in terms)
 
 
-def lexical_scores(connection, owner, query, document_ids):
+def lexical_scores(connection, owner, query, document_ids, *, lengths=None):
     allowed = set(document_ids)
-    lengths = {key: int(length) for key, length in connection.execute(
-        'SELECT document_id, token_count FROM search_lexical WHERE owner=?', (owner,))
-        if key in allowed}
+    if lengths is None:
+        lengths = {key: int(length) for key, length in connection.execute(
+            'SELECT document_id, token_count FROM search_lexical WHERE owner=?', (owner,))}
+    lengths = {key: lengths[key] for key in allowed if key in lengths}
     if lengths.keys() != allowed:
         raise RuntimeError('search_index_incomplete_run_rebuild')
     average = sum(lengths.values()) / max(len(lengths), 1) or 1

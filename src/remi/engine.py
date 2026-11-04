@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import json
 import re
-from contextlib import contextmanager
+from types import SimpleNamespace
+from contextlib import contextmanager, nullcontext
+from copy import copy
 from threading import Lock, RLock
 from time import monotonic
 
 from pydantic import ValidationError
 
+from .performance import count, measured, request_performance
 from .clock import in_view, parse_time, resolve_time, utcnow, yearless_calendar_day
-from .heat import hot_view, visible_memory
+from .heat import hot_from_visible, visible_memories, visible_memory
+from .read_cache import read_cache
 from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
@@ -51,18 +55,35 @@ class MemoryEngine:
         self.settings = settings or Settings()
         self._locks, self._lock_guard = {}, Lock()
         self.last_search = {}
+        self.last_performance = {}
 
     @contextmanager
     def _scope(self, owner, deadline):
         with self._lock_guard:
-            lock = self._locks.setdefault(owner, RLock())
-        if not lock.acquire(timeout=max(0, deadline - monotonic())):
-            raise ProviderUnavailable("owner_processing_busy")
+            entry = self._locks.setdefault(owner, [RLock(), 0])
+            entry[1] += 1
+            lock = entry[0]
+        acquired = False
         try:
-            yield
+            waiting = monotonic()
+            acquired = lock.acquire(timeout=max(0, deadline - waiting))
+            count('owner_lock_wait_seconds', monotonic() - waiting)
+            if not acquired:
+                raise ProviderUnavailable('owner_processing_busy')
+            held = monotonic()
+            try:
+                yield
+            finally:
+                count('owner_lock_held_seconds', monotonic() - held)
         finally:
-            lock.release()
+            if acquired:
+                lock.release()
+            with self._lock_guard:
+                entry[1] -= 1
+                if entry[1] == 0:
+                    del self._locks[owner]
 
+    @request_performance
     def add(self, request):
         return AddPipeline(self).add(request)
 
@@ -133,6 +154,7 @@ class MemoryEngine:
                 message_at=primary.message_at, event_at=None, created_at=primary.created_at))
         return documents
 
+    @measured("engine._embed")
     def _embed(self, texts, deadline):
         vectors = self.embedder.embed(texts, deadline=deadline)
         if len(vectors) != len(texts):
@@ -146,23 +168,26 @@ class MemoryEngine:
             dimensions = len(vector)
         return vectors
 
+    @measured("engine._visible_documents")
     def _visible_documents(self, owner, as_of):
         revisions = {}
-        for original in self.store.memories(owner):
-            memory = visible_memory(original, as_of)
-            if memory:
-                revisions.update({r.id: r for r in memory.revisions})
+        for memory in visible_memories(self.store, owner, as_of).values():
+            revisions.update({r.id: r for r in memory.revisions})
         documents = []
-        for document in self.store.search_documents(owner):
+        candidates = self.store.search_documents(owner)
+        headers = {row["id"]: SimpleNamespace(**row) for row in self.store.source_headers(
+            owner, {sid for document in candidates for sid in document.source_ids})}
+        for document in candidates:
             if parse_time(document.message_at or document.created_at) <= parse_time(as_of):
                 if document.revision_id and document.revision_id not in revisions:
                     continue
-                sources = self.store.sources(owner, document.source_ids)
+                sources = [headers[sid] for sid in set(document.source_ids) if sid in headers]
                 if len(sources) != len(set(document.source_ids)) or not all(source_visible(s, as_of) for s in sources):
                     continue
                 documents.append(document)
         return documents
 
+    @measured("engine._expand_revision_chains")
     def _expand_revision_chains(self, owner, hits, documents, as_of):
         """Activate a logical Memory from any visible version/source hit and include its path to current."""
         by_memory, by_revision = {}, {}
@@ -185,9 +210,9 @@ class MemoryEngine:
                     matched.setdefault(memory_id, set()).update(candidate.revision_id for candidate in by_memory.get(memory_id, [])
                         if candidate.revision_id and set(candidate.source_ids).intersection(document.source_ids))
         paths = []
+        views = visible_memories(self.store, owner, as_of) if activated else {}
         for memory_id, score in activated.items():
-            originals = self.store.memories(owner, [memory_id])
-            memory = visible_memory(originals[0], as_of) if originals else None
+            memory = views.get(memory_id)
             if memory is None:
                 continue
             revisions = {revision.id: revision for revision in memory.revisions}
@@ -208,8 +233,8 @@ class MemoryEngine:
                     document = by_revision.get(revision_id)
                     if document:
                         scores[document.id] = max(score, scores.get(document.id, 0))
-        expanded = [(next(document for document in documents if document.id == key), score)
-                    for key, score in scores.items()]
+        by_id = {document.id: document for document in documents}
+        expanded = [(by_id[key], score) for key, score in scores.items()]
         expanded.sort(key=lambda item: (-item[1], item[0].id))
         return expanded, paths
 
@@ -225,23 +250,20 @@ class MemoryEngine:
         coverage = len(terms & evidence) / len(terms)
         return dict(sufficient=coverage >= .6, token_coverage=coverage, direct_documents=len(hits))
 
+    @measured("engine._hybrid")
     def _hybrid(self, owner, query, documents, vector=None, limit=40):
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
         return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic,
                       lexical_scores=self.store.lexical_scores(owner, query, documents))
 
+    @measured("engine._graph_candidates")
     def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of):
         from .graph import active_edges, active_connections
         from .subject_identity import visible_subject, matching_subjects
-        edges=active_edges(self.store,owner,as_of)
         source_ids={sid for d in seed_documents for sid in d.source_ids}
-        visible_memories={}
+        memory_views=visible_memories(self.store,owner,as_of)
         by_source={}
-        for original in self.store.memories(owner):
-            memory=visible_memory(original,as_of)
-            if memory is None:
-                continue
-            visible_memories[memory.id]=memory
+        for memory in memory_views.values():
             for source_id in memory.current.source_ids:
                 by_source.setdefault(source_id,[]).append(memory.id)
         ordered_seeds=[]
@@ -250,24 +272,27 @@ class MemoryEngine:
             candidates.extend(mid for source_id in document.source_ids
                               for mid in sorted(by_source.get(source_id,[])))
             for mid in candidates:
-                if mid in visible_memories and mid not in ordered_seeds:
+                if mid in memory_views and mid not in ordered_seeds:
                     ordered_seeds.append(mid)
         mids=set(ordered_seeds)
         objects={obj.id:obj for raw in self.store.list('objects',owner) if (obj:=visible_subject(raw,owner,as_of))}
         users={obj.id for obj in objects.values() if obj.is_user}
-        entities={e.target for e in edges if e.origin in mids}-users
+        active={mid: memory.current.id for mid,memory in memory_views.items()}
+        edges=active_edges(self.store,owner,as_of,origins=sorted(mids),active=active)
+        entities={e.target for e in edges}-users
         entities.update(obj.id for obj,matches in matching_subjects(self.store,owner,[query],as_of,limit=24) if matches and not obj.is_user)
-        record_ids={edge.origin for edge in edges if edge.target in entities}
+        record_ids={edge.origin for edge in active_edges(
+            self.store,owner,as_of,targets=sorted(entities),active=active)}
         seed_ids=set(ordered_seeds[:24]);related_ids=set(seed_ids)
-        navigation=[edge for edge in active_connections(self.store,owner,as_of)
-                    if edge.origin in visible_memories and edge.target in visible_memories]
+        navigation=[edge for edge in active_connections(self.store,owner,as_of,seeds=seed_ids,active=active)
+                    if edge.origin in memory_views and edge.target in memory_views]
         adjacent_ids=set()
         for edge in navigation:
             if edge.origin in seed_ids:adjacent_ids.add(edge.target)
             if edge.target in seed_ids:adjacent_ids.add(edge.origin)
         neighbor_ids=adjacent_ids-seed_ids
         neighbor_documents=[d for d in documents if d.memory_id in neighbor_ids
-                            and d.revision_id==visible_memories[d.memory_id].current.id]
+                            and d.revision_id==memory_views[d.memory_id].current.id]
         neighbor_ranked=(self._hybrid(owner,query,neighbor_documents,vector,
                                      limit=len(neighbor_documents)) if neighbor_documents else [])
         neighbor_order=list(dict.fromkeys(d.memory_id for d,_ in neighbor_ranked))
@@ -282,8 +307,8 @@ class MemoryEngine:
         record_ids.update(related_ids)
 
         sessions={};adjacent=set()
-        for raw in self.store.list('sources',owner):
-            source=Source.model_validate(raw)
+        for raw in self.store.source_headers(owner):
+            source=SimpleNamespace(**raw)
             if source.role=='user' and source_visible(source,as_of):sessions.setdefault(source.session_id,[]).append(source)
         for group in sessions.values():
             group.sort(key=lambda s:(parse_time(s.message_at or s.created_at),s.created_at,s.ordinal))
@@ -751,10 +776,41 @@ class MemoryEngine:
                 or item[0].created_at))
         return [document for document, _ in pool[:limit]]
 
+    @request_performance
     def search(self, request, reference_time=None):
         deadline = monotonic() + self.settings.search_timeout
+        snapshot = getattr(self.store, 'search_snapshot', None)
+        if snapshot is None:
+            return self._search(request, reference_time, deadline=deadline)
+        try:
+            with snapshot(deadline) as reader:
+                if reader is None:
+                    return self._search(request, reference_time, deadline=deadline)
+                local = copy(self)
+                local.store = reader
+                local._snapshot_read = True
+                result = local._search(request, reference_time, deadline=deadline)
+                self.last_search = local.last_search
+            touched, as_of = local._search_access
+            self._touch_memories(request.user_id, touched, as_of)
+            return result
+        except TimeoutError as error:
+            raise ProviderUnavailable('search_capacity_timeout') from error
+
+    def _touch_memories(self, owner, touched, as_of):
+        if not touched:
+            return
+        with self.store.transaction():
+            for memory in self.store.memories(owner, touched):
+                if parse_time(memory.current.observed_at) <= parse_time(as_of):
+                    if not memory.last_accessed_at or parse_time(memory.last_accessed_at) < parse_time(as_of):
+                        memory.last_accessed_at = as_of
+                        self.store.put('memories', owner, memory.id, memory.model_dump())
+
+    def _search(self, request, reference_time=None, *, deadline):
         as_of = parse_time(reference_time or utcnow()).isoformat()
-        with self._scope(request.user_id, deadline), retrieval_cache():
+        scope = nullcontext() if getattr(self, "_snapshot_read", False) else self._scope(request.user_id, deadline)
+        with scope, retrieval_cache(), read_cache():
             documents = self._visible_documents(request.user_id, as_of)
             vector = None
             degradation = []
@@ -778,7 +834,7 @@ class MemoryEngine:
             ]
             merged, retrieval_roles = self._fuse_channels(retrieval_channels, documents)
             direct_coverage = self._retrieval_coverage(request.query, base)
-            current = hot_view(self.store.memories(request.user_id), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
+            current = hot_from_visible(visible_memories(self.store, request.user_id, as_of).values(), as_of, self.settings.hot_limit) if self.settings.hot_enabled else []
             state = self._decision_state(request.user_id, request.query, merged, current, as_of)
             source_ids = {source_id for card in state['evidence'] for source_id in card['source_ids']}
             source_ids.update(source_id for item in state['current_conditions'] for source_id in item['source_ids'])
@@ -996,11 +1052,9 @@ class MemoryEngine:
             # Reading a record updates access heat only; its confirmation/validity fields remain unchanged.
             touched = {document.memory_id for document, _ in ranked[:request.top_k] if document.memory_id}
             touched.update(memory.id for memory in selected)
-            for memory in self.store.memories(request.user_id, touched):
-                if parse_time(memory.current.observed_at) <= parse_time(as_of):
-                    if not memory.last_accessed_at or parse_time(memory.last_accessed_at) < parse_time(as_of):
-                        memory.last_accessed_at = as_of
-                    self.store.put("memories", memory.owner, memory.id, memory.model_dump())
+            self._search_access = (touched, as_of)
+            if not getattr(self, '_snapshot_read', False):
+                self._touch_memories(request.user_id, touched, as_of)
             channels = [{"channel": channel['channel'], "role": channel['role'], "weight": channel['weight'],
                 "seed_source_ids": channel.get('seed_source_ids', []),
                 "source_ids": sorted({key for doc, _ in channel['hits'] for key in doc.source_ids})}

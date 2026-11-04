@@ -3,6 +3,7 @@ from copy import deepcopy
 from collections import Counter
 from types import SimpleNamespace
 
+from .performance import measured
 from .maintenance_clock import maintenance_clock
 from .subject_identity import visible_subject
 from .subject_recall import pack_history
@@ -24,6 +25,7 @@ MEMORY_EVIDENCE_LIMIT = 3
 SUBJECT_RECALL_CONFIDENCE = 0.80
 
 
+@measured("add.recall_memories")
 def recall_memories(engine, state, bindings, view, *, deadline=None):
     """Keep the fixed subject scope and use unbound memories as a program fallback."""
     state = deepcopy(state)
@@ -48,7 +50,11 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
     originals = {}
     snapshot_hashes = {}
     lanes = {}
-    for raw in engine.store.memories(owner):
+    raw_memories = engine.store.memories(owner)
+    raw_by_id = {memory.id: memory for memory in raw_memories}
+    headers = {row["id"]: SimpleNamespace(**row) for row in engine.store.source_headers(
+        owner, {sid for memory in raw_memories for revision in memory.revisions for sid in revision.source_ids})}
+    for raw in raw_memories:
         memory = visible_memory(raw, clock)
         if memory is None or memory.record_type == 'relation':
             continue
@@ -57,27 +63,12 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
             continue
         if not ids <= objects.keys():
             continue
-        sources = engine.store.sources(owner, memory.current.source_ids)
+        sources = [headers[sid] for sid in set(memory.current.source_ids) if sid in headers]
         if len(sources) != len(set(memory.current.source_ids)) or not all(source_visible(source, clock) for source in sources):
             continue
         lane = 'subjects' if ids else 'unbound'
         pools[lane].append(memory)
         lanes[memory.id] = lane
-        source_rows={source.id:source.model_dump() for source in sources}
-        preferred=[]
-        for revision in reversed(memory.revisions):
-            patch=revision.maintenance_patch or {}
-            if patch.get('fields'):
-                preferred.append(patch.get('source_id'));break
-        if memory.current.source_ids:preferred.append(memory.current.source_ids[0])
-        source_scores=bm25(query,[SimpleNamespace(id=source.id,text=source.content) for source in sources])
-        preferred.extend(source.id for source in sorted(sources,key=lambda source:(-source_scores.get(source.id,0.0),source.id)))
-        chosen=[]
-        for source_id in preferred:
-            if source_id in source_rows and source_id not in chosen:chosen.append(source_id)
-            if len(chosen)==MEMORY_EVIDENCE_LIMIT:break
-        originals[memory.id] = [source_rows[source_id] for source_id in chosen]
-        snapshot_hashes[memory.id] = memory_fingerprint(raw)
 
     allowed = [*pools['subjects'], *pools['unbound']]
     scores = bm25(query, [SimpleNamespace(id=memory.id, text=memory.current.content) for memory in allowed])
@@ -153,6 +144,23 @@ def recall_memories(engine, state, bindings, view, *, deadline=None):
 
     cards = []
     for memory in selected:
+        sources = engine.store.sources(owner, memory.current.source_ids)
+        source_rows={source.id:source.model_dump() for source in sources}
+        preferred=[]
+        for revision in reversed(memory.revisions):
+            patch=revision.maintenance_patch or {}
+            if patch.get('fields'):
+                preferred.append(patch.get('source_id'));break
+        if memory.current.source_ids:preferred.append(memory.current.source_ids[0])
+        source_scores=bm25(query,[SimpleNamespace(id=source.id,text=source.content) for source in sources])
+        preferred.extend(source.id for source in sorted(sources,key=lambda source:(-source_scores.get(source.id,0.0),source.id)))
+        chosen=[]
+        for source_id in preferred:
+            if source_id in source_rows and source_id not in chosen:chosen.append(source_id)
+            if len(chosen)==MEMORY_EVIDENCE_LIMIT:break
+        originals[memory.id] = [source_rows[source_id] for source_id in chosen]
+        snapshot_hashes[memory.id] = memory_fingerprint(raw_by_id[memory.id])
+
         revision = memory.current
         cards.append(dict(
             id=memory.id,

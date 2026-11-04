@@ -22,17 +22,32 @@ def project_edges(memory, revision, previous_id=None):
     return records
 
 
-def active_edges(store, owner, as_of):
-    active = {}
-    for original in store.memories(owner):
-        memory = visible_memory(original, as_of)
-        if memory and in_view(memory.current, as_of):
-            active[memory.id] = memory.current.id
-    return [e for e in store.edges_for(owner) if e.relation == 'mentions' and active.get(e.memory_id) == e.revision_id]
+def _active_versions(store, owner, as_of):
+    return {memory.id: memory.current.id for original in store.memories(owner)
+            if (memory := visible_memory(original, as_of)) and in_view(memory.current, as_of)}
 
 
-def active_connections(store, owner, as_of):
-    active = {m.id:m.current.id for original in store.memories(owner) if (m:=visible_memory(original,as_of))}
-    return [e for e in store.edges_for(owner) if e.relation=='related'
-            and active.get(e.origin)==e.revision_id
-            and active.get(e.target)==e.target_revision_id]
+def active_edges(store, owner, as_of, *, origins=None, targets=None, active=None):
+    active = _active_versions(store, owner, as_of) if active is None else active
+    return [edge for edge in store.edges_for(owner, origins=origins, targets=targets, relation='mentions')
+            if active.get(edge.memory_id) == edge.revision_id]
+
+
+def active_connections(store, owner, as_of, *, seeds=None, active=None):
+    if active is None:
+        active = {m.id: m.current.id for original in store.memories(owner)
+                  if (m := visible_memory(original, as_of))}
+    if seeds is None:
+        edges = store.edges_for(owner, relation='related')
+    else:
+        keys = sorted(set(seeds))
+        edges = {}
+        # Bounded SQL parameter batches use the existing endpoint indexes.
+        for offset in range(0, len(keys), 400):
+            batch = keys[offset:offset + 400]
+            for edge in (*store.edges_for(owner, origins=batch, relation='related'),
+                         *store.edges_for(owner, targets=batch, relation='related')):
+                edges[edge.id] = edge
+        edges = list(edges.values())
+    return [edge for edge in edges if active.get(edge.origin) == edge.revision_id
+            and active.get(edge.target) == edge.target_revision_id]

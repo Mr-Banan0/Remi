@@ -10,7 +10,7 @@ from pydantic import Field
 from .models import StrictModel
 from .subject_identity import SubjectDraft, resolve_subjects
 from .subject_references import prepare_reference_state
-from .providers import semantic_references, scoped_schema, remaining, transient, error_label, ProviderUnavailable, OutputInvalid
+from .providers import text_request_options, semantic_references, scoped_schema, remaining, transient, error_label, ProviderUnavailable, OutputInvalid
 
 
 class SubjectPlan(StrictModel):
@@ -245,7 +245,7 @@ def maintain(model, state, *, deadline):
     for attempt in range(2):
         start=monotonic();trace=dict(kind='add_subjects_repair' if state.get('repair_errors') else 'add_subjects',model=model.model,attempt=attempt+1,pending_recovery=bool(state.get('recovery')))
         try:
-            response=model.client.chat.completions.create(**request,timeout=remaining(deadline,model.timeout))
+            response=model.client.chat.completions.create(**request, **text_request_options(model.model),timeout=remaining(deadline,model.timeout))
             if response.usage:trace.update(input_tokens=response.usage.prompt_tokens,output_tokens=response.usage.completion_tokens)
             text=response.choices[0].message.content
             if not text or getattr(response.choices[0].message,'refusal',None):raise OutputInvalid('subject_response_unavailable')

@@ -111,7 +111,8 @@ def test_memory_transaction_rolls_back_only_on_storage_failure():
     assert store.get("requests", "u", "new") is None
 
 
-def test_gpt_model_contract_and_bounded_transport_retry():
+@pytest.mark.parametrize("model_name", ["gpt-4o-mini", "qwen3.8-flash"])
+def test_gpt_model_contract_and_bounded_transport_retry(model_name):
     from openai import OpenAI
     from remi.providers import GPTModel
     calls = []
@@ -123,11 +124,13 @@ def test_gpt_model_contract_and_bounded_transport_retry():
             "choices": [{"index": 0, "message": {"role": "assistant", "content": '{"items":[]}'}, "finish_reason": "stop"}]})
     sdk = OpenAI(api_key="dummy-test", base_url="https://test.invalid/v1", max_retries=0,
                  http_client=httpx.Client(transport=httpx.MockTransport(handler)))
-    model = GPTModel("dummy-test", "https://test.invalid/v1", client=sdk)
+    model = GPTModel("dummy-test", "https://test.invalid/v1", model=model_name, client=sdk)
     assert model.propose({"new_user_source": {"id":"src_test", "role":"user", "content": "Original"}}, deadline=monotonic() + 5) == {"items": []}
     assert len(calls) == 2 and len(model.calls) == 2
-    assert all(call["model"] == "gpt-4o-mini" for call in calls)
+    assert all(call["model"] == model_name for call in calls)
     assert calls[0]["response_format"]["json_schema"]["strict"] is True
+    if model_name.startswith("qwen"):
+        assert all(call["enable_thinking"] is False for call in calls)
     assert "dummy-test" not in repr(model.calls)
     model.close()
 
@@ -225,3 +228,24 @@ def test_identity_and_extraction_contracts_have_separate_write_authority():
     assert set(identity['properties'])=={'subjects'}
     assert set(memory['properties'])=={'items','reason'}
     assert 'SubjectDraft' in identity['$defs'] and 'SubjectDraft' not in memory['$defs']
+
+
+def test_qwen_context_packing_preserves_examples_and_current_request():
+    from remi.providers import text_messages
+    messages = [{"role": "system", "content": "task"},
+                {"role": "user", "content": "independent example"},
+                {"role": "assistant", "content": '{"items": []}'},
+                {"role": "user", "content": "current source"}]
+    packed = text_messages("qwen3.8-flash", messages)
+    assert packed[0] == messages[0] and packed[-1] == messages[-1]
+    assert json.loads(packed[1]["content"].split("\n", 1)[1]) == messages[1:-1]
+    assert text_messages("gpt-4o-mini", messages) is messages
+
+
+def test_provider_error_code_is_retained_without_response_text():
+    from types import SimpleNamespace
+    from remi.providers import error_label
+    error = SimpleNamespace(status_code=400, body={"code": "data_inspection_failed", "message": "private"})
+    label = error_label(error)
+    assert label["provider_error_code"] == "data_inspection_failed"
+    assert "private" not in repr(label)

@@ -19,6 +19,14 @@ def main():
     index = sub.add_parser("index-db", help="Build the approved incremental lexical index")
     index.add_argument("--path", default=".local-data/remi.sqlite3")
     index.add_argument("--allow-create-schema", action="store_true")
+    wal = sub.add_parser("enable-wal", help="Enable snapshot reads for an existing database")
+    wal.add_argument("--path", required=True)
+    for name in ("backup-db", "restore-db"):
+        command = sub.add_parser(name, help="Copy a verified SQLite snapshot to a fresh destination")
+        command.add_argument("--source", required=True)
+        command.add_argument("--destination", required=True)
+    inspect = sub.add_parser("inspect-db", help="Check integrity, row counts and database/WAL size")
+    inspect.add_argument("--path", required=True)
     sub.add_parser("check-config", help="Report only model names and credential presence")
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
@@ -35,6 +43,19 @@ def main():
         finally:
             store.close()
         print(json.dumps({"indexed": args.path}))
+    elif args.command == "enable-wal":
+        store = SQLiteStore(args.path)
+        try:
+            store.enable_wal()
+        finally:
+            store.close()
+        print(json.dumps({"journal_mode": "wal", "path": args.path}))
+    elif args.command in {"backup-db", "restore-db"}:
+        from .maintenance import copy_database
+        print(json.dumps(copy_database(args.source, args.destination)))
+    elif args.command == "inspect-db":
+        from .maintenance import inspect_database
+        print(json.dumps(inspect_database(args.path)))
     elif args.command == "check-config":
         print(json.dumps({"version": VERSION, "pipeline": PIPELINE,
             "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),

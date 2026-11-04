@@ -14,7 +14,7 @@ from .clock import RELATIVE_DAYS, absolute_content, resolve_time, utcnow
 from .heat import visible_memory
 from .identity import stable_id
 from .models import Candidate, EvidenceRef, ExpressionMode, EventStatus, Memory, MemoryType, Revision, StrictModel
-from .providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
+from .providers import text_request_options, OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
 from .retrieval import tokenize
 from .maintenance_clock import maintenance_clock, maintenance_identity_scope
 from .subject_extraction import prepare, render
@@ -193,6 +193,7 @@ def readable_time(content, source, anchor):
 
 def memory_fingerprint(record):
     normalized = Memory.model_validate(record).model_dump()
+    normalized.pop("last_accessed_at", None)
     return hashlib.sha256(json.dumps(normalized, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -262,7 +263,7 @@ def provider_plan(model, state, *, deadline):
                      model=model.model, attempt=attempt + 1,
                      pending_recovery=bool(state.get('recovery')))
         try:
-            response = model.client.chat.completions.create(**request, timeout=remaining(deadline, model.timeout))
+            response = model.client.chat.completions.create(**request, **text_request_options(model.model), timeout=remaining(deadline, model.timeout))
             if response.usage:
                 trace.update(input_tokens=response.usage.prompt_tokens, output_tokens=response.usage.completion_tokens)
             message = response.choices[0].message

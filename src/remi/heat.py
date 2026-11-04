@@ -1,5 +1,7 @@
 """Knowledge-time views and bounded background from source-reported statements."""
 from datetime import timedelta
+from .read_cache import derived
+from .performance import count
 from .clock import in_view, parse_time
 
 
@@ -17,9 +19,12 @@ def visible_memory(memory, as_of):
 
 
 def hot_view(memories, as_of, limit=24, recent_days=30):
+    return hot_from_visible((visible_memory(memory, as_of) for memory in memories), as_of, limit, recent_days)
+
+
+def hot_from_visible(memories, as_of, limit=24, recent_days=30):
     clock, eligible = parse_time(as_of), []
-    for original in memories:
-        memory = visible_memory(original, as_of)
+    for memory in memories:
         if memory is None or not in_view(memory.current, as_of):
             continue
         current = memory.current
@@ -35,3 +40,30 @@ def hot_view(memories, as_of, limit=24, recent_days=30):
         priority = (memory.pinned, memory.impact == 'high', recent, confirmed, memory.id)
         eligible.append((priority, memory))
     return [memory for _, memory in sorted(eligible, key=lambda item: item[0], reverse=True)[:limit]]
+
+
+def visible_memories(store, owner, as_of):
+    """Read-only request projection; persisted originals remain independently mutable."""
+    def build():
+        import sys
+        originals = store.memories(owner)
+        count('visible_memory_records', len(originals))
+        count('visible_revision_records', sum(len(memory.revisions) for memory in originals))
+        views = {memory.id: memory for original in originals
+                 if (memory := visible_memory(original, as_of)) is not None}
+        # Recursively estimate retained Python objects, with shared objects counted once.
+        seen = set()
+        def size(value):
+            if id(value) in seen:
+                return 0
+            seen.add(id(value))
+            result = sys.getsizeof(value)
+            if isinstance(value, dict):
+                result += sum(size(k) + size(v) for k, v in value.items())
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                result += sum(size(v) for v in value)
+            elif hasattr(type(value), 'model_fields'):
+                result += size(value.__dict__)
+            return result
+        return views, size(views)
+    return derived(('visible_memories', id(store), owner, as_of, store.change_token()), build)

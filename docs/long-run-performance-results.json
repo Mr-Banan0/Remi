@@ -1,0 +1,449 @@
+{
+  "baseline_commit": "7ee12f6fb29328961af01c82b6e62fd55b610b95",
+  "scope": "Offline deterministic replay; no external provider calls; graph microbenchmark uses temporary original six-table schema.",
+  "graph_benchmark": [
+    {
+      "edges": 1000,
+      "neighbors": 8,
+      "equivalent": true,
+      "full_scan_median_ms": 3.131499979645014,
+      "indexed_median_ms": 0.0487080542370677,
+      "plans": {
+        "origin": [
+          "SEARCH edges USING INDEX edge_origin (owner=? AND origin=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "target": [
+          "SEARCH edges USING INDEX edge_target (owner=? AND target=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      }
+    },
+    {
+      "edges": 10000,
+      "neighbors": 8,
+      "equivalent": true,
+      "full_scan_median_ms": 31.6499579930678,
+      "indexed_median_ms": 0.04837499000132084,
+      "plans": {
+        "origin": [
+          "SEARCH edges USING INDEX edge_origin (owner=? AND origin=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "target": [
+          "SEARCH edges USING INDEX edge_target (owner=? AND target=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      }
+    },
+    {
+      "edges": 100000,
+      "neighbors": 8,
+      "equivalent": true,
+      "full_scan_median_ms": 354.9225419992581,
+      "indexed_median_ms": 0.04504097159951925,
+      "plans": {
+        "origin": [
+          "SEARCH edges USING INDEX edge_origin (owner=? AND origin=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        "target": [
+          "SEARCH edges USING INDEX edge_target (owner=? AND target=? AND relation=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      }
+    }
+  ],
+  "query_snapshot_equivalence": [
+    {
+      "question_id": "fact_ef36b7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_ef6a39",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_30220c",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_a952ee",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_6c5283",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_e1dfb2",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_87dba1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_8f6beb",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_665da1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_5a7990",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_e1f411",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_f67ca7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_e91747",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "13",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "14",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "15",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    }
+  ],
+  "final_offline_tests": 559,
+  "phase_gates": {
+    "derived_views": 552,
+    "snapshot_concurrency": 556,
+    "final": 559
+  },
+  "wal_query_snapshot_equivalence": [
+    {
+      "question_id": "fact_ef36b7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_ef6a39",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_30220c",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_a952ee",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_6c5283",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_e1dfb2",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "hallucination_87dba1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_8f6beb",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "aggregation_665da1",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "fact_5a7990",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_e1f411",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "temporal_f67ca7",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "misleading_e91747",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "13",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "14",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    },
+    {
+      "question_id": "15",
+      "response": true,
+      "planner_inputs": true,
+      "ranker_inputs": true,
+      "trace": true
+    }
+  ],
+  "scale_probe": [
+    {
+      "memories": 1000,
+      "vector_dimensions": 1024,
+      "returned": 10,
+      "seconds": 0.10597466700710356,
+      "performance": {
+        "operation": "search",
+        "stages": {
+          "storage.list": {
+            "calls": 4,
+            "seconds": 0.006451998953707516
+          },
+          "storage.search_documents": {
+            "calls": 1,
+            "seconds": 0.004683499922975898
+          },
+          "storage.source_headers": {
+            "calls": 2,
+            "seconds": 0.004535874002613127
+          },
+          "engine._visible_documents": {
+            "calls": 1,
+            "seconds": 0.0540775420377031
+          },
+          "engine._embed": {
+            "calls": 1,
+            "seconds": 6.987492088228464e-05
+          },
+          "storage.vector_scores": {
+            "calls": 2,
+            "seconds": 0.0036314590834081173
+          },
+          "storage.lexical_scores": {
+            "calls": 2,
+            "seconds": 0.0009169169934466481
+          },
+          "engine._hybrid": {
+            "calls": 2,
+            "seconds": 0.004811248974874616
+          },
+          "engine._expand_revision_chains": {
+            "calls": 2,
+            "seconds": 0.0012301249662414193
+          },
+          "storage.edges_for": {
+            "calls": 4,
+            "seconds": 7.454107981175184e-05
+          },
+          "engine._graph_candidates": {
+            "calls": 1,
+            "seconds": 0.004435625043697655
+          },
+          "storage.get_many": {
+            "calls": 83,
+            "seconds": 0.0007107459241524339
+          }
+        },
+        "work": {
+          "read_snapshot_queue_seconds": 9.750016033649445e-06,
+          "storage.list.returned": 2000,
+          "visible_memory_records": 1000,
+          "visible_revision_records": 1000,
+          "derived_cache_builds": 2,
+          "storage.search_documents.returned": 1000,
+          "storage.source_headers.returned": 2000,
+          "vector_candidate_ids": 1020,
+          "storage.vector_scores.returned": 1020,
+          "lexical_stat_rows": 1000,
+          "storage.lexical_scores.returned": 20,
+          "derived_cache_hits": 5,
+          "storage.edges_for.returned": 0,
+          "storage.get_many.returned": 168
+        },
+        "success": true,
+        "total_seconds": 0.10595258406829089
+      }
+    },
+    {
+      "memories": 10000,
+      "vector_dimensions": 1024,
+      "returned": 10,
+      "seconds": 0.8275285830022767,
+      "performance": {
+        "operation": "search",
+        "stages": {
+          "storage.list": {
+            "calls": 4,
+            "seconds": 0.0723230839939788
+          },
+          "storage.search_documents": {
+            "calls": 1,
+            "seconds": 0.04345150000881404
+          },
+          "storage.source_headers": {
+            "calls": 2,
+            "seconds": 0.04401979106478393
+          },
+          "engine._visible_documents": {
+            "calls": 1,
+            "seconds": 0.5144383340375498
+          },
+          "engine._embed": {
+            "calls": 1,
+            "seconds": 6.958306767046452e-05
+          },
+          "storage.vector_scores": {
+            "calls": 2,
+            "seconds": 0.04196733399294317
+          },
+          "storage.lexical_scores": {
+            "calls": 2,
+            "seconds": 0.008084998931735754
+          },
+          "engine._hybrid": {
+            "calls": 2,
+            "seconds": 0.05272299994248897
+          },
+          "engine._expand_revision_chains": {
+            "calls": 2,
+            "seconds": 0.05678679095581174
+          },
+          "storage.edges_for": {
+            "calls": 4,
+            "seconds": 0.0001129580195993185
+          },
+          "engine._graph_candidates": {
+            "calls": 1,
+            "seconds": 0.044777666917070746
+          },
+          "storage.get_many": {
+            "calls": 83,
+            "seconds": 0.0008374599274247885
+          }
+        },
+        "work": {
+          "read_snapshot_queue_seconds": 4.083034582436085e-06,
+          "storage.list.returned": 20000,
+          "visible_memory_records": 10000,
+          "visible_revision_records": 10000,
+          "derived_cache_builds": 2,
+          "storage.search_documents.returned": 10000,
+          "storage.source_headers.returned": 20000,
+          "vector_candidate_ids": 10020,
+          "storage.vector_scores.returned": 10020,
+          "lexical_stat_rows": 10000,
+          "storage.lexical_scores.returned": 110,
+          "derived_cache_hits": 5,
+          "storage.edges_for.returned": 0,
+          "storage.get_many.returned": 168
+        },
+        "success": true,
+        "total_seconds": 0.8275072919204831
+      }
+    }
+  ],
+  "runtime_source_sha256": "90ff5ef3ec437b16f030d9729e7d3b36fa086e9e748725111cc406491759ba8c",
+  "runtime_state": "uncommitted workspace; original unrelated user edits retained"
+}

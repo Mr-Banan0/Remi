@@ -13,7 +13,7 @@ from .heat import visible_memory
 from .identity import stable_id
 from .maintenance_clock import maintenance_clock
 from .models import Edge, Memory, StrictModel
-from .providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
+from .providers import text_request_options, OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
 from .subject_references import current_evidence
 
 
@@ -328,6 +328,7 @@ def provider_plan(model, state, *, deadline):
         trace = dict(kind='add_links', model=model.model, attempt=attempt + 1)
         try:
             response = model.client.chat.completions.create(model=model.model, temperature=0,
+                **text_request_options(model.model),
                 max_completion_tokens=min(6500, 500 + 120 * len(state['pairs'])),
                 timeout=remaining(deadline, model.timeout), messages=messages,
                 response_format=dict(type='json_schema', json_schema=dict(

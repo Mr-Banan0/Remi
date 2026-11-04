@@ -10,7 +10,7 @@ from typing import Annotated
 from pydantic import Field, ValidationError
 
 from .models import ExpressionMode, EventStatus, MemoryType, ProposalDraft, SourceCitation, StrictModel
-from .providers import OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
+from .providers import text_messages, text_request_options, OutputInvalid, ProviderUnavailable, error_label, remaining, strict_schema, transient
 from .subject_identity import CONTEXT_LIMIT
 
 
@@ -419,12 +419,12 @@ def propose(model,state,*,deadline):
         if 'previous_output' in packet:messages.append(dict(role='assistant',content=json.dumps(packet['previous_output'],ensure_ascii=False)))
         correction='Correct these program validation issues and return the complete plan:\n'+json.dumps(packet['repair_errors'],ensure_ascii=False)
         messages.append(dict(role='user',content=correction));body+='\n'+correction
-    request=dict(model=model.model,temperature=0,max_completion_tokens=6000,messages=messages,
+    request=dict(model=model.model,temperature=0,max_completion_tokens=6000,messages=text_messages(model.model, messages),
         response_format=dict(type='json_schema',json_schema=dict(name='ExtractionPlan',strict=True,schema=schema(packet))))
     for attempt in range(2):
         started=monotonic();trace=dict(kind='add_propose_repair' if repair else 'add_propose',model=model.model,attempt=attempt+1)
         try:
-            response=model.client.chat.completions.create(**request,timeout=remaining(deadline,model.timeout))
+            response=model.client.chat.completions.create(**request, **text_request_options(model.model),timeout=remaining(deadline,model.timeout))
             if response.usage:trace.update(input_tokens=response.usage.prompt_tokens,output_tokens=response.usage.completion_tokens)
             message=response.choices[0].message
             if not message.content or getattr(message,'refusal',None):raise OutputInvalid('extraction_response_unavailable')

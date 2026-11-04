@@ -18,7 +18,7 @@ from .subject_recall import prepare_candidates, subject_stage_state
 from .subject_identity import CONTEXT_LIMIT, SubjectRecord, visible_subject, matching_subjects
 from .subject_maintenance import review
 from .memory_maintenance import (accept_targetless_adds, candidates, materialize,
-                                 pending_candidates, validate_plan)
+                                 pending_candidates, validate_plan, memory_fingerprint)
 from .memory_linking import build_state as build_link_state, validate_plan as validate_link_plan
 from .memory_recall import recall_memories
 from .version import PIPELINE
@@ -522,11 +522,19 @@ class AddPipeline:
 
                             for mid,previous in cache.get('expected_memories',{}).items():
 
-                                if self.store.get('memories',owner,mid)!=previous:raise ProviderUnavailable('event_history_changed_retry')
+                                current=self.store.get('memories',owner,mid)
+                                if ((current is None)!=(previous is None) or
+                                    current is not None and memory_fingerprint(current)!=memory_fingerprint(previous)):
+                                    raise ProviderUnavailable('event_history_changed_retry')
 
                             for obj in objects:self.store.put('objects',owner,obj['id'],obj)
 
-                            for memory in memories:self.store.put('memories',owner,memory.id,memory.model_dump())
+                            for memory in memories:
+                                current=self.store.get('memories',owner,memory.id)
+                                access=current.get('last_accessed_at') if current else None
+                                if access and (not memory.last_accessed_at or parse_time(access)>parse_time(memory.last_accessed_at)):
+                                    memory.last_accessed_at=access
+                                self.store.put('memories',owner,memory.id,memory.model_dump())
 
                             # Structural projections are replayed for the current revision.
                             # Version-bound related edges remain as historical evidence;
@@ -534,10 +542,12 @@ class AddPipeline:
 
                             touched={m.id for m in memories}
 
-                            for old_edge in self.store.edges_for(owner):
-
-                                if old_edge.memory_id in touched and old_edge.relation!='related':
-                                    self.store.delete('edges',owner,old_edge.id)
+                            origins=sorted(touched | {revision.id for memory in memories
+                                                      for revision in memory.revisions})
+                            for offset in range(0,len(origins),400):
+                                for old_edge in self.store.edges_for(owner,origins=origins[offset:offset+400]):
+                                    if old_edge.memory_id in touched and old_edge.relation!='related':
+                                        self.store.delete('edges',owner,old_edge.id)
 
                             for edge in edges:self.store.put('edges',owner,edge.id,edge.model_dump())
 

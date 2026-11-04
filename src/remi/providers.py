@@ -1,9 +1,12 @@
-"""GPT-4o-mini for writing/planning, text-embedding-v4 for vectors, Jev for ranking."""
+"""Configured structured text model, DashScope vectors and Jev ranking."""
 from __future__ import annotations
+
+from .performance import measured
 
 import json
 import math
 import os
+import re
 from collections import deque
 from copy import copy
 from concurrent.futures import ThreadPoolExecutor
@@ -223,7 +226,13 @@ def error_label(error):
     status = getattr(error, "status_code", None)
     if status is None and getattr(error, "response", None) is not None:
         status = error.response.status_code
-    return {"error_type": type(error).__name__, "http_status": status}
+    label = {"error_type": type(error).__name__, "http_status": status}
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        code = body.get("code")
+        if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", code):
+            label["provider_error_code"] = code
+    return label
 
 
 def transient(error):
@@ -278,14 +287,37 @@ def semantic_references(payload):
     return translate(payload, aliases), lambda value: translate(value, reverse)
 
 
+def text_messages(model_name, messages):
+    """Present Qwen's extraction examples as labelled data, preserving every byte.
+
+    DashScope rejected the long synthetic alternating conversation while accepting
+    the same examples as one context block. Keep the task system and final request
+    separate; source roles and repair context stay explicit inside the block.
+    """
+    if not model_name.startswith("qwen") or len(messages) <= 2:
+        return messages
+    context = {"role": "user", "content": (
+        "The following labelled messages provide independent examples and any repair context "
+        "in order. The next user message is the current request.\n"
+        + json.dumps(messages[1:-1], ensure_ascii=False)
+    )}
+    return [messages[0], context, messages[-1]]
+
+
+def text_request_options(model_name):
+    """Qwen structured memory stages use direct JSON generation without thinking."""
+    return {"extra_body": {"enable_thinking": False}} if model_name.startswith("qwen") else {}
+
+
 class GPTModel:
     def __init__(self, api_key, base_url, model="gpt-4o-mini", timeout=45, client=None):
-        if model != "gpt-4o-mini":
-            raise ValueError("this_architecture_uses_gpt_4o_mini")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("text_model_required")
         self.model, self.timeout = model, timeout
         self.client = client or OpenAI(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
         self.calls = deque(maxlen=2048)
 
+    @measured("provider._json")
     def _json(self, prompt, state, schema, kind, deadline):
         allowed = {'query', 'reference_time', 'evidence', 'current_conditions', 'previous_output', 'repair_errors'}
         payload = {key: value for key, value in state.items() if key in allowed}
@@ -301,6 +333,7 @@ class GPTModel:
             try:
                 response = self.client.chat.completions.create(
                     model=self.model, temperature=0, max_completion_tokens=6000,
+                    **text_request_options(self.model),
                     timeout=remaining(deadline, self.timeout),
                     messages=messages,
                     response_format={"type": "json_schema", "json_schema": {
@@ -330,18 +363,22 @@ class GPTModel:
                 self.calls.append(trace)
         raise ProviderUnavailable("text_provider_unavailable")
 
+    @measured("provider.maintain_subjects")
     def maintain_subjects(self, state, *, deadline):
         from .subject_maintenance import maintain
         return maintain(self, state, deadline=deadline)[0]
 
+    @measured("provider.extract_memories")
     def extract_memories(self, state, *, deadline):
         from .subject_extraction import propose
         return propose(self, state, deadline=deadline)
 
+    @measured("provider.propose")
     def propose(self, state, *, deadline):
         from .memory_maintenance import provider_plan
         return provider_plan(self, state, deadline=deadline)
 
+    @measured("provider.link_memories")
     def link_memories(self, state, *, deadline):
         from .memory_linking import provider_plan
         return provider_plan(self, state, deadline=deadline)
@@ -361,6 +398,7 @@ class DashScopeEmbedder:
         self.client = client or OpenAI(api_key=api_key, base_url=base_url, max_retries=0, timeout=30)
         self.calls = deque(maxlen=2048)
 
+    @measured("provider.embed")
     def embed(self, texts, *, deadline):
         vectors = []
         for offset in range(0, len(texts), 10):
@@ -399,6 +437,7 @@ class JevReranker:
                                   headers={"Authorization": "Bearer " + api_key}, timeout=timeout)
         self.calls = deque(maxlen=2048)
 
+    @measured("provider.rank")
     def rank(self, query, cards, *, deadline):
         # Keep the scoring question local to this request while sharing the HTTP client.
         local = copy(self)
