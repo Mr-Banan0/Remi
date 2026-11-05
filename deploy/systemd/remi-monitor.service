@@ -1,0 +1,14 @@
+[Unit]
+Description=Remi database capacity and backup freshness checks
+After=remi-test.service
+
+[Service]
+Type=oneshot
+User=remi-test
+Group=remi-test
+WorkingDirectory=/opt/remi-test/current
+Environment=PYTHONPATH=/opt/remi-test/current/src
+ExecStart=/opt/remi-test/current/.venv/bin/python -m remi.cli check-operations --path /opt/remi-test/data/remi.sqlite3 --backup-directory /opt/remi-test/backups/automatic
+UMask=0077
+TimeoutStartSec=60
+Nice=10

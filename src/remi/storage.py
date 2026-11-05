@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -158,7 +159,10 @@ class SQLiteStore(MemoryStore):
             raise RuntimeError("database_missing_use_explicit_approved_init")
         self.lock = RLock()
         self.path = path
-        self._read_slots = BoundedSemaphore(4)
+        read_limit = int(os.getenv("REMI_SEARCH_READ_CONCURRENCY", "4"))
+        if not 1 <= read_limit <= 32:
+            raise ValueError("read_concurrency_requires_1_to_32")
+        self._read_slots = BoundedSemaphore(read_limit)
         self.connection = sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, check_same_thread=False,
                                           isolation_level=None, timeout=10)
         self.connection.execute("PRAGMA busy_timeout=10000")

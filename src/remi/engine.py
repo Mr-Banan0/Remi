@@ -56,6 +56,8 @@ class MemoryEngine:
         self._locks, self._lock_guard = {}, Lock()
         self.last_search = {}
         self.last_performance = {}
+        from .runtime_metrics import RuntimeMetrics
+        self.runtime_metrics = RuntimeMetrics()
 
     @contextmanager
     def _scope(self, owner, deadline):
@@ -1087,6 +1089,8 @@ class MemoryEngine:
                     "memory_id": document.memory_id, "base_score": score, "rerank_score": scores.get(document.id),
                     "evidence_source_ids": cards_by_id[document.id]["source_ids"],
                     "selected": document.id in {item.id for item in items}} for document, score in merged]}
+            count("search_degraded", int(bool(degradation)))
+            count("rerank_degraded", int("rerank_partial_or_unavailable" in degradation))
             return SearchResponse(data=items)
 
     def close(self):

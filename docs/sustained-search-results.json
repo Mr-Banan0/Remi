@@ -1,0 +1,116 @@
+{
+  "requests": 200,
+  "concurrency": 4,
+  "wall_seconds": 20.66180570796132,
+  "requests_per_second": 9.679696093693149,
+  "equivalent_results": 200,
+  "peak_rss_native": 94470144,
+  "runtime": {
+    "started_at": 1793809043.3109398,
+    "uptime_seconds": 20.771767139434814,
+    "operations": {
+      "add": {
+        "started": 0,
+        "completed": 0,
+        "failed": 0,
+        "inflight": 0,
+        "seconds": 0.0,
+        "window_count": 0,
+        "p50_seconds": null,
+        "p95_seconds": null,
+        "work": {},
+        "stages": {}
+      },
+      "search": {
+        "started": 201,
+        "completed": 201,
+        "failed": 0,
+        "inflight": 0,
+        "seconds": 82.06528046168387,
+        "window_count": 201,
+        "p50_seconds": 0.403034207993187,
+        "p95_seconds": 0.4587579589569941,
+        "work": {
+          "read_snapshot_queue_seconds": 61.236689036595635,
+          "memory_projection_fallback_records": 0,
+          "memory_projection_bytes": 67346026,
+          "storage.memory_projections.returned": 201000,
+          "visible_memory_headers": 201000,
+          "visible_revision_headers": 241200,
+          "derived_cache_builds": 402,
+          "storage.search_documents.returned": 241200,
+          "storage.source_headers.returned": 482400,
+          "vector_candidate_ids": 248436,
+          "storage.vector_scores.returned": 248436,
+          "lexical_stat_rows": 241200,
+          "storage.lexical_scores.returned": 4020,
+          "storage.get_many.returned": 49251,
+          "visible_memory_bodies_loaded": 15276,
+          "storage.list.returned": 241200,
+          "storage.edges_for.returned": 804,
+          "derived_cache_hits": 402,
+          "search_degraded": 0,
+          "rerank_degraded": 0
+        },
+        "stages": {
+          "storage.memory_projections": {
+            "calls": 201,
+            "seconds": 0.9959134170785546
+          },
+          "engine.visible_memories": {
+            "calls": 201,
+            "seconds": 2.9152274987427518
+          },
+          "storage.search_documents": {
+            "calls": 201,
+            "seconds": 1.3750554964644834
+          },
+          "storage.source_headers": {
+            "calls": 402,
+            "seconds": 1.3842576757306233
+          },
+          "engine._visible_documents": {
+            "calls": 201,
+            "seconds": 2.7427473734132946
+          },
+          "engine._embed": {
+            "calls": 201,
+            "seconds": 0.014249581494368613
+          },
+          "storage.vector_scores": {
+            "calls": 603,
+            "seconds": 0.9128157813102007
+          },
+          "storage.lexical_scores": {
+            "calls": 603,
+            "seconds": 0.34922121081035584
+          },
+          "engine._hybrid": {
+            "calls": 603,
+            "seconds": 1.3490266198059544
+          },
+          "storage.get_many": {
+            "calls": 33567,
+            "seconds": 0.3748620931291953
+          },
+          "engine._expand_revision_chains": {
+            "calls": 402,
+            "seconds": 0.6816246244125068
+          },
+          "storage.list": {
+            "calls": 603,
+            "seconds": 0.44332195667084306
+          },
+          "storage.edges_for": {
+            "calls": 804,
+            "seconds": 0.02697766467463225
+          },
+          "engine._graph_candidates": {
+            "calls": 201,
+            "seconds": 1.5105340749723837
+          }
+        }
+      }
+    }
+  }
+}

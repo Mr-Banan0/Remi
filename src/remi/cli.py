@@ -29,6 +29,11 @@ def main():
         command.add_argument("--destination", required=True)
     inspect = sub.add_parser("inspect-db", help="Check integrity, row counts and database/WAL size")
     inspect.add_argument("--path", required=True)
+    for name in ("backup-cycle", "check-operations"):
+        command = sub.add_parser(name, help="Verified backup or read-only operational checks")
+        command.add_argument("--path", required=True)
+        command.add_argument("--backup-directory", required=True)
+        command.add_argument("--min-free-bytes", type=int, default=1024**3)
     sub.add_parser("check-config", help="Report only model names and credential presence")
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
@@ -65,6 +70,13 @@ def main():
     elif args.command == "inspect-db":
         from .maintenance import inspect_database
         print(json.dumps(inspect_database(args.path)))
+    elif args.command in {"backup-cycle", "check-operations"}:
+        from .operations import backup_cycle, capacity_report
+        action = backup_cycle if args.command == "backup-cycle" else capacity_report
+        result = action(args.path, args.backup_directory, min_free_bytes=args.min_free_bytes)
+        print(json.dumps(result))
+        if args.command == "check-operations" and result["alerts"]:
+            raise SystemExit(2)
     elif args.command == "check-config":
         print(json.dumps({"version": VERSION, "pipeline": PIPELINE,
             "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),

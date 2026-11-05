@@ -43,6 +43,9 @@ def request_performance(function):
         metrics = {'operation': function.__name__, 'stages': {}, 'work': {}, 'success': False}
         token = _current.set(metrics)
         start = perf_counter()
+        observer = getattr(self, "runtime_metrics", None)
+        if observer is not None:
+            observer.begin(function.__name__)
         try:
             result = function(self, *args, **kwargs)
             metrics['success'] = True
@@ -51,4 +54,6 @@ def request_performance(function):
             metrics['total_seconds'] = perf_counter() - start
             self.last_performance = metrics
             _current.reset(token)
+            if observer is not None:
+                observer.finish(metrics)
     return wrapped

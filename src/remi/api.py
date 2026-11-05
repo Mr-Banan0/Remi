@@ -76,6 +76,13 @@ def create_app(engine=None, api_key=None):
         active()
         return {"status": "ready", "version": VERSION, "pipeline": PIPELINE}
 
+    @app.get("/metrics")
+    def metrics(http_request: Request):
+        if not key:
+            raise HTTPException(status_code=503, detail="Metrics requires configured authentication")
+        authorize(http_request)
+        return active().runtime_metrics.snapshot()
+
     @app.post("/add", response_model=AddResponse)
     def add(request: AddRequest, http_request: Request):
         authorize(http_request)
