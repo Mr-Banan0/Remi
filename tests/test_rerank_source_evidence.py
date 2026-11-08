@@ -18,6 +18,7 @@ def test_jev_receives_original_evidence_and_retains_callers_memory_view():
     def handler(request):
         body = json.loads(request.content)
         evidence = body['questions']['d']['instructions']['evidence']
+        assert 'temporal_targets' not in evidence
         assert evidence['original'] == card['original']
         assert evidence['source_ids'] == ['s']
         assert evidence['retrieval_objectives'] == card['retrieval_objectives']

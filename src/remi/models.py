@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator, model_serializer
 
 
 def nullable(value):
@@ -110,8 +110,9 @@ class CandidateDraft(StrictModel):
     subject_refs: list[SubjectRef] = Field(max_length=12)
     mode: ExpressionMode
     context: str | None = Field(max_length=300)
-    status: EventStatus | None
-    time_expression: str | None = Field(max_length=300)
+    # Read compatibility for existing extraction checkpoints. New wire schema omits these fields.
+    status: EventStatus | None = Field(default=None, exclude=True)
+    time_expression: str | None = Field(default=None, exclude=True)
     evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
 
 
@@ -123,8 +124,8 @@ class Candidate(StrictModel):
     record_type: MemoryType | None = None
     mode: ExpressionMode | None = None
     context: str | None = None
-    status: EventStatus | None = None
-    time_expression: str | None = None
+    status: EventStatus | None = Field(default=None, exclude=True)
+    time_expression: str | None = Field(default=None, exclude=True)
     evidence: list[EvidenceRef]
 
 
@@ -157,17 +158,26 @@ class Revision(StrictModel):
     user_involvement: Literal['involved', 'not_involved']
     mode: ExpressionMode
     context: str
-    status: Literal['stated', 'planned', 'occurred', 'cancelled', 'desired', 'unknown']
-    planned_at: str | None
-    event_at: str | None
+    # Existing database revisions retain their legacy metadata until an explicit migration.
+    status: Literal['stated', 'planned', 'occurred', 'cancelled', 'desired', 'unknown'] | None = None
+    planned_at: str | None = None
+    event_at: str | None = None
     observed_at: str
     created_at: str
-    time_resolution: Literal['rule', 'unknown']
-    time_precision: Literal['day', 'instant', 'unknown']
+    time_resolution: Literal['rule', 'unknown'] = 'unknown'
+    time_precision: Literal['day', 'instant', 'unknown'] = 'unknown'
     operation: Literal['create', 'reschedule', 'complete', 'cancel', 'update', 'support']
     replaces_revision_id: str | None = None
     time_evidence: list[EventTimeEvidence] = Field(default_factory=list)
     maintenance_patch: dict | None = None
+
+    @model_serializer(mode='wrap')
+    def serialize_revision(self, handler):
+        result = handler(self)
+        if self.status is None:
+            for key in ('status', 'planned_at', 'event_at', 'time_resolution', 'time_precision', 'time_evidence'):
+                result.pop(key, None)
+        return result
 
 
 class Memory(StrictModel):
@@ -196,7 +206,7 @@ class Memory(StrictModel):
                 raise ValueError('connection_requires_two_distinct_supported_subjects')
         elif self.endpoint_ids or self.connection_evidence is not None:
             raise ValueError('ordinary_memories_use_participants_and_source_evidence')
-        if self.record_type != 'event' and any(r.status != 'stated' for r in self.revisions):
+        if self.record_type != 'event' and any(r.status not in {None, 'stated'} for r in self.revisions):
             raise ValueError('statements_use_stated_status')
         if self.record_type == 'event' and any(r.status == 'stated' for r in self.revisions):
             raise ValueError('events_use_event_status')
@@ -288,7 +298,7 @@ class MemoryEvidence(StrictModel):
     source_ids: list[str]
     event_at: str | None
     planned_at: str | None
-    status: str
+    status: str | None = None
     time_precision: Literal["day", "instant", "unknown"] = "unknown"
     observed_at: str | None = None
     temporal_scope: str = "unknown"

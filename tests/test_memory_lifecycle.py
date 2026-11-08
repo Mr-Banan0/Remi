@@ -79,11 +79,12 @@ def test_same_event_reschedule_and_completion_preserve_id_and_planned_time():
     model.writer=lambda state:[update(state,content='Aster plans the workshop on 2030-01-05.')]
     engine.add(req('Aster moved that workshop to January 5.','move',1))
     moved=engine.store.memories(OWNER)[0]
-    assert moved.id==mid and moved.current.planned_at.startswith('2030-01-05')
+    assert moved.id==mid and '2030-01-05' in moved.current.content
     model.writer=lambda state:[update(state,content='Aster completed the workshop on 2030-01-06.')]
     engine.add(req('Aster completed the workshop today.','finish',5))
     current=engine.store.memories(OWNER)[0].current
-    assert current.planned_at.startswith('2030-01-05') and current.event_at.startswith('2030-01-06')
+    assert 'completed' in current.content and '2030-01-06' in current.content
+    assert current.planned_at is None and current.event_at is None
     assert len(engine.store.memories(OWNER)[0].revisions)==3
     assert model.calls==['extract','memory']*3
 
@@ -99,7 +100,7 @@ def test_unknown_clock_preserves_relative_expression_and_unknown_structured_time
     engine.add(req('Aster plans a picnic tomorrow.','import',timestamp=False))
     current=engine.store.memories(OWNER)[0].current
     assert current.planned_at is None and current.time_precision=='unknown'
-    assert 'tomorrow' in current.content and current.time_evidence[0].expression=='tomorrow'
+    assert 'tomorrow' in current.content and not current.time_evidence
 
 
 
@@ -108,13 +109,14 @@ def test_program_uses_one_unambiguous_source_date_when_candidate_omits_time_expr
     model.extractor=lambda state:dict(items=[extracted(state,status='planned',time_expression=None)],reason='date omitted')
     model.writer=lambda state:[update(state,content='Aster plans the workshop on 2030-01-05.')]
     engine.add(req('Aster moved that workshop to January 5.','fallback-date',1))
-    assert engine.store.memories(OWNER)[0].current.planned_at.startswith('2030-01-05')
+    assert '2030-01-05' in engine.store.memories(OWNER)[0].current.content
 
 def test_cancellation_preserves_existing_planned_date():
-    engine,model=lifecycle();model.writer=lambda state:[update(state,content='Aster cancelled the workshop.')]
+    engine,model=lifecycle();model.writer=lambda state:[update(state,content='Aster cancelled the workshop planned for 2030-01-03.')]
     engine.add(req('Aster cancelled the workshop.','cancel',1))
     current=engine.store.memories(OWNER)[0].current
-    assert current.status=='cancelled' and current.planned_at.startswith('2030-01-03')
+    assert 'cancelled' in current.content and '2030-01-03' in current.content
+    assert 'status' not in current.model_dump()
 
 
 def test_unchanged_view_creates_support_revision_with_new_evidence():
@@ -215,23 +217,23 @@ def test_hybrid_recall_exposes_same_kind_candidate_without_forcing_update():
     assert ranking is None or len(ranking['update_targets'])==1
 
 
-def test_terminal_event_cannot_be_reused_for_a_later_occurrence():
+def test_same_occurrence_reopening_is_validated_by_content_without_terminal_enum_guard():
     packet,_=list(examples())[3]
+    packet['memory_candidates'][0]['content']='Mira reopened that same studio visit for June 8.'
     answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
-        content='Mira plans another studio visit for June 8.')],reason='invalid reuse')
+        content='Mira reopened that same studio visit for June 8.')],reason='same occurrence explicitly reopened')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert not accepted
-    assert 'terminal_event_cannot_return_to_planned' in {issue['code'] for issue in issues}
+    assert accepted and not issues
+    assert all('status' not in row and 'time_expression' not in row for row in accepted.values())
 
 
-def test_terminal_event_with_a_different_actual_date_is_a_separate_occurrence():
+def test_separate_occurrence_add_preserves_existing_identity():
     packet,_=list(examples())[3]
-    packet['memory_candidates'][0].update(status='occurred',content='Mira completed another studio visit on June 8.')
-    answer=dict(items=[dict(ref='C1',operation='update',target_id='completed',
-        content='Mira completed another studio visit on June 8.')],reason='invalid reuse')
+    answer=dict(items=[dict(ref='C1',operation='add',target_id=None,
+        content='Mira completed another studio visit on June 8.')],reason='separate occurrence')
     accepted,issues=validate_plan(answer,packet,packet['resolved_subjects'])
-    assert not accepted
-    assert 'terminal_event_date_identifies_separate_occurrence' in {issue['code'] for issue in issues}
+    assert accepted and not issues
+    assert next(iter(accepted.values()))['target_id'] is None
 
 
 def test_embedding_failure_resumes_without_repeating_model_stages():

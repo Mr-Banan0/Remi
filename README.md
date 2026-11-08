@@ -29,9 +29,28 @@ meaning. A changed revision triggers review of its affected related edges.
 
 ## Search
 
-Keyword and semantic recall → supplemental searches and bounded graph expansion
-→ deduplicate logical memories and fuse ranks → Jev reranking → source-backed
-evidence packages. The AML adapter supports `top_k=100`.
+Search runs the original query and Planner supplemental queries with bounded graph
+expansion. Each query follows: keyword/semantic rankings → logical memory version
+packages → primary-source evidence packages → RRF → bounded source packages.
+Cross-query RRF combines those packages and graph results before Jev reranking. Each memory contains the latest visible revision plus its retrieved
+revisions, deduplicated by revision ID, with its latest revision first.
+Memories sharing the current primary source occupy one ranking position while
+retaining their own identities, states, version histories and retrieval roles.
+Each channel assigns consecutive source-package ranks before RRF. Supporting
+sources and adjacent context remain evidence within the package. Original text
+appears once in the source section; each version references its source ID.
+Jev and the response use the same version package, including during ranking
+fallback. `REMI_RECALL_DEPTH` controls each keyword/semantic channel's scan depth
+(default 40); `REMI_CANDIDATE_LIMIT` controls the distinct source packages retained
+per query (default 40). Effective channel depth is at least the requested package
+limit. Graph expansion keeps its separate existing budget. More distinct evidence
+can increase Jev batches within the existing per-query bounds.
+The existing Planner continues to generate supplemental queries in one normal
+model call; the reranker prompt remains unchanged.
+Jev receives temporal targets once as separate scoring questions; evidence cards
+retain their original text and version packages. Official context-limit responses
+trigger question splitting while preserving score IDs.
+The AML adapter supports `top_k=100`.
 
 Calendar queries preserve their supported precision. A month/day without a year
 can retrieve matching days across visible years; relative dates use the request

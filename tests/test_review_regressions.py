@@ -47,7 +47,8 @@ def test_turn_merge_preserves_assistant_and_memory_metadata():
     assert "BICYCLE" in result.data[0].content
     documents = engine._visible_documents("u1", "2025-01-01T00:00:00Z")
     merged = engine._merge(engine._hybrid("u1", "jogging advice", documents), documents)
-    assert len(merged) == 1 and len(merged[0][0].source_ids) == 2
+    assert len(merged) == 1 and len(merged[0][0].source_ids) == 1
+    # Adjacent assistant context is attached when cards are built, not as a version.
     assert merged[0][0].memory_evidence
 
 
@@ -104,7 +105,8 @@ def test_second_step_binds_the_new_first_step_time():
     result = engine.search(query("What happened afterwards?"), "2024-07-01T00:00:00Z")
     assert not model.decisions[-1]["evidence"]
     assert "Followup" in "\n".join(item.content for item in result.data)
-    assert all(item["coverage"].startswith("bounded_candidates") for item in engine.last_search["tool_results"])
+    assert all(item["coverage"].startswith("bounded_candidates") or item["coverage"] in {"time_scope_unresolved", "anchor_step_ambiguous"}
+               for item in engine.last_search["tool_results"])
 
 
 def test_ambiguous_dependency_keeps_a_diagnosed_fallback():
@@ -179,8 +181,9 @@ def test_lifecycle_change_does_not_inherit_a_plan_as_actual_date():
     model.extractor = lambda state, errors: {"commands": [command(state,   status="occurred")]}
     engine.add(request("That meeting completed.", request_id="r2", when="2024-06-15T10:00:00Z"))
     current=engine.store.memories("u1",[target])[0]
-    assert len(current.revisions)==2 and current.current.status=="occurred"
-    assert current.current.event_at is None and current.current.planned_at.startswith("2024-06-09")
+    assert len(current.revisions)==2 and "completed" in current.current.content
+    assert current.current.event_at is None and current.current.planned_at is None
+    assert "6月9日" in current.revisions[0].content
 
 
 def test_plan_repair_can_resolve_operations_jointly():
@@ -336,7 +339,7 @@ def test_encoded_null_arguments_commit_without_a_repair_call():
     engine.add(request("I have a peanut allergy."))
     assert len(model.extractions) == 1
     assert engine.store.memories("u1")[0].tags[0] == "fact"
-    assert engine.store.memories("u1")[0].current.status == "stated"
+    assert "status" not in engine.store.memories("u1")[0].current.model_dump()
 
 
 def test_encoded_null_keeps_a_dependent_tool_step_valid():

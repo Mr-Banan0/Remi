@@ -30,8 +30,10 @@ def replay_revisions(store, memories, edges):
                     participant_ids=original.entity_ids,evidence=[e.model_dump() for e in original.evidence],
                     source_id=original.source_ids[0],base_revision_id=original.replaces_revision_id)
             fields=patch['fields']; values=original.model_dump()
+            prose_only = 'status' not in patch['values']
+            active_fields = ('content','entity_ids','mode','context') if prose_only else FIELDS
             if latest:
-                for key in FIELDS:
+                for key in active_fields:
                     label='participants' if key=='entity_ids' else key
                     if key not in {'content','time_evidence'} and label not in fields:
                         values[key]=deepcopy(getattr(latest,key))
@@ -39,19 +41,23 @@ def replay_revisions(store, memories, edges):
                     ids=patch['participant_ids']; old=latest.entity_ids; mode=patch['participant_mode']
                     values['entity_ids']=list(dict.fromkeys([*old,*ids])) if mode=='add' else [oid for oid in old if oid not in ids] if mode=='remove' else ids
                 else:values['entity_ids']=list(latest.entity_ids)
-                # Date evidence and precision follow each edited slot independently.
-                previous={t.field:t.model_dump() for t in latest.time_evidence}
-                for t in patch['values']['time_evidence']:
-                    t=t.model_dump() if hasattr(t,'model_dump') else t
-                    if t['field'] in fields:previous[t['field']]=t
-                values['time_evidence']=list(previous.values())
-                selected=previous.get('event_at') or previous.get('planned_at')
-                if selected:
-                    values['time_resolution']='rule' if selected['value'] else 'unknown'
-                    values['time_precision']=selected['precision']
-                for field in ('planned_at','event_at'):
-                    if field in fields:values[field]=patch['values'][field]
+                if not prose_only:
+                    # Date evidence and precision follow each edited slot independently.
+                    previous={t.field:t.model_dump() for t in latest.time_evidence}
+                    for t in patch['values']['time_evidence']:
+                        t=t.model_dump() if hasattr(t,'model_dump') else t
+                        if t['field'] in fields:previous[t['field']]=t
+                    values['time_evidence']=list(previous.values())
+                    selected=previous.get('event_at') or previous.get('planned_at')
+                    if selected:
+                        values['time_resolution']='rule' if selected['value'] else 'unknown'
+                        values['time_precision']=selected['precision']
+                    for field in ('planned_at','event_at'):
+                        if field in fields:values[field]=patch['values'][field]
                 branched=branched or (original.operation!='support' and patch['base_revision_id']!=latest.id)
+            if prose_only:
+                values.update(status=None, planned_at=None, event_at=None, time_evidence=[],
+                              time_resolution='unknown', time_precision='unknown')
             # Evidence-only support advances provenance without duplicating the narrative timeline.
             narrative=patch['values']['content']
             if original.operation!='support':timeline.append('['+original.observed_at+'] '+narrative)

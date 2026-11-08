@@ -30,8 +30,6 @@ class ExtractionItem(StrictModel):
     participant_handles: list[ParticipantHandle] = Field(max_length=12)
     mode: ExpressionMode
     context: str | None = Field(max_length=300)
-    status: EventStatus | None
-    time_expression: str | None = Field(max_length=300)
     evidence: list[SourceCitation] = Field(min_length=1, max_length=8)
 
 
@@ -60,37 +58,31 @@ current Pn means the same stored identity. Select only handles listed in CURRENT
 labels, source S labels and memory M labels describe evidence rather than additional current participants.
 Original words and roles establish who a claim is about. A legal handle alone supplies no semantic proof.
 
-# Extract memory content
-fact records a state or attribute, including occupations, roles, social identities and concrete relationship statements; preference records a like,
-dislike or tendency; experience records an expressed lesson or reusable insight; event records a particular
-occurrence or plan. A detail added to one particular occurrence remains part of that event; a fact describes
-a state or attribute that stands independently of one occurrence. Keep independently changeable propositions
-separate. Preserve useful source-reported states and feelings as the appropriate claim. Devices, places and projects retain their meaning in content.
-Combine the participants, place, method, outcome and other inseparable details of one occurrence into one complete event candidate. Separate occurrences with different times or independently changeable outcomes remain separate candidates. A fact, preference or experience that can change independently from the event remains its own candidate.
-When one current statement reports an occurrence and a resulting state that can later change independently, return both the event and the state as separate candidates.
-Resolve pronouns and shorthand through SUPPORTING CONTEXT into a standalone candidate that names the maintained occurrence or proposition. Preserve the source's attribution, uncertainty and time precision.
-Each item contains content,record_type,participant_handles,mode,context,status,time_expression,evidence.
-participant_handles selects the actual participants in THAT claim from CURRENT PARTICIPANTS, including
-pending handles. Use [] for a claim with no particular in-scope participant. Compare current referents,
-roles and original evidence when interpreting a historical mention. The program maintains subject names,
-aliases and the broad person/animal/organization kind separately. Extract occupations, roles, specific animal
-categories and substantive relationship claims as facts; extract
-their start, change or end as events.
-Use supporting context and history to interpret the current source. This turn's supported information
-becomes new content; naming-only input and acknowledgements can return items=[]. Each item is appended
-as a new source-reported record. Preserve the meaning of changed plans, completion or cancellation.
+# Extract in four steps
+1. Identify the occurrence or proposition referenced by CURRENT SOURCE. Use SUPPORTING CONTEXT to resolve omitted names, pronouns and brief reversals. State the identifying activity, object and occasion in content. When several targets fit, explicitly preserve the unresolved reference.
+2. State this turn's supported change, correction, new information or request. A candidate is input to maintenance: it identifies what changed. The maintenance stage combines it with the old memory to write the full current version. Preserve explicit instructions that other arrangements continue. Carry identifying dates and all newly supplied details; supporting sources retain the unchanged details for maintenance.
+3. Split independently maintainable occurrences or propositions. Combine details of one occurrence. Separate dated occurrences get separate candidates, including when one is cancelled and another is confirmed. Each candidate identifies its own occurrence. A corrected attribute remains a fact; a changed preference remains a preference; cancellation stays attached to the identified activity.
+4. Fill the fields and cite the evidence. Content alone must identify the target and this turn's meaning, or explicitly state what remains unresolved. reason explains the extraction choice.
 
-# Attribution, conditions and time
-mode is asserted,desired,requested,hypothetical,document according to wording and attribution. Quoted
-speakers retain their own identity. context preserves an explicit condition or is null.
-fact/preference/experience use status=null,time_expression=null and retain relevant time scope in content.
-event uses status=planned,occurred,cancelled,desired,unknown, with a source-supported date phrase or null.
-CURRENT REFERENCE TIME anchors relative phrases; an unknown date remains null. Every item cites CURRENT
-SOURCE using evidence=[{source_id:...}]. Add supplied supporting source IDs when useful.
+# Fields
+fact: a state or attribute, including occupations and relationship statements.
+preference: a like, dislike or tendency within a context.
+experience: an expressed lesson or reusable insight.
+event: a particular occurrence or plan, including its cancellation or rescheduling.
+An occurrence and an independently changeable resulting state can produce separate candidates.
+participant_handles: select the claim's participants from CURRENT PARTICIPANTS; use [] when none applies. Pending handles retain their pending identity. Devices, places and projects remain readable in content.
+mode describes the source's communicative meaning:
+- asserted: the speaker reports a fact, corrects their own claim, or announces a change to their own plan. A retracted claim becoming uncertain is asserted uncertainty.
+- requested: the speaker asks someone or the system to perform an action. A request to forget information names the information and remains a request until execution is established.
+- desired: a wish; hypothetical: a conditional possibility; document: a claim attributed to supplied quoted/document material.
+Choose mode from the meaning and speaker attribution, including for corrections and cancellations.
+context: preserve an explicit condition, otherwise null.
+evidence: cite CURRENT SOURCE and every supporting source used to recover identity or meaning.
+Dates and uncertainty remain in content. Use CURRENT REFERENCE TIME only when it establishes a relative date; otherwise retain its unresolved wording. Naming-only input and acknowledgements can return items=[].
 
 # Return and check
 Return items,reason only, following the supplied JSON Schema. Check each item's type, actual participant
-roles, current-only handles, attribution, dates and evidence. During repair, correct the listed issues and
+roles, current-only handles, attribution, dates and evidence. Read each content alone and verify that its target and change are understandable, or explicitly unresolved. During repair, correct the listed issues and
 return the complete plan with the same current handles and identity statuses.
 """
 
@@ -147,7 +139,7 @@ def prepare(state):
             origin_content=card.get('origin_content',card['content']),
             participants=[historical[oid]['label'] for oid in card.get('entity_ids',[])],
             sources=[source(row) for row in card.get('sources',[])],
-            **{key:deepcopy(card[key]) for key in ('mode','context','status','planned_at','event_at') if card.get(key)}))
+            **{key:deepcopy(card[key]) for key in ('mode','context') if card.get(key)}))
     context=dict(handle_refs=handle_refs,ref_handles={ref:handle for handle,ref in handle_refs.items()},
                  current_source_handle=packet['new_user_source']['id'],
                  source_aliases=source_aliases,source_originals={short:sid for sid,short in source_aliases.items()},
@@ -340,7 +332,7 @@ def render(packet):
                           '    Historical participants: '+(', '.join(card['participants']) or '(none)'),
                           '    Identity anchor: '+card['origin_content'],
                           '    Current view: '+card['content']])
-            for key in ('mode','context','status','planned_at','event_at'):
+            for key in ('mode','context'):
                 if card.get(key):lines.append('    '+key+': '+str(card[key]))
             for source in card['sources']:
                 if source['id'] in displayed:lines.append('    Original evidence: source '+source['id'])
@@ -354,9 +346,9 @@ def examples():
     def source(content):return dict(id='example-current',role='user',content=content,message_at='2028-05-10T10:00:00+00:00')
     def person(ref,name,*,oid=None,status='resolved',aliases=(),kind='person'):
         return dict(ref=ref,id=oid,name=name,kind=kind,status=status,aliases=list(aliases))
-    def output(content,kind,handles,*,condition=None,status=None,time=None):
+    def output(content,kind,handles,*,condition=None):
         return dict(items=[dict(content=content,record_type=kind,participant_handles=handles,mode='asserted',context=condition,
-                               status=status,time_expression=time,evidence=[dict(source_id='S1')])],reason='Current source-grounded claim.')
+                               evidence=[dict(source_id='S1')])],reason='Current source-grounded claim.')
     text='The storage locker code is 7824.'
     fact=dict(new_user_source=source(text),context_sources=[],resolved_subjects=[],history=[])
     preference_text='Cedar the dog prefers warm blankets.'
@@ -376,34 +368,60 @@ def examples():
                  sources=[dict(id='tax-source',role='user',content='The other Norah prepares tax returns.')])])
     detail_text='Mira added a lighting demonstration to that scheduled studio visit.'
     detail=dict(new_user_source=source(detail_text),context_sources=[],resolved_subjects=[person(0,'Mira',oid='mira')],
-        history=[dict(id='visit',record_type='event',content='Mira scheduled a studio visit.',entity_ids=['mira'],status='planned',
+        history=[dict(id='visit',record_type='event',content='Mira scheduled a studio visit.',entity_ids=['mira'],
             sources=[dict(id='visit-source',role='user',content='Mira scheduled a studio visit.')])])
     combined_text='Mira met Rowan at the studio today. They tested the lights and finished the exhibition plan.'
     combined=dict(new_user_source=source(combined_text),context_sources=[],resolved_subjects=[
         person(0,'Mira',oid='mira'),person(1,'Rowan',oid='rowan')],history=[])
     combined_output=output('Mira met Rowan at the studio today, tested the lights, and finished the exhibition plan.',
-                           'event',['P0','P1'],status='occurred',time='today')
-    correction_text='Correction: that studio visit is on June 4.'
+                           'event',['P0','P1'])
+    correction_text='Move that studio visit to June 4; keep the other arrangements unchanged.'
     correction=dict(new_user_source=source(correction_text),context_sources=[dict(id='example-before',role='user',
-        content='Mira plans a studio visit on June 3.',message_at='2028-05-09T10:00:00+00:00')],
+        content='Mira plans a studio visit on June 3 at 2 PM in the east wing, bringing a sketchbook.',message_at='2028-05-09T10:00:00+00:00')],
         resolved_subjects=[person(0,'Mira',oid='mira')],history=[])
-    correction_output=dict(items=[dict(content='Mira plans the studio visit on June 4.',record_type='event',
-        participant_handles=['P0'],mode='asserted',context=None,status='planned',time_expression='June 4',
+    correction_output=dict(items=[dict(content='Mira plans the studio visit on June 4 at 2 PM in the east wing, bringing a sketchbook.',record_type='event',
+        participant_handles=['P0'],mode='asserted',context=None,
         evidence=[dict(source_id='S1'),dict(source_id='S2')])],reason='The current correction produces one current candidate; supporting context resolves its antecedent.')
     event_and_state_text='Mira completed her certification today. Mira is now licensed.'
     event_and_state=dict(new_user_source=source(event_and_state_text),context_sources=[],
         resolved_subjects=[person(0,'Mira',oid='mira')],history=[])
     event_and_state_output=dict(items=[
         dict(content='Mira completed her certification today.',record_type='event',participant_handles=['P0'],
-             mode='asserted',context=None,status='occurred',time_expression='today',evidence=[dict(source_id='S1')]),
+             mode='asserted',context=None,evidence=[dict(source_id='S1')]),
         dict(content='Mira is now licensed.',record_type='fact',participant_handles=['P0'],mode='asserted',
-             context=None,status=None,time_expression=None,evidence=[dict(source_id='S1')]),
+             context=None,evidence=[dict(source_id='S1')]),
     ],reason='The completed occurrence and its independently changeable resulting state are separate candidates.')
+    def followup(previous, current):
+        return dict(new_user_source=source(current), context_sources=[dict(id='example-before',
+            role='user', content=previous, message_at='2028-05-09T10:00:00+00:00')],
+            resolved_subjects=[], history=[])
+    def grounded(content, kind):
+        return dict(content=content, record_type=kind, participant_handles=[], mode='asserted',
+            context=None, evidence=[dict(source_id='S1'), dict(source_id='S2')])
+    reversal=followup('I booked a ceramics class at the arts center for June 12 at 6 PM.',
+                      'Actually, I will skip that class.')
+    reversal_output=dict(items=[grounded('The user cancelled attendance at the ceramics class at the arts center on June 12 at 6 PM.', 'event')],
+        reason='Context identifies the class; the candidate states the cancellation and retains its identifying details.')
+    attribute=followup('The parcel weighs four kilograms.',
+                       'That weight was a mistake. Its weight has not been confirmed.')
+    attribute_output=dict(items=[grounded('The parcel weight is unconfirmed; the earlier four-kilogram value was incorrect.', 'fact')],
+        reason='The current information corrects one attribute of the parcel.')
+    separate=followup('I have a delivery on June 12 at 9 AM and another on June 19 at 2 PM.',
+                      'The first delivery is cancelled; the second keeps its original schedule.')
+    separate_output=dict(items=[grounded('The user cancelled the delivery scheduled for June 12 at 9 AM.', 'event'),
+        grounded('The user still has a delivery scheduled for June 19 at 2 PM.', 'event')],
+        reason='Two independently scheduled occurrences each receive a standalone current candidate.')
+    ambiguous=followup('I booked a museum tour and a garden tour for Saturday.',
+                       'Please cancel that tour.')
+    ambiguous_item=grounded('The user requests cancellation of an unspecified Saturday tour; the context contains both a museum tour and a garden tour, and the intended tour is unresolved.', 'event')
+    ambiguous_item['mode']='requested'
+    ambiguous_output=dict(items=[ambiguous_item], reason='Both tours fit the reference; preserve the request and its unresolved target.')
     return [(fact,output(text,'fact',[])),(preference,output(preference_text,'preference',['P7'])),
             (experience,output(experience_text,'experience',['P5'])),
-            (event,output(event_text,'event',['P14','P2'],status='occurred',time='today')),
-            (detail,output(detail_text,'event',['P0'],status='planned')),
-            (combined,combined_output),(correction,correction_output),(event_and_state,event_and_state_output)]
+            (event,output(event_text,'event',['P14','P2'])),
+            (detail,output(detail_text,'event',['P0'])),
+            (combined,combined_output),(correction,correction_output),(event_and_state,event_and_state_output),
+            (reversal,reversal_output),(attribute,attribute_output),(separate,separate_output),(ambiguous,ambiguous_output)]
 
 
 def propose(model,state,*,deadline):

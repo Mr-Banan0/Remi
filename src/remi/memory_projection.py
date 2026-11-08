@@ -12,7 +12,7 @@ def project_memory(record):
             "record_type": record["record_type"], "pinned": record.get("pinned", False),
             "impact": record.get("impact", "unknown"),
             "last_accessed_at": record.get("last_accessed_at"),
-            "revisions": [{key: r[key] for key in
+            "revisions": [{key: r.get(key) for key in
                 ("id", "source_ids", "observed_at", "created_at", "mode", "status")}
                 for r in record["revisions"]]}
 

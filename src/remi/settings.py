@@ -36,6 +36,7 @@ def private_key(name, file_name=None):
 class Settings:
     hot_limit: int = 24
     candidate_limit: int = 40
+    recall_depth: int = 40
     graph_limit: int = 12
     decision_bytes: int = 24000
     evidence_bytes: int = 6000
@@ -49,6 +50,8 @@ class Settings:
     def __post_init__(self):
         if any(not 1 <= value <= 200 for value in (self.hot_limit, self.candidate_limit, self.graph_limit)):
             raise ValueError("candidate_limits_invalid")
+        if not 1 <= self.recall_depth <= 1000:
+            raise ValueError("recall_depth_invalid")
         if not 4000 <= self.decision_bytes <= 64000 or not 512 <= self.context_bytes <= self.decision_bytes // 2:
             raise ValueError("context_budget_invalid")
         if not 512 <= self.evidence_bytes <= 16000 or not 0 < self.add_timeout <= 1770 or not 0 < self.search_timeout <= 180:
@@ -58,7 +61,7 @@ class Settings:
 
     @classmethod
     def from_environment(cls):
-        mapping = {"hot_limit": "HOT_LIMIT", "candidate_limit": "CANDIDATE_LIMIT", "graph_limit": "GRAPH_LIMIT",
+        mapping = {"hot_limit": "HOT_LIMIT", "candidate_limit": "CANDIDATE_LIMIT", "recall_depth": "RECALL_DEPTH", "graph_limit": "GRAPH_LIMIT",
                    "decision_bytes": "DECISION_BYTES", "evidence_bytes": "EVIDENCE_BYTES", "context_bytes": "CONTEXT_BYTES"}
         values = {field: int(os.getenv("REMI_" + env, getattr(cls(), field))) for field, env in mapping.items()}
         values.update(add_timeout=float(os.getenv("REMI_ADD_TIMEOUT", "180")),

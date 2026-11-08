@@ -9,13 +9,14 @@ from tests.helpers import ScriptedModel, command, request
 
 def test_same_content_distinct_dated_occurrences_in_one_source():
     model = ScriptedModel(lambda state, errors: {"commands": [
-        command(state, "用户参加培训", quote="6月2日参加培训", time="6月2日"),
-        command(state, "用户参加培训", quote="6月9日参加培训", time="6月9日")]})
+        command(state, "用户2024-06-02参加培训", quote="6月2日参加培训", time="6月2日"),
+        command(state, "用户2024-06-09参加培训", quote="6月9日参加培训", time="6月9日")]})
     engine = MemoryEngine(model=model)
     engine.add(request("6月2日参加培训，6月9日参加培训。"))
     memories = engine.store.memories("u1")
     assert len(memories) == 2
-    assert {memory.current.event_at[:10] for memory in memories} == {"2024-06-02", "2024-06-09"}
+    assert {memory.current.content for memory in memories} == {"用户2024-06-02参加培训", "用户2024-06-09参加培训"}
+    assert all("event_at" not in m.current.model_dump() for m in memories)
 
 
 def test_time_bounded_statement_keeps_its_scope_in_content_and_evidence():

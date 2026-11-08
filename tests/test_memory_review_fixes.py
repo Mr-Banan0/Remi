@@ -16,9 +16,10 @@ def test_backdated_update_uses_historical_revision_and_preserves_later_view():
     model.writer=lambda state:[update(state,content='Aster plans the workshop with an extra demonstration.')]
     engine.add(req('Aster added a demonstration to that workshop.','backfill',1))
     stored=engine.store.memories(OWNER)[0];historical=visible_memory(stored,'2030-01-02T23:59:59Z').current
-    assert stored.current.status==latest['status'] and stored.current.event_at==latest['event_at']
+    assert 'completed' in stored.current.content and '2030-01-06' in stored.current.content
+    assert stored.current.observed_at==latest['observed_at']
     assert 'extra demonstration' in stored.current.content
-    assert historical.replaces_revision_id==first['id'] and historical.status=='planned'
+    assert historical.replaces_revision_id==first['id'] and 'plans' in historical.content
     assert unit(engine,'backfill').get('concurrent_recomputations',0)==0
     assert any(edge.relation=='revises' and edge.revision_id==historical.id
                for edge in engine.store.edges_for(OWNER))

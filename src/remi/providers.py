@@ -477,6 +477,15 @@ class JevReranker:
             if any("constraint" in card.get("retrieval_roles", []) for card in cards)
             else SUPPORT_QUESTION
         )
+        if any(card.get("memory_package") for card in cards):
+            local._support_question += (
+                " When evidence.memory_package is present, score the logical memory as one unit. "
+                "Its versions contain the latest visible revision and retrieved historical revisions only. "
+                "is_latest marks the current state at the query boundary; older versions describe history. "
+                "Use each version's original source to verify its content, including whether the source describes a plan, completion or cancellation. A cancelled plan "
+                "is evidence of cancellation, not an active commitment. History can answer past-state or "
+                "change questions. Judge the package's contribution to the original query."
+            )
         batches = [cards[offset:offset + 8] for offset in range(0, len(cards), 8)]
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(local._batch, query, batch, deadline) for batch in batches]
@@ -493,7 +502,7 @@ class JevReranker:
             card["id"]: {
                 "type": "noul",
                 "instructions": {
-                    "evidence": card,
+                    "evidence": {key: value for key, value in card.items() if key != "temporal_targets"},
                     "question": getattr(self, "_support_question", SUPPORT_QUESTION),
                 },
                 "criteria": {
@@ -520,7 +529,7 @@ class JevReranker:
             return False
         try:
             body = response.json()
-            error = body.get('error', body) if isinstance(body, dict) else {}
+            error = body.get('error', body.get('detail', body)) if isinstance(body, dict) else {}
             if not isinstance(error, dict):
                 return False
             codes = {error.get('error_type'), error.get('code')}
@@ -602,7 +611,7 @@ class JevReranker:
         """Rank original evidence with retrieval metadata; preserve the caller's memory view."""
         result = {key: card[key] for key in (
             'id', 'original', 'source_ids', 'event_at', 'message_at',
-            'retrieval_roles', 'retrieval_objectives') if key in card}
+            'retrieval_roles', 'retrieval_objectives', 'memory_package') if key in card}
         if 'ranking_evidence' in card:
             result['original'] = card['ranking_evidence']['original']
             result['context'] = card['ranking_evidence']['context']

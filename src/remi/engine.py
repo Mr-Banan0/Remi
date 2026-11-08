@@ -18,7 +18,7 @@ from .read_cache import read_cache
 from .models import (AddResponse, Decision, Document, Edge, GraphObject, Memory, Revision, PlannedSearch, RecallStep,
                      SearchItem, SearchResponse, Source, SourceWindow, MemoryEvidence)
 from .providers import OutputInvalid, ProviderUnavailable, RankResult
-from .retrieval import clip_bytes, hybrid, tokenize, validate_vector, retrieval_cache
+from .retrieval import clip_bytes, hybrid, tokenize, validate_vector, retrieval_cache, bm25, cosine
 from .settings import Settings
 from .source_context import source_context, with_source_context
 from .storage import MemoryStore
@@ -135,9 +135,9 @@ class MemoryEngine:
                 sources = self.store.sources(memory.owner, revision.source_ids[:1])
                 position = sources[0].content.find(revision.quote) if sources else -1
                 structure = (f"Card {memory.record_type}; mentions=" + ", ".join(names.get(eid, eid) for eid in revision.entity_ids)
-                    + f"; mode={revision.mode}; context={revision.context}; status={revision.status}"
+                    + f"; mode={revision.mode}; context={revision.context}"
                     + ("; connects="+", ".join(names.get(e,e) for e in memory.endpoint_ids)+"; quote="+memory.connection_evidence.quote if memory.endpoint_ids else "")
-                    + f"; planned_at={revision.planned_at or 'unknown'}; actual_at={revision.event_at or 'unknown'}")
+                    )
                 scope = 'episodic' if memory.record_type == 'event' else 'source_reported'
                 documents.append(Document(id=stable_id("doc_", revision.id), owner=memory.owner,
                     text=revision.content + "\n" + structure + "\nSource quote: " + revision.quote,
@@ -191,7 +191,7 @@ class MemoryEngine:
 
     @measured("engine._expand_revision_chains")
     def _expand_revision_chains(self, owner, hits, documents, as_of, views=None):
-        """Activate a logical Memory from any visible version/source hit and include its path to current."""
+        """Activate hit versions and the latest visible version of each logical memory."""
         by_memory, by_revision = {}, {}
         for document in documents:
             if document.memory_id:
@@ -203,14 +203,14 @@ class MemoryEngine:
         for document, score in hits:
             memory_ids = {document.memory_id} if document.memory_id else {
                 candidate.memory_id for candidate in documents if candidate.memory_id
-                and set(candidate.source_ids).intersection(document.source_ids)}
+                and candidate.source_ids and candidate.source_ids[0] in document.source_ids}
             for memory_id in memory_ids - {None}:
                 activated[memory_id] = max(score, activated.get(memory_id, 0))
                 if document.memory_id == memory_id and document.revision_id:
                     matched.setdefault(memory_id, set()).add(document.revision_id)
                 else:
                     matched.setdefault(memory_id, set()).update(candidate.revision_id for candidate in by_memory.get(memory_id, [])
-                        if candidate.revision_id and set(candidate.source_ids).intersection(document.source_ids))
+                        if candidate.revision_id and candidate.source_ids and candidate.source_ids[0] in document.source_ids)
         paths = []
         views = views if views is not None else (visible_memories(self.store, owner, as_of) if activated else {})
         for memory_id, score in activated.items():
@@ -220,15 +220,7 @@ class MemoryEngine:
             revisions = {revision.id: revision for revision in memory.revisions}
             current_id = memory.current.id
             for matched_id in matched.get(memory_id) or {current_id}:
-                path, cursor, seen = [], current_id, set()
-                while cursor and cursor not in seen:
-                    seen.add(cursor);path.append(cursor)
-                    if cursor == matched_id:
-                        break
-                    cursor = revisions.get(cursor).replaces_revision_id if cursor in revisions else None
-                if matched_id not in path:
-                    path.append(matched_id)
-                path.reverse()
+                path = list(dict.fromkeys([matched_id, current_id]))
                 paths.append(dict(memory_id=memory_id, matched_revision_id=matched_id,
                                   current_revision_id=current_id, revision_ids=path))
                 for revision_id in path:
@@ -257,6 +249,28 @@ class MemoryEngine:
         semantic = self.store.vector_scores(owner, vector, [document.id for document in documents]) if vector is not None else None
         return hybrid(query, documents, vector, limit=limit, semantic_scores=semantic,
                       lexical_scores=self.store.lexical_scores(owner, query, documents))
+
+    @measured("engine._recall_candidates")
+    def _recall_candidates(self, owner, query, documents, vector=None, limit=40):
+        """Retrieve deeply, then spend the final budget on distinct primary-source packages."""
+        lexical = self.store.lexical_scores(owner, query, documents)
+        if lexical is None:
+            lexical = bm25(query, documents)
+        semantic = self.store.vector_scores(owner, vector, [d.id for d in documents]) if vector is not None else {}
+        if semantic is None:
+            semantic = {d.id: cosine(vector, d.vector) for d in documents if d.vector is not None}
+        by_id = {d.id: d for d in documents}
+        channels = []
+        for name, scores in (('keyword', lexical), ('semantic', semantic)):
+            ids = sorted(scores, key=lambda key: (-scores[key], key))[:max(limit, self.settings.recall_depth)]
+            channels.append({'channel': name, 'role': 'direct', 'weight': 1,
+                             'hits': [(by_id[key], scores[key]) for key in ids]})
+        bundles, _ = self._fuse_channels(channels, documents)
+        chosen = {self._source_key(doc): score for doc, score in bundles[:limit]}
+        # Return each member once so revision expansion and graph navigation retain every identity.
+        members = self._merge([hit for channel in channels for hit in channel['hits']], documents)
+        return sorted([(doc, chosen[self._source_key(doc)]) for doc, _ in members
+                       if self._source_key(doc) in chosen], key=lambda hit: (-hit[1], hit[0].id))
 
     @measured("engine._graph_candidates")
     def _graph_candidates(self,owner,query,seed_documents,documents,vector,as_of,views=None):
@@ -333,8 +347,10 @@ class MemoryEngine:
         window_ids = {span.source_id for span in document.source_windows}
         terms = set(tokenize(query))
         primary_source = document.source_ids[0] if document.source_ids else None
+        version_sources = {m.source_ids[0] for m in document.memory_evidence if m.source_ids}
         sources = sorted(sources, key=lambda source: (
             source.id == primary_source,
+            source.id in version_sources,
             source.id in window_ids,
             len(terms & set(tokenize(source.content))),
             source.message_at or source.created_at,
@@ -345,6 +361,7 @@ class MemoryEngine:
         # Preserve the primary statement and its strongest context when both have useful excerpt room.
         if len(sources) >= 2 and sum(len(header.encode()) + 2 for header in headers[:2]) + 400 <= budget:
             source_limit = max(2, source_limit)
+        source_limit = max(source_limit, len(version_sources))
         sources, headers = sources[:source_limit], headers[:source_limit]
         overhead = sum(len(header.encode()) + 2 for header in headers)
         remaining = max(0, budget - overhead)
@@ -366,15 +383,32 @@ class MemoryEngine:
                 "event_at": document.event_at, "message_at": document.message_at,
                 "original": raw, "summary": clip_bytes(document.text, 400),
                 "memories": [{"id": memory.memory_id, "revision_id": memory.revision_id,
-                    "content": clip_bytes(memory.content, 500), "event_at": memory.event_at, "planned_at": memory.planned_at, "status": memory.status,
+                    "content": clip_bytes(memory.content, 500),
                     "record_type": memory.record_type, "mode": memory.mode, "context": memory.context, "structure": memory.structure,
-                    "time_precision": memory.time_precision,
                     "observed_at": memory.observed_at, "temporal_scope": memory.temporal_scope}
                     for memory in document.memory_evidence]}
+        if document.memory_evidence:
+            memories = {}
+            for memory in document.memory_evidence:
+                entry = memories.setdefault(memory.memory_id, {
+                    'memory_id': memory.memory_id, 'latest_revision_id': memory.revision_id,
+                    'versions': []})
+                entry['versions'].append({
+                    'revision_id': memory.revision_id,
+                    'is_latest': memory.revision_id == entry['latest_revision_id'],
+                    'content': memory.content,
+                    **({'status': memory.status, 'planned_at': memory.planned_at, 'event_at': memory.event_at} if memory.status is not None else {}),
+                    'mode': memory.mode, 'context': memory.context,
+                    'observed_at': memory.observed_at,
+                    'source_id': memory.source_ids[0] if memory.source_ids else None,
+                })
+            card['memory_package'] = {'memories': list(memories.values())}
         if for_rerank:
             card['ranking_evidence'] = {
                 'original': blocks[0]['rendered'] if blocks else '',
                 'context': '\n\n'.join(block['rendered'] for block in blocks[1:])}
+        if card.get('event_at') is None:
+            card.pop('event_at', None)
         return card
 
     def _decision_state(self, owner, query, hits, current, as_of):
@@ -383,7 +417,6 @@ class MemoryEngine:
         for memory in current:
             entry = {"id": memory.id, "tags": memory.tags, "content": clip_bytes(memory.current.content, 800),
                      "observed_at": memory.current.observed_at, "source_ids": memory.current.source_ids}
-            entry["status"] = memory.current.status
             entry["record_type"] = memory.record_type
             entry["mode"] = memory.current.mode
             entry["context"] = memory.current.context
@@ -591,7 +624,7 @@ class MemoryEngine:
             pool.append(document)
         vector = (vector if vector is not None else self._embed([step.query], deadline)[0]
                   if self.embedder and allow_embedding else None)
-        hits = self._hybrid(owner, step.query, pool, vector, limit=self.settings.candidate_limit)
+        hits = self._recall_candidates(owner, step.query, pool, vector, limit=self.settings.candidate_limit)
         coverage = "bounded_candidates" + ("_unknown_times" if unknown else "")
         if calendar_day:
             coverage += '_year_unspecified'
@@ -618,93 +651,101 @@ class MemoryEngine:
         return ('memory', next(iter(linked))) if len(linked) == 1 else (
             'source', document.source_ids[0] if document.source_ids else document.id)
 
+    @staticmethod
+    def _revision_order(document):
+        return (parse_time(document.message_at or document.created_at),
+                parse_time(document.created_at), document.revision_id or document.id)
+
     @classmethod
-    def _merge(cls, hits, documents=()):
-        merged = {}
-        unit_sources, source_memories = cls._logical_groups(documents)
+    def _merge(cls, hits, documents=(), *, preserve_order=False):
+        """One package per memory: hit revisions plus latest visible, latest first."""
+        by_memory = {}
+        for document in documents:
+            if document.memory_id and document.revision_id:
+                by_memory.setdefault(document.memory_id, []).append(document)
+        grouped, raw, positions = {}, {}, {}
         for document, score in hits:
-            key = cls._logical_key(document, source_memories)
-            previous = merged.get(key)
-            if previous is None:
-                copy = document.model_copy(deep=True)
-                if key[0] == 'memory' and copy.memory_id is None:
-                    memory_documents = [candidate for candidate in documents if candidate.memory_id == key[1]]
-                    if memory_documents:
-                        copy.memory_id = key[1]
-                        copy.revision_id = memory_documents[-1].revision_id
-                        copy.memory_evidence = [evidence for candidate in memory_documents for evidence in candidate.memory_evidence]
-                source_key = copy.source_ids[0] if copy.source_ids else None
-                copy.source_ids = list(dict.fromkeys([*copy.source_ids, *sorted(unit_sources.get(source_key, set()))]))
-                merged[key] = copy, score
-            else:
-                best, other = (document, previous[0]) if score > previous[1] else (previous[0], document)
-                copy = best.model_copy(deep=True)
-                copy.memory_id = key[1] if key[0] == 'memory' else copy.memory_id
-                source_key = copy.source_ids[0] if copy.source_ids else None
-                copy.source_ids = list(dict.fromkeys([*best.source_ids, *other.source_ids, *sorted(unit_sources.get(source_key, set()))]))
-                copy.source_windows = list({(span.source_id, span.start, span.stop): span
-                                           for span in [*best.source_windows, *other.source_windows]}.values())
-                copy.memory_evidence = list({memory.revision_id: memory for memory in
-                                            [*best.memory_evidence, *other.memory_evidence]}.values())
-                merged[key] = copy, max(score, previous[1])
-        return sorted(merged.values(), key=lambda item: (-item[1], item[0].id))
+            # A source hit activates the revisions introduced by that source;
+            # inherited support in later revisions does not count as a hit.
+            targets = [document] if document.memory_id else [
+                candidate for candidates in by_memory.values() for candidate in candidates
+                if candidate.source_ids and candidate.source_ids[0] in document.source_ids]
+            if not targets:
+                key = ('source', document.source_ids[0] if document.source_ids else document.id)
+                positions.setdefault(key, len(positions))
+                if key not in raw or score > raw[key][1]:
+                    raw[key] = document.model_copy(deep=True), score
+            for target in targets:
+                positions.setdefault(('memory', target.memory_id), len(positions))
+                rows, best_score = grouped.setdefault(target.memory_id, ([], score))
+                rows.append(target)
+                grouped[target.memory_id] = rows, max(score, best_score)
+        result = list(raw.values())
+        for memory_id, (hits_for_memory, score) in grouped.items():
+            available = by_memory.get(memory_id, hits_for_memory)
+            latest = max(available, key=cls._revision_order)
+            package = latest.model_copy(deep=True)
+            evidence = {item.revision_id: item for hit in hits_for_memory
+                        for item in hit.memory_evidence if item.memory_id == memory_id}
+            evidence.update({item.revision_id: item for item in latest.memory_evidence
+                             if item.memory_id == memory_id})
+            order = {doc.revision_id: cls._revision_order(doc) for doc in available}
+            fallback = cls._revision_order(latest)
+            package.memory_evidence = sorted(evidence.values(), key=lambda item:
+                (item.revision_id != latest.revision_id, order.get(item.revision_id, fallback)))
+            # Current evidence leads. Only selected versions contribute sources.
+            package.source_ids = list(dict.fromkeys(item.source_ids[0]
+                for item in package.memory_evidence if item.source_ids)) or list(latest.source_ids)
+            selected = set(evidence)
+            package.source_windows = list({(span.source_id, span.start, span.stop): span
+                for doc in available if doc.revision_id in selected
+                for span in doc.source_windows if span.source_id in package.source_ids}.values())
+            result.append((package, score))
+        if preserve_order:
+            return sorted(result, key=lambda item: positions[('memory', item[0].memory_id)
+                if item[0].memory_id else ('source', item[0].source_ids[0] if item[0].source_ids else item[0].id)])
+        return sorted(result, key=lambda item: (-item[1], item[0].id))
 
     @staticmethod
-    def _source_bundles(hits):
-        """Present memories backed by one source turn as one rerank evidence package."""
-        bundles = {}
-        for document, score in hits:
-            key = document.source_ids[0] if document.source_ids else document.id
-            previous = bundles.get(key)
-            if previous is None:
-                bundles[key] = document.model_copy(deep=True), score
-                continue
-            best, other = (document, previous[0]) if score > previous[1] else (previous[0], document)
-            copy = best.model_copy(deep=True)
-            copy.source_ids = list(dict.fromkeys([*best.source_ids, *other.source_ids]))
-            copy.source_windows = list({(span.source_id, span.start, span.stop): span
-                                       for span in [*best.source_windows, *other.source_windows]}.values())
-            copy.memory_evidence = list({evidence.revision_id: evidence for evidence in
-                                        [*best.memory_evidence, *other.memory_evidence]}.values())
-            bundles[key] = copy, max(score, previous[1])
-        return sorted(bundles.values(), key=lambda item: (-item[1], item[0].id))
+    def _source_key(document):
+        return document.source_ids[0] if document.source_ids else document.id
 
     @classmethod
-    def _bundle_annotations(cls, bundles, documents, annotations):
-        """Retain every retrieved purpose contributing to a primary-source package."""
-        _, source_memories = cls._logical_groups(documents)
-        by_source = {}
-        for document in documents:
-            if document.source_ids:
-                key = cls._logical_key(document, source_memories)
-                by_source.setdefault(document.source_ids[0], set()).update(annotations.get(key, set()))
-        result = {key:set(values) for key,values in annotations.items()}
-        for document,_ in bundles:
-            if document.source_ids:
-                key = cls._logical_key(document, source_memories)
-                result.setdefault(key,set()).update(by_source.get(document.source_ids[0],set()))
-        return result
+    def _source_bundles(cls, hits):
+        """Group by current primary source, retaining independent latest-first histories."""
+        bundles = {}
+        for document, score in hits:
+            key = cls._source_key(document)
+            if key not in bundles:
+                bundles[key] = document.model_copy(deep=True), score
+                continue
+            package, previous = bundles[key]
+            package.source_ids = list(dict.fromkeys([*package.source_ids, *document.source_ids]))
+            package.memory_evidence = list({(m.memory_id, m.revision_id): m
+                for m in [*package.memory_evidence, *document.memory_evidence]}.values())
+            package.source_windows = list({(span.source_id, span.start, span.stop): span
+                for span in [*package.source_windows, *document.source_windows]}.values())
+            bundles[key] = package, max(previous, score)
+        return list(bundles.values())
 
     @classmethod
     def _fuse_channels(cls, channel_hits, documents):
-        """Fuse independent ranked channels by logical Memory using rank, never raw score scale."""
+        """Compact each channel to source packages before assigning consecutive RRF ranks."""
+        scores, roles, contributions = {}, {}, []
         _, source_memories = cls._logical_groups(documents)
-        scores, roles, unique = {}, {}, {}
         for channel in channel_hits:
-            seen = set()
-            for document, _ in channel['hits']:
+            packages = cls._merge(channel['hits'], documents, preserve_order=True)
+            for document, _ in packages:
                 key = cls._logical_key(document, source_memories)
-                unique.setdefault(document.id, document)
                 roles.setdefault(key, set()).add(channel['role'])
-                if key in seen:
-                    continue
-                seen.add(key)
-                position = len(seen)
+                contributions.append(document)
+            for position, (document, _) in enumerate(cls._source_bundles(packages), 1):
+                key = cls._source_key(document)
                 scores[key] = scores.get(key, 0.0) + channel.get('weight', 1.0) / (60 + position)
-        hits = [(document, scores[cls._logical_key(document, source_memories)])
-                for document in unique.values()]
-        bundles = cls._source_bundles(cls._merge(hits, documents))
-        return bundles, cls._bundle_annotations(bundles, documents, roles)
+        memories = cls._merge([(doc, scores[cls._source_key(doc)])
+                              for doc in contributions], documents)
+        bundles = cls._source_bundles(memories)
+        return sorted(bundles, key=lambda item: (-item[1], item[0].id)), roles
 
     @staticmethod
     def _fallback_query_mode(query):
@@ -822,7 +863,7 @@ class MemoryEngine:
                     vector = self._embed([request.query], deadline)[0]
                 except ProviderUnavailable:
                     degradation.append("query_embedding_unavailable")
-            base = self._hybrid(request.user_id, request.query, documents, vector, self.settings.candidate_limit)
+            base = self._recall_candidates(request.user_id, request.query, documents, vector, self.settings.candidate_limit)
             base_expanded, revision_paths = self._expand_revision_chains(request.user_id, base, documents, as_of, views)
             graph_seeds = [document for document, _ in base[:min(20, len(base))]]
             graph = self._graph_candidates(request.user_id, request.query, graph_seeds, documents, vector, as_of, views) \
@@ -899,7 +940,7 @@ class MemoryEngine:
                     tool_results.append(result)
                     if not initial_hits and recall_coverage in {"time_scope_unresolved", "anchor_unknown", "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
                         # An invalid temporal constraint still permits a clearly diagnosed unrestricted supplemental search.
-                        initial_hits = self._hybrid(request.user_id, step.query, documents, vector=step_vector,
+                        initial_hits = self._recall_candidates(request.user_id, step.query, documents, vector=step_vector,
                                                     limit=self.settings.candidate_limit)
                         result["fallback_executed"] = True
                     initial_signal = self._retrieval_coverage(step.query, initial_hits)
@@ -920,7 +961,7 @@ class MemoryEngine:
                             source_ids, documents, as_of, deadline, step_hits, broad_vector, allow_broad_embedding)
                         if not broad_hits and broad_coverage in {"time_scope_unresolved", "anchor_unknown",
                                 "anchor_step_unavailable", "anchor_step_ambiguous", "action_time_is_not_history_scope"}:
-                            broad_hits = self._hybrid(request.user_id, broad_query, documents, vector=broad_vector,
+                            broad_hits = self._recall_candidates(request.user_id, broad_query, documents, vector=broad_vector,
                                                       limit=self.settings.candidate_limit)
                         result.update(broadening_executed=True, broad_query=broad_query,
                                       broad_coverage=broad_coverage,
@@ -975,32 +1016,45 @@ class MemoryEngine:
             retrieval_objectives = {}
             for channel in retrieval_channels:
                 objective = (channel['role'], channel.get('query') or request.query)
-                for document, _ in channel['hits']:
+                for document, _ in self._merge(channel['hits'], documents):
                     key = self._logical_key(document, source_memories)
                     retrieval_objectives.setdefault(key, set()).add(objective)
-            retrieval_objectives = self._bundle_annotations(merged, documents, retrieval_objectives)
             for card, (document, _) in zip(cards, merged):
-                key = self._logical_key(document, source_memories)
-                card['retrieval_roles'] = sorted(retrieval_roles.get(key, {'direct'}))
-                card['retrieval_objectives'] = [
-                    {'role': role, 'query': query}
-                    for role, query in sorted(retrieval_objectives.get(key, {('direct', request.query)}))
-                ]
-            cards_by_source = {document.source_ids[0]: card for (document, _), card in zip(merged, cards) if document.source_ids}
+                members = card.get('memory_package', {}).get('memories', [])
+                keys = [('memory', member['memory_id']) for member in members] or [self._logical_key(document, source_memories)]
+                for member in members:
+                    key = ('memory', member['memory_id'])
+                    member['retrieval_roles'] = sorted(retrieval_roles.get(key, {'direct'}))
+                    member['retrieval_objectives'] = [{'role': role, 'query': query}
+                        for role, query in sorted(retrieval_objectives.get(key, {('direct', request.query)}))]
+                card['retrieval_roles'] = sorted({role for key in keys for role in retrieval_roles.get(key, {'direct'})})
+                card['retrieval_objectives'] = [{'role': role, 'query': query}
+                    for role, query in sorted({objective for key in keys
+                        for objective in retrieval_objectives.get(key, {('direct', request.query)})})]
+            cards_by_memory = {member['memory_id']: card for card in cards
+                for member in card.get('memory_package', {}).get('memories', [])}
+            cards_by_source = {}
+            for (document, _), card in zip(merged, cards):
+                for sid in document.source_ids:
+                    cards_by_source.setdefault(sid, []).append(card)
             temporal = {}
             for index, (step, hits) in enumerate(zip(compiled_steps, step_hits)):
                 if step.select == "all":
                     continue
                 for document, _ in hits:
                     stamp = document.message_at if step.time_basis == "message" else document.event_at
-                    card = cards_by_source.get(document.source_ids[0]) if document.source_ids else None
-                    if not stamp or card is None:
+                    targets = ([cards_by_memory[document.memory_id]]
+                        if document.memory_id in cards_by_memory else
+                        list({card['id']: card for sid in document.source_ids
+                              for card in cards_by_source.get(sid, [])}.values()))
+                    if not stamp or not targets:
                         continue
-                    target_id = stable_id("temporal_", index, document.id)
                     target = self._card(request.user_id, with_source_context(document, context), step.query, self.settings.evidence_bytes)
-                    card.setdefault("temporal_targets", []).append({"id": target_id, "query": step.query,
-                        "original": target["original"], "memories": target["memories"], "time": stamp})
-                    temporal[target_id] = (index, document, stamp, card["id"])
+                    for card in targets:
+                        target_id = stable_id("temporal_", index, document.id, card['id'])
+                        card.setdefault("temporal_targets", []).append({"id": target_id, "query": step.query,
+                            "original": target["original"], "memories": target["memories"], "time": stamp})
+                        temporal[target_id] = (index, document, stamp, card["id"])
             try:
                 ranking = self.reranker.rank(request.query, cards, deadline=deadline) if self.reranker else RankResult()
             except (ProviderUnavailable, OutputInvalid):
@@ -1035,25 +1089,24 @@ class MemoryEngine:
             order = list(dict.fromkeys(temporal_selected_ids))
             forced = {key: index for index, key in enumerate(order)}
             ranked.sort(key=lambda item: (0, forced[item[0].id]) if item[0].id in forced else (1, 0))
-            prefix_lines = [f"[{memory.id}] {memory.current.content} (status={memory.current.status}, scope={('episodic' if memory.record_type == 'event' else 'source_reported')}, observed_at={memory.current.observed_at}, "
+            prefix_lines = [f"[{memory.id}] {memory.current.content} (scope={('episodic' if memory.record_type == 'event' else 'source_reported')}, observed_at={memory.current.observed_at}, "
                             f"sources={','.join(memory.current.source_ids)})" for memory in selected]
             prefix = clip_bytes("Relevant source-reported statements:\n" + "\n".join(prefix_lines), self.settings.context_bytes) if prefix_lines else ""
             items = []
             cards_by_id = {card["id"]: card for card in cards}
             for document, base_score in ranked[:request.top_k]:
                 card = cards_by_id[document.id]
-                text = (prefix + "\n\n" if prefix else "") + "Original evidence:\n" + card["original"]
-                if document.memory_id:
-                    text += "\nMemory: " + card["summary"] + "\nEvent time: " + (document.event_at or "unknown")
-                if card["memories"]:
-                    text += "\nMemory revisions: " + json.dumps(card["memories"], ensure_ascii=False)
+                text = (prefix + "\n\n" if prefix else "")
+                if card.get("memory_package"):
+                    text += "Memory package (latest visible version first):\n" + json.dumps(card["memory_package"], ensure_ascii=False) + "\n\n"
+                text += "Original evidence:\n" + card["original"]
                 if tool_results:
                     text += "\nRetrieval coverage: " + ", ".join(result["coverage"] for result in tool_results)
                 items.append(SearchItem(id=document.id, content=text, score=scores.get(document.id, base_score), created_at=document.created_at))
             if not items and prefix:
                 items = [SearchItem(id="current_context", content=prefix, score=0, created_at=as_of)]
             # Reading a record updates access heat only; its confirmation/validity fields remain unchanged.
-            touched = {document.memory_id for document, _ in ranked[:request.top_k] if document.memory_id}
+            touched = {memory.memory_id for document, _ in ranked[:request.top_k] for memory in document.memory_evidence}
             touched.update(memory.id for memory in selected)
             self._search_access = (touched, as_of)
             if not getattr(self, '_snapshot_read', False):
@@ -1068,14 +1121,15 @@ class MemoryEngine:
                 "selected_conditions": len(selected), "tool_results": tool_results, "rerank_documents": len(cards),
                 "rerank_scored_documents": len(scores),
                 "degradation": degradation, "coverage": "bounded_retrieval_not_exhaustive", "as_of": as_of,
+                "recall_depth": self.settings.recall_depth, "source_package_limit_per_query": self.settings.candidate_limit,
                 "decision": decision.model_dump(), "selected_condition_ids": [memory.id for memory in selected],
                 "compiled_steps": [step.model_dump() for step in compiled_steps],
                 "decision_errors": decision_errors,
                 "planner_attempts": planner_attempts,
                 "direct_coverage": direct_coverage,
-                "fusion": "logical_memory_rrf_then_source_bundle",
+                "fusion": "source_package_rrf",
                 "revision_paths": revision_paths,
-                "memory_bundles": len({document.memory_id for document, _ in merged if document.memory_id}),
+                "memory_bundles": len({m.memory_id for document, _ in merged for m in document.memory_evidence}),
                 "candidate_channels": channels,
                 "decision_source_ids": sorted({key for card in state["evidence"] for key in card["source_ids"]}),
                 "candidate_union_limit": sum(
@@ -1086,7 +1140,7 @@ class MemoryEngine:
                 "context_omitted_count": len(current) - len(shown),
                 "unavailable_condition_selection_count": unavailable_condition_count,
                 "candidates": [{"document_id": document.id, "source_ids": document.source_ids,
-                    "memory_id": document.memory_id, "base_score": score, "rerank_score": scores.get(document.id),
+                    "memory_id": document.memory_id, "memory_ids": list(dict.fromkeys(m.memory_id for m in document.memory_evidence)), "base_score": score, "rerank_score": scores.get(document.id),
                     "evidence_source_ids": cards_by_id[document.id]["source_ids"],
                     "selected": document.id in {item.id for item in items}} for document, score in merged]}
             count("search_degraded", int(bool(degradation)))

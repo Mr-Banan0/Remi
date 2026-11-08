@@ -56,9 +56,9 @@ def test_each_memory_keeps_its_own_date_and_exact_supporting_clause():
     engine = MemoryEngine(model=ScriptedModel(extract))
     engine.add(request("Yesterday I reviewed Orion. Tomorrow I launch Vega. Access remains restricted."))
     events = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "event"]
-    assert {(memory.current.event_at or memory.current.planned_at)[:10] for memory in events} == {"2024-06-01", "2024-06-03"}
+    assert {memory.current.content[:10] for memory in events} == {"2024-06-01", "2024-06-03"}
     facts = [memory for memory in engine.store.memories("u1") if memory.tags[0] == "fact"]
-    assert len(facts) == 1 and facts[0].current.status == "stated"
+    assert len(facts) == 1 and "status" not in facts[0].current.model_dump()
 
 
 def test_context_source_does_not_pollute_the_event_anchor():
@@ -73,8 +73,8 @@ def test_context_source_does_not_pollute_the_event_anchor():
         time_basis="event", relation="same_day", select="all", window_days=0, anchor_step=None)
     hits, coverage = engine._recall_step("u1", "Review date?", step, {first},
         engine._visible_documents("u1", "2024-06-05T00:00:00Z"), "2024-06-05T00:00:00Z", monotonic() + 10)
-    assert coverage.startswith("bounded_candidates") and hits
-    assert all(doc.event_at.startswith("2024-06-02") for doc, _ in hits)
+    assert hits == [] and coverage == "time_scope_unresolved"
+    assert any("2024-06-02" in doc.text for doc in engine.store.documents("u1"))
 
 
 def test_sufficient_direct_channel_skips_unrestricted_supplement():
@@ -114,7 +114,7 @@ def test_partial_rerank_retains_the_original_question_baseline():
     engine.add(request("PRIMARY answer"))
     engine.add(request("SECONDARY unrelated", request_id="r2"))
     retrieve = engine._hybrid
-    engine._hybrid = lambda owner, text, docs, vector=None, limit=None: [
+    engine._recall_candidates = lambda owner, text, docs, vector=None, limit=None: [
         (doc, .005 if text == "PRIMARY" else .032) for doc, _ in retrieve(owner, text, docs, vector, limit)
         if text in doc.text]
     result = engine.search(query("PRIMARY", top_k=1), "2024-06-04T00:00:00Z")
@@ -153,7 +153,7 @@ def test_sufficient_direct_and_graph_channels_define_the_natural_bound():
     ranker = Ranker()
     engine = MemoryEngine(model=model, reranker=ranker)
     engine._visible_documents = lambda *args: [doc for group in channels.values() for doc in group]
-    engine._hybrid = lambda owner, text, *args, **kwargs: [(doc, .01) for doc in channels[text][:40]]
+    engine._recall_candidates = lambda owner, text, *args, **kwargs: [(doc, .01) for doc in channels[text][:40]]
     engine._graph_candidates = lambda owner, text, seeds, *args: [(doc, .02)
         for doc in channels[seeds[0].text][40:]]
     engine._card = lambda owner, doc, *args: {"id": doc.id, "source_ids": doc.source_ids,

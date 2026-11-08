@@ -153,11 +153,12 @@ def test_separate_events_get_their_own_dates_and_absolute_references():
     engine.add(request("昨天取消了明天的聚会，今天搬家。", when="2026-10-12T10:00:00+00:00"))
     memories = engine.store.memories("u1")
     assert len(memories) == 2
-    cancelled=next(memory for memory in memories if memory.current.status=='cancelled')
-    moved=next(memory for memory in memories if memory.current.status=='occurred')
+    cancelled=next(memory for memory in memories if '取消' in memory.current.content)
+    moved=next(memory for memory in memories if '搬家' in memory.current.content)
     assert cancelled.current.event_at is None and cancelled.current.planned_at is None
     assert "2026-10-13" in cancelled.current.content
-    assert moved.current.event_at.startswith("2026-10-12")
+    assert "2026-10-12" in moved.current.content
+    assert "event_at" not in moved.current.model_dump()
 
 
 @pytest.mark.parametrize("kind", ["preference", "fact", "event", "experience"])

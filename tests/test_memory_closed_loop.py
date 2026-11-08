@@ -110,7 +110,8 @@ def test_unbound_memory_keeps_its_original_event_and_observation_clock():
     model.pending=False
     engine.add(req('Aster at that workshop is my neighbor.','clarified',5))
     memory=next(memory for memory in engine.store.memories(OWNER) if 'attended' in memory.current.content)
-    assert memory.current.event_at.startswith('2030-01-01')
+    assert '2030-01-01' in memory.current.content
+    assert memory.current.event_at is None
     assert memory.current.observed_at.startswith('2030-01-01') and len(memory.current.source_ids)==1
     assert visible_memory(memory,'2030-01-02T00:00:00Z') is not None
     assert set(engine.store.records)=={'sources','memories','objects','edges','requests','search_documents'}

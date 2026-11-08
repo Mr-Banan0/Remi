@@ -10,13 +10,16 @@ from remi.providers import JevReranker
 
 
 @pytest.mark.parametrize('status', [400, 413])
-def test_context_limit_splits_questions_and_preserves_every_score(status):
+@pytest.mark.parametrize('envelope', ['error', 'detail', 'message'])
+def test_context_limit_splits_questions_and_preserves_every_score(status, envelope):
     requests, successful = [], []
     def handler(request):
         questions=json.loads(request.content)['questions']
         requests.append(set(questions))
         if len(questions)>3:
-            return httpx.Response(status,json={'error':{'message':'{"error_type":"max_tokens_exceeded"} (request id: test)'}})
+            body = ({'error': {'message': '{"error_type":"max_tokens_exceeded"} (request id: test)'}}
+                    if envelope == 'message' else {envelope: {'error_type': 'max_tokens_exceeded'}})
+            return httpx.Response(status, json=body)
         successful.extend(questions)
         return httpx.Response(200,json={'answers':{
             key:dict(type='noul',noul=.75) for key in questions}})

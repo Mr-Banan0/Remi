@@ -97,7 +97,8 @@ def test_prior_user_and_assistant_context_survives_reopening(database):
         second.add(request("Choose the second slot.", request_id="r2", when="2024-06-02T11:00:00Z"))
         memory = second.store.memories("u1")[0]
         assert len(memory.current.source_ids) == 2
-        assert memory.current.status == "planned"
+        assert memory.current.content == "User selected Thursday for Northstar"
+        assert "status" not in memory.current.model_dump()
         evidence = second.store.sources("u1", memory.current.source_ids)
         assert {source.role for source in evidence} == {'user', 'assistant'}
         assert any('Thursday is the second' in source.content for source in evidence)
@@ -117,8 +118,9 @@ def test_event_cancellation_and_history_survive_reopening(database):
     store=SQLiteStore(database)
     try:
         memory=store.memories('u1',[mid])[0]
-        assert len(memory.revisions)==2 and memory.current.status=='cancelled'
-        assert memory.current.planned_at.startswith('2024-06-03')
+        assert len(memory.revisions)==2 and 'cancelled' in memory.current.content
+        assert '2024-06-03' in memory.revisions[0].content
+        assert 'planned_at' not in memory.current.model_dump()
         assert any(edge.relation=='revises' for edge in store.edges_for('u1'))
     finally:
         store.close()

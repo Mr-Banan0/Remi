@@ -269,7 +269,7 @@ def test_repair_keeps_source_content_conditions_dates_and_reason_literal_in_the_
     source_text='A note about an E2 visa contains the literal code dog-identity.'
     state['new_user_source']['content']=source_text
     wire['items'][0].update(content=source_text,context='if the E2 visa remains active',
-                           record_type='event',status='planned',time_expression='2028-05-10 (E2 visa appointment)')
+                           record_type='event')
     wire['reason']='The E2 visa and dog-identity strings are part of this note.'
     _,context=prepare(state);broken=deepcopy(wire);broken['items'][0]['participant_handles']=['P99']
     with pytest.raises(ExtractionInvalid) as caught:decode(broken,context)
@@ -279,13 +279,13 @@ def test_repair_keeps_source_content_conditions_dates_and_reason_literal_in_the_
         requirement='Keep the source text literal.')]
     packet,_=prepare(state)
     assert packet['previous_output']['reason']==wire['reason']
-    for field in ['content','context','time_expression']:
+    for field in ['content','context']:
         assert packet['previous_output']['items'][0][field]==wire['items'][0][field]
         assert packet['repair_errors'][-1]['actual'][field]==wire['items'][0][field]
     recovered,calls,_=capture(state,wire)
     previous=json.loads(calls[0]['messages'][-2]['content'])
     assert previous['reason']==wire['reason']
-    for field in ['content','context','time_expression']:
+    for field in ['content','context']:
         assert previous['items'][0][field]==wire['items'][0][field]
         assert recovered['items'][0][field]==wire['items'][0][field]
     assert 'historical identity visa' not in calls[0]['messages'][-2]['content']
